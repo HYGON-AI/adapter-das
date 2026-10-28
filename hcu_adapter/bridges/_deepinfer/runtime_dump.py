@@ -1,6 +1,5 @@
 """Record installed providers without probing or initializing an accelerator."""
 
-import hashlib
 import importlib.metadata
 import json
 import os
@@ -25,9 +24,6 @@ def snapshot(install_options=None):
         name: dict(value=hcu_env.resolve(name), source=hcu_env.environment.resolve(name)[1])
         for name in hcu_env.REGISTRY
     }
-    sources = [root / 'sitecustomize.py']
-    for directory in ('hcu_adapter',):
-        sources.extend(sorted((root / directory).rglob('*.py')))
     versions = {}
     for name in ('torch', 'triton', 'deep-ep', 'deepgemm', 'lightop', 'transformers', 'tokenizers', 'xgrammar'):
         try:
@@ -41,9 +37,7 @@ def snapshot(install_options=None):
             modules[name] = dict(file=getattr(module, '__file__', None), package_paths=list(getattr(module, '__path__', ())))
     return dict(schema_version=1, pid=os.getpid(), adapter_root=str(root),
                 install_options=install_options, environment=environment,
-                versions=versions, modules=modules, **active,
-                source_sha256={str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
-                               for path in sources if path.is_file()})
+                versions=versions, modules=modules, **active)
 
 
 def write(install_options=None):

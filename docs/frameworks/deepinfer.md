@@ -81,8 +81,8 @@ DEEPINFER_SOURCE="$OFFICIAL" bash examples/deepinfer/run.sh \
 
 本分支从原有 DeepInfer 适配工作区迁入，重新对接 adapter-das 的统一包结构。
 本次静态检查不能替代节点验收。旧版 adapter + plugin 的 DSpark、精度与性能记录
-不作为本分支的通过结论。导入来源见[来源清单](../history/2026-10-28-deepinfer-v1-import.json)，
-归属、限制及迁移条件见[首版范围](deepinfer-scope.md)。
+不作为本分支的通过结论。适配实现来自原 DeepInfer adapter 工作区（基线 `c2f659f`），
+重新对接 adapter-das `f3bf30c`；归属、限制及迁移条件见[首版范围](deepinfer-scope.md)。
 
 模型量化加载、特定 KV 布局、bounded replay 和模型策略继续由独立 plugin 组合。
 当前目录不包含 channel-FP8 模型插件，也不将它的模型策略设为其他框架的默认行为。

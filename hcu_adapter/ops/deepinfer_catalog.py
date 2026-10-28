@@ -43,7 +43,7 @@ BACKEND_CATALOG = {
         "json": {
             "status": "candidate",
             "implementation": "hcu_adapter.bridges._deepinfer.runtime_dump.write",
-            "limitations": "Atomic per-PID report of actual bindings/catalog/env/version/module paths/source hashes and installer selection sources; never probes GPU",
+            "limitations": "Atomic per-PID report of actual bindings/catalog/env/version/module paths and installer selection sources; never probes GPU",
         },
     },
     "deep_gemm.cublaslt_gemm_nt": {

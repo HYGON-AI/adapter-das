@@ -49,16 +49,8 @@ def has_fp8(arch=None):
 # ---------------------------------------------------------------------------
 
 def _sglang_uses_new_aiter_ca():
-    """True when this sglang build's AR dispatch goes through the NEW
-    aiter.dist GraphSafe path (source marker check; no aiter import)."""
-    try:
-        import sglang.srt.distributed.device_communicators.\
-            custom_all_reduce as car
-
-        with open(car.__file__, encoding="utf-8", errors="ignore") as f:
-            return "aiter.dist.device_communicators" in f.read()
-    except Exception:
-        return False
+    from hcu_adapter.bridges.sglang_environment import _sglang_uses_new_aiter_ca as probe
+    return probe()
 
 
 def _auto_aiter_ar():
@@ -117,11 +109,18 @@ def _auto_mqa_emu():
 
 
 REGISTRY = {
+    "HCU_CONFIG": {"env": "HCU_CONFIG", "default": "", "about": "Deployment configuration path; shared across hosts"},
+    "HCU_WORKER_CONTEXT": {"env": "HCU_WORKER_CONTEXT", "default": "", "about": "DeepInfer inherited worker context; internal", "hosts": ("deepinfer",)},
+    "HCU_BF16_TFLOPS": {"env": "HCU_BF16_TFLOPS", "default": "0", "about": "DeepInfer optional MFU calibration", "hosts": ("deepinfer",)},
+    "HCU_L1_TIMEOUT_SCALE": {"env": "HCU_L1_TIMEOUT_SCALE", "default": "1", "about": "DeepInfer diagnostic timeout multiplier", "hosts": ("deepinfer",)},
+    "HCU_LIGHTOP_OPS": {"env": "HCU_LIGHTOP_OPS", "default": "0", "about": "DeepInfer LightOp paths; 0 or 1", "hosts": ("deepinfer",)},
+    "HCU_NATIVE_FLASHMLA": {"env": "HCU_NATIVE_FLASHMLA", "default": "0", "about": "DeepInfer native FlashMLA path; 0 or 1", "hosts": ("deepinfer",)},
+
     # bootstrap host selection: auto needs no operator configuration; the
     # dispatcher propagates its result to spawn children through a private key.
     "HCU_ADAPTER_HOST": {
         "env": "HCU_ADAPTER_HOST", "default": "auto",
-        "about": "宿主分发：auto 自动识别；sglang/vllm 显式固定；none 禁用。"
+        "about": "宿主分发：auto 自动识别；sglang/vllm/deepinfer 显式固定；none 禁用。"
                  "自动结果由 adapter 私有键传给 spawn 子进程，部署无需手设。",
     },
     # kill switches (triage; see kill_switch.py) — explicit-only by nature
@@ -517,6 +516,8 @@ def resolve(name):
     env = spec["env"]
     if os.environ.get(env, "") != "":
         return os.environ[env], "explicit"
+    if name == "HCU_CONFIG":
+        return str(spec["default"]), "default"
     # config file (deployment tier): below debug env, above auto rules.
     # Invalid files raise here on first touch -- loud and early.
     from . import hcu_config as _cfg
@@ -524,7 +525,7 @@ def resolve(name):
     cv = _cfg.lookup(env)
     if cv is not None:
         return str(cv), "config"
-    if "auto" in spec:
+    if "auto" in spec and os.environ.get("_HCU_ADAPTER_ACTIVE_HOST") != "deepinfer":
         try:
             v = spec["auto"]()
             if v is not None:

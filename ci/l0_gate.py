@@ -25,6 +25,7 @@ Exit:   0 green / 1 red; per-check PASS/FAIL lines go to stdout.
 
 import argparse
 import ast
+import json
 import os
 import re
 import sys
@@ -148,11 +149,8 @@ def routing_glue_files():
     """Return the thin loader, dispatcher, and framework bridge sources."""
     files = ["sitecustomize.py", "hcu_adapter/bootstrap.py"]
     bridge_dir = os.path.join(ROOT, "hcu_adapter", "bridges")
-    files.extend(
-        f"hcu_adapter/bridges/{name}"
-        for name in sorted(os.listdir(bridge_dir))
-        if name.endswith(".py")
-    )
+    for base, _, names in os.walk(bridge_dir):
+        files.extend(rel(os.path.join(base, name)) for name in sorted(names) if name.endswith(".py"))
     return files
 
 
@@ -330,28 +328,29 @@ def check_text_patch_allowlist(r):
 
 def check_registry_ops_in_catalog(r):
     """HARD: every registry.register(op=...) names a BACKEND_CATALOG op."""
-    cat = open(os.path.join(ROOT, "hcu_adapter/hcu_config.py"),
-               encoding="utf-8").read()
-    ops = set(re.findall(r'^\s{4}"([a-z0-9_]+)":\s*\{', cat, re.M))
-    pat = re.compile(
-        r"registry\.register\(\s*\n?\s*(?:op\s*=\s*)?\"([a-z0-9_]+)\"")
+    from hcu_adapter.hcu_config import BACKEND_CATALOG
+    ops = set(BACKEND_CATALOG)
     for p in iter_files(".py"):
         rp = rel(p)
-        if (not (rp == "hcu_adapter" or rp.startswith("hcu_adapter/")
-                 or "/hcu_adapter/" in rp)
-                and "/bridges/" not in rp
+        if (not rp.startswith("hcu_adapter/") and "/bridges/" not in rp
                 and rp != "sitecustomize.py"):
             continue
         try:
             src = open(p, encoding="utf-8").read()
         except Exception:
             continue
-        for m in pat.finditer(src):
-            if m.group(1) not in ops:
-                line = src[: m.start()].count("\n") + 1
-                r.fail("registry-ops", f"{rp}:{line} registers op "
-                       f"'{m.group(1)}' not in BACKEND_CATALOG")
+        for node in ast.walk(ast.parse(src)):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            if not isinstance(node.func.value, ast.Name) or node.func.value.id != "registry" or node.func.attr != "register":
+                continue
+            value = node.args[0] if node.args else next((x.value for x in node.keywords if x.arg == "op"), None)
+            if isinstance(value, ast.Constant) and isinstance(value.value, str) and value.value not in ops:
+                r.fail("registry-ops", f"{rp}:{node.lineno} registers unknown op {value.value!r}")
 
+
+
+# ---------------------------------------------------------------------------
 
 def check_impl_naming(r):
     """HARD: module-naming rules from governance §3b.
@@ -412,12 +411,47 @@ def check_impl_naming(r):
 
 # ---------------------------------------------------------------------------
 
+def check_shared_kernels(r):
+    root = os.path.join(ROOT, "hcu_adapter", "kernels")
+    for directory, _, files in os.walk(root):
+        for name in files:
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(directory, name)
+            tree = ast.parse(open(path, encoding="utf-8").read())
+            for node in ast.walk(tree):
+                modules = ([node.module or ""] if isinstance(node, ast.ImportFrom)
+                           else [alias.name for alias in node.names] if isinstance(node, ast.Import) else [])
+                for module in modules:
+                    if module.split(".")[0] in {"deepinfer", "sglang", "vllm"} or module.startswith("hcu_adapter.bridges"):
+                        r.fail("kernel-boundary", f"{rel(path)}:{node.lineno} imports framework glue {module}")
+            for node in tree.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in {"install", "_install"}:
+                    r.fail("kernel-boundary", f"{rel(path)}:{node.lineno} installs framework bindings")
+
+
+def check_catalog_snapshot(r):
+    from hcu_adapter.hcu_config import BACKEND_CATALOG
+    source = open(os.path.join(ROOT, "tools/hcu_config_ui.html"), encoding="utf-8").read()
+    match = re.search(r"const CATALOG = (\{.*?\n\});", source, re.S)
+    expected = {op: {"var": spec.get("var"), "summary": spec.get("summary", op),
+                     "backends": {name: {"s": item["status"], "n": item.get("note", "")}
+                                  for name, item in spec["backends"].items()}}
+                for op, spec in BACKEND_CATALOG.items()}
+    try:
+        if match is None or json.loads(match[1]) != expected:
+            r.fail("catalog-snapshot", "UI snapshot differs from shared catalog")
+    except ValueError as error:
+        r.fail("catalog-snapshot", str(error))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--strict", action="store_true",
                     help="treat warnings as failures")
     args = ap.parse_args()
 
+    sys.path.insert(0, ROOT)
     r = Report()
     n_py = check_py_syntax(r)
     n_sh = check_shell_lf(r)
@@ -434,6 +468,8 @@ def main():
     check_text_patch_allowlist(r)
     check_registry_ops_in_catalog(r)
     check_impl_naming(r)
+    check_shared_kernels(r)
+    check_catalog_snapshot(r)
 
     print(f"l0 gate: scanned {n_py} py / {n_sh} sh / {n_sec} text files")
     for w in r.warns:

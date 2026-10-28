@@ -359,3 +359,16 @@ moe_c w4a16 档目前只有 CPU 契约单测（wiring/ABI），GPU 对比哨兵
   主力量化路线，见 §5.1 阶段 2）归 **plugin 仓**：每宿主一个 plugin、
   kernel 共享 `sgl_kernel`、格式规范与 conformance 单测**单源**——判别
   仍走 §0 问句，与"动机是性能"无关。
+
+
+## 8. DeepInfer 固定接口接入
+
+DeepInfer 同样遵循 §0 双仓边界。它的上游别名、factory 和 worker 生命周期位于
+`hcu_adapter/bridges/_deepinfer/`，不导入 SGLang/vLLM 宿主。为避免导入
+`sgl_kernel` 触发其 AOT/stub 初始化，DeepInfer 契约的独立实现放在
+`hcu_adapter/kernels/`；这是内核层，适用相同的 framework-free、命名和 catalog
+规则，不是将数学放入 bridge 的例外。旧实现名可作为无计算的兼容转接；真实 provider
+按档位登记。包含多 provider 分发的契约模块保持路由名称。
+
+该目录不是新的模型扩展入口。channel-FP8 加载、额外的模型执行方案继续归独立
+plugin。具体接口范围、限制与验收边界见[DeepInfer 首版范围](frameworks/deepinfer-scope.md)。

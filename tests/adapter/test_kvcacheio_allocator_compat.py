@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import types
+import subprocess
 
 import pytest
 import torch
@@ -144,3 +145,36 @@ def test_extend_face_routes_to_upstream_triton(monkeypatch):
     assert extend.grid == (5,)
     assert extend.args == (*tensors, 8, 32)
     assert decode.args is None
+
+
+def test_shadow_import_does_not_import_sglang():
+    code = (
+        "import sys; import sgl_kernel.kvcacheio; "
+        "assert not any(name == 'sglang' or name.startswith('sglang.') "
+        "for name in sys.modules)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_allocator_route_logs_vendor_and_fallback_once(monkeypatch, caplog):
+    from hcu_adapter import kvcacheio_allocator
+
+    caplog.set_level("DEBUG", logger="hcu.adapter")
+    kvcacheio_allocator._ROUTE_LOGGED.clear()
+    monkeypatch.setattr(torch.ops, "sgl_kernel", types.SimpleNamespace())
+    assert kvcacheio_allocator.resolve("hcu_get_last_loc") is not None
+    assert kvcacheio_allocator.resolve("hcu_get_last_loc") is not None
+    assert sum("route=fallback" in record.message for record in caplog.records) == 1
+
+    vendor = lambda *args: None
+    monkeypatch.setattr(
+        torch.ops.sgl_kernel, "hcu_get_last_loc", vendor, raising=False
+    )
+    assert kvcacheio_allocator.resolve("hcu_get_last_loc") is vendor
+    assert sum("route=vendor" in record.message for record in caplog.records) == 1

@@ -166,6 +166,9 @@ plugin 时仍保持官方 vLLM 基线路径可启动。
 `torch.ops.sgl_kernel.hcu_*`。未注册时，decode/extend 分配及请求槽位写入、
 末位置查询保留上游 Triton/Torch 兼容路径；其余 vendor 专属接口仍响亮报错。
 已注册 vendor 算子的执行错误直接传播，不触发兼容回退。
+兼容 fallback 和 call-time 路由位于 `hcu_adapter/kvcacheio_allocator.py`；
+影子包只保留公开 ABI，不在 import 期依赖 SGLang 内部模块。首次选择
+vendor/fallback 路径会写一条 DEBUG 路由记录。
 
 `sgl_kernel.sampling.top_k_renorm_prob` 接受 scalar 或逐行 k，并把 k
 限制在 `[1, vocab_size]`。并列概率按原 token 顺序稳定排序，只保留前 k

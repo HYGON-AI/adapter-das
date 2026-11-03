@@ -142,6 +142,16 @@ GPU 4–7 空闲显存均不足 3%，已停止进一步 GPU 分配。
 启动日志另暴露 JIT warp needle/FP8 登记问题，后续迁移 JIT 时需一并处理。
 这不代表完整 speculative 模型、所有 GPU 参数项或全量套件已通过。
 
+nmz21 清理镜像残留后，另建干净社区树
+`sglang-0.5.22-pristine-iter4-nmz21`，同一社区 commit、物理 GPU 0，
+真实 `/model/qwen2/Qwen2-0.5B-Instruct` checkpoint 的 graph worker
+启动及两批生成通过；实际捕获 prefill 与 decode graph。
+总控因同样的 **27 个源码文件**改写仍判失败，Python 差异仅为
+`fp8.py` 和 `deepseek_v4.py`。报告为
+`iteration4-nmz21-pristine-before.json`、`iteration4-nmz21-checkpoint.json`。
+该结果证明当前容器中的真实权重启动/生成链路，不代表语义金标、
+完整 speculative 模型或源码零改写验收通过。
+
 ## 原四步实施与验证记录
 
 1. **严格执行与结果判定**：校验真实单卡 HIP、源码来源、版本绑定；

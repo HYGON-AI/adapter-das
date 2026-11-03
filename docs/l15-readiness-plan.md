@@ -220,6 +220,52 @@ L0 GREEN（31 项既有 warning），未运行全量 adapter/vendor 套件。
 checkpoint 已验证，亦不等于整体源码零改写或多模型精度目标已完成。
 下一步迁移剩余 JIT 编译输入，保留这些 portability 修复和数值语义。
 
+### JIT 编译输入迁出社区源码（GPU 集成待复验）
+
+`jit_sources` 将现有八组 portability 变换集中在 adapter 私有 staging
+目录执行，仅复制 JIT `csrc/include` 编译资产，排除独立 Python 生成脚本。
+输入文件字节、变换实现及 forwarder 定义共同生成缓存 key；全部变换、
+白名单和输出哈希通过后原子发布到
+`~/.cache/hcu_adapter/jit-inputs/<sha256>`。同 key 并发发布只能读到完整
+bundle；已有缓存损坏拒绝，不覆盖“自愈”。manifest 记录输入、输出和变换。
+CUDA→HIP 头文件也移入 bundle，不再写 DTK include。
+
+社区 `resolve_sources` 与原 `load_jit` 的函数对象保留，已缓存别名和
+Torch 包装仍调用原对象。以私有调用命名空间映射相对/绝对 source，
+以及默认、显式和实时 dependency provider 的 include；原
+BuildSpec/ninja/cache、编译参数及依赖追踪仍在使用，不转移社区 Python
+模块或改写 `__file__`。量化变换先生成 packed BF16 shuffle 分支，再由
+warp 变换把接收类型修正为 `T`，避免旧顺序造成首轮安装缺针。
+补齐已有 v2 FP8 conversion needle 的治理登记，不删除 portability 修复。
+
+nmz21 隐藏全部 GPU 的最终缓存/环境/启动结构及 CPU 算子组合回归
+**75 passed、5 skipped、1 deselected**（`iteration7-final-cpu.log`）。
+其中 source 两臂分别
+使用离线接口及 Git HEAD 原始社区资产/函数；spawn 子进程实际安装文件
+写入 audit hook，先验证写入社区目录会被拒绝，再并发生成同一 bundle。
+包含真实官方 BuildSpec→ninja→cache→tvm-ffi **CPU 编译 2 passed**
+（另有独立 `iteration7-host-compiler.log`）：从缓存编译 source 和传递 include，
+两轮改变头文件值后返回值随之改变，证明缓存失效与真实编译路径。
+另隐藏 GPU，以明确 `gfx938` 编译目标实例化真实 HIP wrapper：
+RoPE NeoX/interleaved 及 FP8 group32/group128 **4 passed**
+（离线合成资产四臂按设计 skip），日志为
+`iteration7-hip-template-compile.log`。未运行这些 device 函数，
+这不是 GPU 数值验证。L0 GREEN（31 项既有 warning）。
+
+实际社区编译器绑定与重复安装通过（`iteration7-actual-compiler-bind.log`）。
+干净 `sglang-0.5.22-pristine-iter7` 隐藏 GPU 后执行宿主导入，
+前后源码完整性为 **0 changed、0 added sources**，报告为
+`iteration7-pristine-before.json`、`iteration7-bootstrap-source-after.json`。
+隐藏 GPU 导致部分其他可选桥无法取得设备 capability，导入日志保留相关
+warning；该结果只证明本次导入没有源码写回，不作为功能就绪证据。
+
+本轮新增 RoPE 两种布局与 FP8 分组量化的真实编译/独立数值/变输入
+graph 回归，尚未执行：nmz21 多次显存预检不足而在分配测试张量前拒绝，
+随后确认宿主有其他用户的 8 卡 `all_reduce_perf` 压测；nmz7/nmz28
+也有占用，未停止其他任务。必须在空闲卡补齐这些 GPU 测试及真实
+Qwen2 eager/graph 的严格源码完整性复验，才能将该迁移计为模型集成通过。
+此前 25 个 JIT 文件写回的失败报告继续保留，不能用本次 CPU 导入覆盖。
+
 ## 原四步实施与验证记录
 
 1. **严格执行与结果判定**：校验真实单卡 HIP、源码来源、版本绑定；

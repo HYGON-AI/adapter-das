@@ -1,5 +1,10 @@
 """JIT per_token_group_quant.{cuh} HIP fp8 portability patch.
 
+Compiler-input transformation: _apply operates only on private adapter staging
+assets via jit_sources. install() delegates to that complete bundle pipeline;
+no community source or module origin is rewritten.
+
+
 The quant kernel's fp8 `WeightTrait` references CUDA-only traits
 (`DTypeTrait<fp8_e4m3_t>::kFloatMax` — that specialization is compiled
 out under USE_ROCM in type.cuh, where HIP aliases fp8 to raw uint8
@@ -91,11 +96,11 @@ _PATCHES_WARP = (
 )
 
 
-def install():
-    import sglang.kernels.jit as _jit_root
+def _apply(root, register):
+    """Transform adapter-owned staging files; never pass a community root."""
 
-    csrc = pathlib.Path(_jit_root.__file__).parent / "csrc"
-    inc = pathlib.Path(_jit_root.__file__).parent / "include" / "sgl_kernel"
+    csrc = root / "csrc"
+    inc = root / "include" / "sgl_kernel"
     applied = 0
     missing = []
     for base, rel, needle, repl in (
@@ -117,12 +122,7 @@ def install():
         applied += 1
 
     if missing:
-        LOG.warning(
-            "HCU adapter: JIT fp8-quant patch: needles changed upstream (%s); "
-            "per_token_group_quant JIT may fail on HIP — gap list",
-            ",".join(missing),
-        )
-        return
+        raise RuntimeError("jit_quant_fp8: upstream needles changed: " + ",".join(missing))
 
     import hcu_adapter.registry as _reg
 
@@ -130,10 +130,10 @@ def install():
     # fingerprints a text patch by its detail, so each needle registers as
     # its own record (same op on the same file target is not a conflict).
     for r, n, _rp in _PATCHES + _PATCHES_V2 + _PATCHES_WARP:
-        _reg.register(
+        register(
             "per_token_quant",
             "gfx936-hipcc-fp8-cvt",
-            target=f"text:sglang/kernels/jit/csrc/{r if r.startswith('gemm/') else 'include/sgl_kernel/' + r}",
+            target=f"text:sglang/kernels/jit/{'csrc/' + r if r.startswith('gemm/') else 'include/sgl_kernel/' + r}",
             mechanism=_reg.MECH_TEXT,
             detail=n,
         )
@@ -141,3 +141,10 @@ def install():
         "HCU adapter: JIT per-token-group-quant fp8 patch installed "
         "(%d edits)", applied,
     )
+
+
+def install():
+    """Compatibility entry: prepare the complete immutable JIT input bundle."""
+    from .jit_sources import install as install_inputs
+
+    return install_inputs()

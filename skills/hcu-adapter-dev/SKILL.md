@@ -33,6 +33,14 @@ facade 的运行时桥替代磁盘补丁；不可重新引入 common.py 写回�
 的参数常量，以 tuple 接纳 CT-int8 `.weight_scale`，保留原函数对象、
 指令字节及 PP/MTP、异步加载、流式 buffer 与原融合路径，不写回
 `deepseek_v4.py`；签名或调用位置漂移须拒绝，不能重写权重流绕开原过滤。
+`jit_sources` 将 JIT `csrc/include` 的编译资产及 CUDA→HIP forwarders
+生成到 adapter 的内容寻址缓存，不能写社区树或 DTK include，也不能复制
+社区 Python 包或伪造模块 `__file__`。全部变换完成并校验后原子发布；
+key 包含输入字节和变换实现，已有缓存损坏须拒绝。保留原
+`resolve_sources` / `load_jit` 函数对象和别名，覆盖绝对/相对源路径、
+默认/显式/依赖 provider 的 include。保持官方 BuildSpec/ninja/cache
+与依赖追踪；量化先生成 packed shuffle 分支，再由 warp 修正 generic T。
+`jit-input:` 注册仍按原 needle 白名单治理，但表示缓存中的编译数据。
 完整目标与证据见 `docs/l15-readiness-plan.md`。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测

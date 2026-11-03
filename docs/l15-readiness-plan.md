@@ -456,7 +456,9 @@ V1 是保留失败的初始诊断策略，BF16 舍入基线尚待校准。
 CPU BF16→FP32 在 HCU 所报头部 token 上的最大差：
 Qwen2 英文/中文 **0.643486 / 0.815510**，
 Qwen3 **0.791748 / 0.530690**；HCU→CPU BF16 的最大差仍为
-约 0.50～0.75。这说明参考精度改变本身也会产生同量级尾部 logprob 差，
+约 0.50～0.75。后续 iteration18 检查发现，整体转换还会舍入
+官方 FP32 RoPE buffer，因此该历史实验不能作为纯 dtype 舍入基线，
+其原始记录保留但不用于归因结论；以独立官方加载的 iteration18 为准。
 当前证据不足以把 V1 的失败直接归为 HCU 实现错误。
 下一步需扩展独立舍入基线、逐层/逐位置归因，再确定适用 BF16 的精度策略；
 当前报告继续保持失败，不能称作多模型精度验收通过。
@@ -624,6 +626,55 @@ SGLang/HCU 基线，既不能直接证明 HCU 存在错误，也不能豁免原�
 **34 passed**（`iteration18-dtype-cpu.log`），L0 GREEN（31 既有 warning）。
 真实 Qwen2/Qwen3 的多长度 CPU 对照使用 `iteration18-*-dtype.json/log`，
 具体实验结论需在执行结束后读取报告，不以测试通过替代。
+
+两模型均已结束，各对拍 **96 个生成位置**，两次官方加载的 RoPE
+`inv_freq` / `original_inv_freq` 均保持 FP32，且字节摘要完全一致。
+三组 top20 最大绝对 logprob 差分别为：
+
+- Qwen2：HCU→CPU FP32 **0.546768**，HCU→CPU BF16 **0.743473**，
+  CPU BF16→FP32 **0.753010**。
+- Qwen3：HCU→CPU FP32 **0.732415**，HCU→CPU BF16 **0.786287**，
+  CPU BF16→FP32 **0.710793**。
+
+Qwen2 的 HCU→FP32 最坏点位于 `short-zh` 的第 4 个输出位置，
+token108840、HCU rank18：HCU 与 CPU BF16 均为 -19.0，CPU FP32
+为 -19.546768；该点符合 dtype 差异的表现。Qwen3 的最坏点则位于
+`short-en` 第 6 个输出位置，token16209、HCU rank11：HCU
+-7.171320，CPU FP32 -6.438905，CPU BF16 -6.447533。此处两种 CPU
+精度相近，而 HCU 与二者仍相差约 0.72，不能以其他位置存在 BF16
+舍入差异解释该点；后续须继续定位 SGLang/HCU 的具体计算链。
+原 V1 FAIL 维持不变，诊断进程的成功退出仅表示对照完成。
+
+### 真实 Channel-FP8 checkpoint 启动（2026-11-03）
+
+资源复查发现 nmz7 GPU 已释放，选择物理 GPU4 并再次进行容器内预检：
+空闲显存比例 **0.969710**，BW1100/gfx938，DTK HIP 6.3.26113、
+Torch 2.11.0；adapter `0129b81`，同一 pristine 社区 commit
+`baa9befa381511cd4d56f83980951e5a45fffc6d`。
+真实 `/model/qwen3/Qwen3-0.6B-Channel-FP8` 的 config 声明
+compressed-tensors、channel FP8 权重、dynamic token FP8 激活、
+忽略 lm_head；9 项 checkpoint 资产绑定前后相同。
+
+`iteration19-qwen3-fp8.json` 记录 eager/graph **2/2** 启动生成通过，
+各两批两请求各 8 token；两模式输出相同，首个回答分别含 Paris、
+4、Beijing、6。eager decode graph 分配为 0，graph 为 0.078 GB；
+每次执行后源码 **0 changed / 0 added sources**。
+实际参数为 TP1、BF16 compute、attention triton、page1、KV auto、
+context128、max_total_tokens512、mem_fraction_static0.25。
+
+配方来源沿用 cookbook commit
+`40adc4d30ec2640e3391cfd78759bd3598e95f71` 的
+`docs/model-deployment/sglang/qwen3.md`、
+`Qwen3-0.6B IFB BW1100 1x SGLang 0.5.12` 条目。原配方是 BF16
+checkpoint、fa3/page64、关闭 graph、mem0.9，未提供此 0.6B
+Channel-FP8 精确条目；本实验明确替换为本地 FP8 checkpoint，
+并采用上述社区 0.5.22/Triton 参数。
+
+此项只证明该真实 checkpoint 的执行闭环，尚无独立量化精度结论；
+server info 的 `quantization=None` 表示未显式设置该启动参数，
+不能据它证明实际量化层路由。社区 ModelConfig 会从 HF config 自动
+解析，但仍需补实际加载层/内核的运行时证据及独立量化参考，不能
+把 config 声明、正常文本或启动成功当作量化数值验收。
 
 ## 模型最小闭环入口
 

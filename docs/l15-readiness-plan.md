@@ -40,6 +40,11 @@ nmz28 的环境结论；不清理或占用其他用户任务。
 清理该新容器镜像残留的 SGLang 0.5.18 DTK 定制包与 kernel 包，
 核对 SGLang 从社区源码、`sgl_kernel` 从 adapter 导入；不更改其他节点环境。
 
+2026-11-04 用户再次确认 nmz21 可用于调试。三个节点的授权持续有效，
+仍在每次作业前检查资源；本次实查 nmz21 容器正常、计算利用率为 0，
+但 8 张卡显存占用 88%–89%，因此没有在该节点启动新 GPU 作业。
+不能把计算利用率为 0 当作显存空闲，也不能沿用之前的空闲检查。
+
 历史前置差距包括 `jit_*`、`dsv4_*` 的源码磁盘写回，
 现已逐项迁移；Qwen2 当前组合通过严格源码完整性检查，其他模型与配置
 仍须逐项验证，上述完整目标尚未完成。对象广播 `dist_bc` 已迁移为运行时只读 numpy buffer
@@ -922,6 +927,53 @@ skip/xfail，执行后社区源码完整性通过，见
 `iteration34-quantization-family.json`。最终 L0 **GREEN（31 warn）**，
 见 `iteration34-final-l0.log`。当前保留的 vLLM 47 failed/29 errors
 尚未修复；全模型 BF16/量化精度及其他既定覆盖缺口仍需继续迭代。
+
+### BF16 逐层归因与增量解码复现（2026-11-04）
+
+使用同一 nmz7 GPU4、Qwen3-0.6B checkpoint 字节和社区 commit
+`baa9befa381511cd4d56f83980951e5a45fffc6d`，在 adapter `d813991`
+执行只读诊断，未修改模型 forward 或社区源码。HF 独立按 BF16 加载，
+仅把设备迁移到 HCU，保留 RoPE 的 FP32 buffer；参考为 HF eager。
+SGLang 通过公开 custom weight loader 接口安装 PyTorch hooks，
+显式检查 begin/update/end 均成功，并检查张量文件确实生成。
+这不是模型精度验收，也没有改变原 V1 阈值或 BF16 失败状态。
+
+`iteration36` 对 short-en prompt 加前 5 个固定输出 token 做 29-token
+全量 prefill。与 `iteration35` 未成功安装 hooks 的对照执行相比，
+输出及 logprob 数据相同，响应差异仅为请求 ID 和时间字段。
+首层 norm 输入逐元素相同，输出最大差为 0.03125（最后位置
+0.00390625）。使用相同输入和真实 norm 权重做 CPU FP32 公式对照：
+HF 输出精确匹配“归一化后先转 BF16、再乘权重”，SGLang 输出精确
+匹配“FP32 归一化并乘权重、最后转 BF16”。社区 RMSNorm 已区分
+默认语义和 `cast_x_before_out_mul` 的 HF 语义，不能据此强改默认实现。
+证据：`iteration36-layer-comparison.json`、`iteration36-*-layers.pt`
+和 `iteration36-layer-probe-runtime.json`。
+
+为避免以全量 prefill 代替原增量解码，`iteration37` 重放原 accuracy
+wave0 的两个请求，context4096/total16384、eager、单卡 BF16/Triton
+attention，生成 6 个 token。两请求前 6 个输出 ID 均与原记录一致，
+所选 token logprob 的最大差分别为 0、0；最后一次采样确认为第 6 次
+forward、batch2。额外保存 fused norm 的原始输入和残差，避免只保存
+已转 BF16 的相加结果而丢失方差计算信息。
+
+在 short-en 最后解码位置，首层输入仍完全一致，norm 输出最大差
+0.00390625；最终 norm 输出最大差 1.25。原最差 top20 token 16209
+的 logprob 为 SGLang BF16 −7.17131996、同卡 HF BF16 −6.63534498，
+与此前 CPU FP32 −6.438905 的差异不能用改参考 dtype 豁免。
+56 个实际 norm 调用在各自 SGLang 输入上与社区 JIT 默认公式对照：
+55 个逐元素一致，另一个为 layer03/post_norm，最大差 0.0078125；
+尚未据此证明 adapter 错误，亦未以公式对照代替真实 NVIDIA 内核运行。
+社区 JIT 默认 fused-add 路径以 FP32 相加值计算方差、以转回激活 dtype
+的相加值作归一化分子，不能误用全 FP32 或全 BF16 相加公式判断。
+
+两轮 worker 均正常退出、执行后社区源码完整性通过。证据为
+`results/l15-readiness/iteration37-{hf,sglang}-layers.log`、
+`iteration37-*-layers.pt`、`iteration37-sglang-generation.json`、
+`iteration37-layer-comparison.json` 和 `iteration37-layer-probe-runtime.json`。
+hooks 仅用于 eager 归因，含主机同步，不进入生产或 graph 路径；
+本轮没有证明完整 BF16 精度通过，也没有修改算子实现。
+后续仍需在固定输入上逐段分离 GEMM、attention 和激活舍入的贡献，
+并继续既定模型族与配置覆盖。
 
 ## 第四步验证（2026-11-03）
 

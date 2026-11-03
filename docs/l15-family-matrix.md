@@ -71,7 +71,7 @@ python tools/l15_family_matrix.py run \
 
 1. Mamba 真实 CUDAGraph fresh-input replay；
 2. FP8 grouped expert GEMM 的小形状数值合同；
-3. INT8 MoE 两段 GEMM 的端到端合成合同；
+3. INT8 MoE 两段 GEMM 的端到端合成合同已增加，完整真实 checkpoint 精度仍缺；
 4. INT4/W4A8 在 HCU 上主要是 correctness-first W4A16 降级，不能宣称原生 CUTLASS 行为；
 5. v0.5.22 部分候选路径在本地后续快照已重命名，必须以 manifest 指纹绑定的目标树 collect 为准；
 6. 该组件矩阵仍不覆盖权重加载、scheduler、HTTP serving 和真实模型生成；
@@ -93,6 +93,16 @@ nmz7 GPU5 的量化家族严格门 **8/8 case PASS**，包括这 9 个节点，
 各执行后社区源码完整性通过；报告
 `results/l15-readiness/iteration21-quantization-family.json`。
 这不是重跑全部五家族，也不替代真实量化模型的独立数值验收。
+
+新增 `moe-int8-expert-chain`，矩阵现在为 29 case：真实官方
+`W8A8Int8MoEMethod` 的权重创建、加载后处理、Triton runner、
+top1/top2 路由及两段 GEMM/SiLU/combine，在 1/7/33 token 下验证。
+量化整数先以独立 FP64 契约校验，仅在 FP32 reciprocal 的舍入误差界内
+允许半整数两侧取整；尺度误差也单独断言，再以已验证的整数/尺度执行
+独立 FP32 GEMM 参考。最终输出沿用原数值阈值和 cosine ≥ 0.9999，
+并进行三轮变输入 graph replay。nmz21 GPU3 的组件回归 **3 passed**，
+见 `results/l15-readiness/iteration30-int8-moe-chain.log`；
+这不是全部 29 case 的整轮证据。
 
 新目录组合在 nmz28 单卡 GPU 0 的严格矩阵实测为 **27/27 PASS**，
 原始报告 `results/l15-readiness/phase2-all.json`。其中 25 个 GPU case，

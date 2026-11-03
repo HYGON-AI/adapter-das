@@ -80,6 +80,83 @@ def test_triton_moe_expert_chain(runtime, tokens, topk):
     replay_three(run, [x, logits], reference)
 
 
+@pytest.mark.parametrize("tokens,topk", [(1, 1), (7, 2), (33, 2)])
+def test_w8a8_int8_moe_chain(runtime, tokens, topk):
+    from sglang.kernels.ops.quantization.int8_kernel import per_token_quant_int8
+    from sglang.srt.layers.moe import MoeRunnerConfig
+    from sglang.srt.layers.moe.token_dispatcher import StandardDispatchOutput
+    from sglang.srt.layers.moe.topk import TopKConfig, select_experts
+    from sglang.srt.layers.quantization.w8a8_int8 import W8A8Int8Config, W8A8Int8MoEMethod
+
+    torch.manual_seed(983 + tokens)
+    experts, hidden, intermediate = 4, 128, 128
+    x = torch.randn(tokens, hidden, device="cuda", dtype=torch.bfloat16) * .3
+    logits = torch.randn(tokens, experts, device="cuda", dtype=torch.float32)
+    layer = torch.nn.Module()
+    layer.moe_tp_size = layer.moe_ep_size = 1
+    layer.moe_tp_rank = layer.moe_ep_rank = 0
+    method = W8A8Int8MoEMethod(W8A8Int8Config())
+    with torch.device("cuda"):
+        method.create_weights(layer, experts, hidden, intermediate, x.dtype)
+    for weight in (layer.w13_weight, layer.w2_weight):
+        weight.copy_(torch.randint(-20, 21, weight.shape, device="cuda", dtype=torch.int8))
+    for scale in (layer.w13_weight_scale, layer.w2_weight_scale):
+        scale.copy_(torch.linspace(.003, .02, scale.numel(), device="cuda").reshape_as(scale))
+    method.process_weights_after_loading(layer)
+    method.create_moe_runner(layer, MoeRunnerConfig(
+        num_experts=experts, num_local_experts=experts, hidden_size=hidden,
+        intermediate_size_per_partition=intermediate, top_k=topk, params_dtype=x.dtype,
+        inplace=True, gate_up_interleaved=False, routed_scaling_factor=1., layer=layer,
+    ))
+
+    def run():
+        routing = select_experts(x, logits, TopKConfig(top_k=topk, renormalize=True))
+        # The runner writes its output in-place; preserve the oracle inputs
+        # and the storage mutated between graph replays.
+        dispatch = StandardDispatchOutput(x.clone(), None, routing)
+        return method.apply(layer, dispatch).hidden_states
+
+    def quantize(value):
+        # Validate the public quantizer independently in FP64, then use its
+        # validated integers for the two independent GEMM/activation oracles.
+        # Triton's approximate reciprocal can straddle exact half-integers;
+        # require exact half-away rounding everywhere outside that FP32 bound.
+        quantized, scale = per_token_quant_int8(value.contiguous())
+        maximum = value.double().abs().amax(-1, keepdim=True).clamp_min(1e-10)
+        scaled = value.double() * (127 / maximum)
+        rounded = scaled.sign() * torch.floor(scaled.abs() + .5)
+        uncertainty = 4 * torch.finfo(torch.float32).eps * 127
+        ambiguous = (scaled.abs().frac() - .5).abs() <= uncertainty
+        assert torch.all(ambiguous | (quantized.double() == rounded))
+        assert torch.all((quantized.double() - scaled).abs() <= .5 + uncertainty)
+        torch.testing.assert_close(scale.double(), maximum / 127, rtol=5e-7, atol=0)
+        return quantized.float(), scale
+
+    def reference():
+        routing_weights, ids = torch.topk(logits.float().softmax(-1), topk, dim=-1)
+        routing_weights = routing_weights / routing_weights.sum(-1, keepdim=True)
+        quantized, input_scale = quantize(x)
+        outputs = []
+        for expert in range(experts):
+            gate_up = ((quantized @ layer.w13_weight[expert].float().t())
+                       * (input_scale * layer.w13_weight_scale[expert].view(1, -1)))
+            gate, up = gate_up.to(x.dtype).float().chunk(2, -1)
+            activated = (F.silu(gate) * up).to(x.dtype)
+            act_quantized, act_scale = quantize(activated)
+            down = ((act_quantized @ layer.w2_weight[expert].float().t())
+                    * (act_scale * layer.w2_weight_scale[expert].view(1, -1)))
+            outputs.append(down)
+        all_outputs = torch.stack(outputs, 1)
+        selected = all_outputs.gather(1, ids[..., None].expand(-1, -1, hidden))
+        # The down-GEMM epilogue applies routing in FP32 before storing each
+        # expert contribution in BF16, then the combine sums those values.
+        weighted = (selected * routing_weights[..., None]).to(x.dtype)
+        return weighted.float().sum(1).to(x.dtype)
+
+    check(run(), reference())
+    replay_three(run, [x, logits], reference)
+
+
 @pytest.mark.parametrize("kind", ["int8", "fp8", "ct-fp8"])
 @pytest.mark.parametrize("tokens", [1, 17, 33])
 def test_quantized_linear_chain(runtime, monkeypatch, kind, tokens):

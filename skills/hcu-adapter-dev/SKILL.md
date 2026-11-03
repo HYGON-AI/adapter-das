@@ -89,6 +89,10 @@ CPU BF16 参考也受 CPU 架构/内核实现影响；跨节点比较需保留�
 smoke 的 `--quantization` 只转发社区公开选项，默认仍按 checkpoint 自动检测；
 controller/worker/server 及参考报告必须绑定同一显式选项。配置未声明量化
 但显式在线量化的执行也须拒绝普通 CPU FP32/dtype 参考，不能据此绕过量化限制。
+INT8 MoE 合成对拍须保留原地 runner 的输入副本；量化先用 FP64 检查整数与
+尺度契约，FP32 reciprocal 的误差界内半整数可取相邻整数，其余须精确取整。
+再用已验证整数/尺度做独立 GEMM 参考，不把浮点除法在半整数的差异误判为
+graph 错误；最终输出阈值保持原样，routing 在 down-GEMM 存 BF16 前相乘。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测
    "能跑不崩"。案例：rope GPT-J cache 恒为半分 [cos|sin] 布局（fbc540c）。

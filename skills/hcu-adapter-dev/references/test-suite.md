@@ -25,6 +25,13 @@ selector、实际 fork 格式化窗口均需断言。public registry clear/forei
 目标：**adapter API 全绿 ⇒ 官方 sglang 在 HCU 上无大问题**。为此每个出口
 API 必须覆盖四个质量维度，缺一不可（每个维度都有历史 bug 背书）：
 
+CT-FP8 CPU 参考回归见 `test_checkpoint_quantization_reference.py`：
+真实小型 Qwen3 safetensors、官方加载器、独立 Linear QDQ 数学对拍、
+逐个 tensor 核对及实际逐层 QDQ 观察；缺层 QDQ、错误反量化、
+加载缺失、未绑定权重和格式不符必须拒绝。与
+`test_l15_checkpoint_reference.py` 一起在 HOSTnone/隐藏 GPU 的干净进程运行，
+不得用取消量化或放宽原模型精度阈值来使参考通过。
+
 ## 四质量维度
 
 vLLM dense FP8官方fallback接线探针：`tests/tools/_probe_vllm_fp8_linear.py`

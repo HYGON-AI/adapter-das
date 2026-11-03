@@ -8,6 +8,7 @@ the bound accuracy profile also gates fixed cases on top20+tail probabilities.
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 import hashlib
 import json
 from pathlib import Path
@@ -171,16 +172,36 @@ def run(args):
         raise ValueError("reference output must be outside the checkpoint directory")
     config = json.loads((model_path / "config.json").read_text())
     vocab_size = vocabulary_size(config)
-    if (document.get("quantization") is not None or config.get("quantization_config")
-            or text_configuration(config).get("quantization_config")):
+    quantized = (document.get("quantization") is not None or config.get("quantization_config")
+                 or text_configuration(config).get("quantization_config"))
+    reference_kind = getattr(args, "quantized_reference", None)
+    if quantized and reference_kind is None:
         raise ValueError("this FP32 probe does not validate quantized checkpoints or execution")
+    if reference_kind is not None:
+        from tools.checkpoint_quantization_reference import REFERENCE_KIND, validate_configuration
+
+        if reference_kind != REFERENCE_KIND:
+            raise ValueError("unsupported quantized reference implementation")
+        validate_configuration(config)
+        if document.get("quantization") not in (None, "compressed-tensors"):
+            raise ValueError("execution quantization does not match the CT FP8 reference")
+        if bound is None:
+            raise ValueError("quantized reference requires checkpoint bytes bound to HCU execution")
     before = fingerprint(model_path)
     if bound is not None and before != bound:
         raise ValueError("reference checkpoint bytes differ from HCU execution")
-    model = reference_loader(config, transformers).from_pretrained(
-        str(model_path), dtype=torch.float32, attn_implementation="eager",
-        local_files_only=True,
-    ).eval()
+    quantization_reference, qdq_audit = None, None
+    if reference_kind is not None:
+        from tools.checkpoint_quantization_reference import load_reference
+
+        model, quantization_reference, qdq_audit = load_reference(
+            model_path, config, transformers, bound,
+        )
+    else:
+        model = reference_loader(config, transformers).from_pretrained(
+            str(model_path), dtype=torch.float32, attn_implementation="eager",
+            local_files_only=True,
+        ).eval()
     if any(p.device.type != "cpu" or p.dtype != torch.float32 for p in model.parameters()):
         raise ValueError("reference weights must be CPU FP32")
     with torch.inference_mode():
@@ -195,11 +216,12 @@ def run(args):
                 # Both validated Dense reference models support this official
                 # argument. Keep the general probe path for other architectures.
                 import inspect
-                if "logits_to_keep" in inspect.signature(model.forward).parameters:
-                    logits = model(input_ids=ids, use_cache=False,
-                                   logits_to_keep=len(output) + 1).logits[0, :-1]
-                else:
-                    logits = model(input_ids=ids, use_cache=False).logits[0, len(prompt) - 1:-1]
+                with qdq_audit.observe() if qdq_audit is not None else nullcontext():
+                    if "logits_to_keep" in inspect.signature(model.forward).parameters:
+                        logits = model(input_ids=ids, use_cache=False,
+                                       logits_to_keep=len(output) + 1).logits[0, :-1]
+                    else:
+                        logits = model(input_ids=ids, use_cache=False).logits[0, len(prompt) - 1:-1]
                 cache[key] = logits.float().log_softmax(-1)
             probabilities = cache[key]
             row.update(compare(probabilities, output,
@@ -215,6 +237,8 @@ def run(args):
         from tools.checkpoint_accuracy import verdict
 
         decision = verdict(rows)
+    if qdq_audit is not None:
+        quantization_reference["forwards"] = qdq_audit.forwards
     write_json(args.out, {
         "artifact": "l15-checkpoint-accuracy" if accuracy else "l15-checkpoint-reference-probe",
         "acceptance": "fixed-input-top20-tail-distribution" if accuracy else "exploratory-short-prompts",
@@ -225,6 +249,7 @@ def run(args):
         "enable_fp32_lm_head": document.get("enable_fp32_lm_head", False),
         "execution_dtype": document.get("dtype", "bfloat16"),
         "execution_quantization": document.get("quantization"),
+        "quantization_reference": quantization_reference,
         "reference": {"torch": torch.__version__, "transformers": transformers.__version__,
                       "device": "cpu", "dtype": "float32", "attention": "eager",
                       "model_class": type(model).__name__,
@@ -255,6 +280,10 @@ def main():
     parser.add_argument("--smoke-report", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--threads", type=int, default=4)
+    parser.add_argument(
+        "--quantized-reference", choices=["ct-fp8-token-channel"],
+        help="explicit independent CPU QDQ reference for the validated Dense Qwen3 CT FP8 format",
+    )
     args = parser.parse_args()
     if args.threads < 1:
         parser.error("--threads must be positive")

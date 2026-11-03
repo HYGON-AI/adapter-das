@@ -100,6 +100,11 @@ graph 错误；最终输出阈值保持原样，routing 在 down-GEMM 存 BF16 �
 `HCU_DISABLE_OPS=aiter_ar` 必须在新解释器真实 bootstrap 中拒绝并回退 NCCL。
 CPU 参考工具的单测也必须在干净 HOSTnone/隐藏 GPU 的进程执行；
 GPU 全套已加载宿主时，以独立进程复测，不能放宽生产工具的隔离守卫。
+量化 CPU 参考默认拒绝；显式 `--quantized-reference ct-fp8-token-channel`
+仅支持已验证的 Dense Qwen3 CT channel-FP8 权重与动态 token-FP8 输入。
+必须匹配 HCU 绑定字节，逐个检查全部加载 tensor 与完整 Linear 量化参数，
+并观察每层实际激活 QDQ；只反量化权重不足以建立参考。保留原精度策略，
+greedy 一致不能豁免分布 FAIL，不能绕过社区 CT 对整模型 FP32 的拒绝。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测
    "能跑不崩"。案例：rope GPT-J cache 恒为半分 [cos|sin] 布局（fbc540c）。

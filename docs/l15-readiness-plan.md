@@ -1040,6 +1040,65 @@ SGLang 宿主解释器：默认、两键显式 0、两键显式 1 **3/3 成功**
 `iteration42-real-installer-runtime.json`。这只证明真实安装/导入和选路，
 没有在关闭态执行已知未验证的 vendor GEMM，也不替代模型或多卡精度。
 
+### 真实 CT-FP8 的独立 CPU QDQ 参考（2026-11-04）
+
+`tools.l15_checkpoint_reference` 新增显式
+`--quantized-reference ct-fp8-token-channel`。默认仍拒绝量化执行；
+此入口仅接受已验证的 Dense Qwen3 compressed-tensors FP8 channel 权重、
+动态 token FP8 输入、忽略 lm_head 的格式，要求原 HCU 报告绑定 checkpoint
+字节，拒绝 INT8、MoE、静态/非对称/分组量化、输出/KV 量化和执行选项冲突。
+在隐藏 GPU、HOSTnone 的独立进程运行，例如：
+
+```bash
+HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES= CUDA_VISIBLE_DEVICES= \
+python -m tools.l15_checkpoint_reference \
+  --smoke-report results/l15-readiness/iteration45-ctfp8-generation.json \
+  --quantized-reference ct-fp8-token-channel \
+  --out results/l15-readiness/iteration47-ctfp8-bfloat16-accuracy.json
+```
+
+参考通过 Transformers 公开加载接口和 compressed-tensors 的
+`run_compressed=False` 进行 CPU FP32 eager 执行。完整加载信息必须无缺失、
+多余、形状不符或错误；逐个核对全部原始 tensor，量化权重必须精确等于
+原始 FP8 值乘 channel scale，其余 tensor 也须精确匹配。实际 Linear 名称、
+数量和量化参数必须完整匹配；Python profiler 只观察官方执行，不替换计算，
+每次完整 forward 必须逐层观察到真实输入量化与 fake-quantize 调用。
+仅反量化权重而移除激活 QDQ 不是此 checkpoint 的参考。
+
+nmz7 GPU4、BW1100/gfx938、Torch 2.11.0/HIP 6.3.26113，
+Transformers 5.12.1、compressed-tensors 0.17.0；
+社区固定 `baa9befa381511cd4d56f83980951e5a45fffc6d`。
+真实 `/model/qwen3/Qwen3-0.6B-Channel-FP8` 的 9 项资产字节绑定通过，
+507 个 tensor 精确核对通过，196 个 Linear 在 5 次不同输入参考 forward
+各执行一次激活 QDQ。原固定双语、512/2048 token、复用/变输入请求，
+eager/graph 生成 **2/2 PASS**；96 个输出位置的原 V1 精度门为 **FAIL**：
+最大所选 logprob 误差 0.235903、greedy regret 0、
+top20 logprob 误差 2.673436、top20+tail JSD 0.016584、
+tail mass 误差 0.056121、missed mass 0.003061。
+两模式各请求指标相同，greedy 一致不能代替分布验收。
+新增工具及相关回归 **47 passed**，L0 **GREEN（31 warn）**。
+证据为 `iteration45-ctfp8-generation.json`、
+`iteration47-ctfp8-bfloat16-accuracy.json`、`iteration47-cpu.log`、
+`iteration47-l0.log`、`iteration47-reference-validation.json`。
+
+另以显式整模型 FP32 作归因诊断，社区加载器在 eager/graph 均明确拒绝：
+`torch.float32 is not supported for quantization method compressed-tensors`，
+仅允许 FP16/BF16。没有执行 CPU 对拍，也没有修改社区 dtype 准入；
+此结果不能为 BF16 差异归因或豁免。见
+`iteration46-ctfp8-float32-generation-jobs/checkpoint-{eager,graph}.log`、
+`iteration46-ctfp8-float32-runtime.json`。所有执行后社区源码完整性通过。
+
+cookbook 固定 `40adc4d30ec2640e3391cfd78759bd3598e95f71`，
+`docs/model-deployment/sglang/qwen3.md` 中 Qwen3-0.6B IFB BW1100 单卡
+配方为 SGLang 0.5.12、BF16 checkpoint、fa3、page64、关闭 graph、mem0.9；
+没有对应 0.6B Channel-FP8 配方。本次差异为社区 0.5.22、FP8 checkpoint、
+triton、page1、mem0.25、eager+graph、context4096、total tokens16384，
+不能将其记作 cookbook 原配方已验收。
+
+资源检查：nmz21 的 `sglang_liph_adapter` 可访问，但 2026-11-04 本轮预检
+8 张卡显存仍占用 88%～89%，存在驻留进程，未在其上启动 GPU 调试。
+后续 nmz7/nmz21/nmz28 均先核对实时资源，再使用空闲卡。
+
 ## 第四步验证（2026-11-03）
 
 - `ci/upstream_diff.py` 对不可变 Git 快照比较已声明的符号、签名/函数体、

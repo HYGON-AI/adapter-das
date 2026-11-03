@@ -177,6 +177,20 @@
 - **实证**：boot→load→dummy→prefill→DSPARK decode 全通 0 fault；dev≠host 重定位在案；TPOT host=21.2-21.9s vs device=21.4-21.8s（256tok，持平）。**生产化缺口：per_rank 23.6G 单次注册>12G 必败 → 需分块注册（12G×N 已证 48G/进程过）；8 卡 matched-dose 消拍=下一空窗首项。**
 - 方法论增补：dmesg fault VA 与映射区间做**区间归属判定**（两 VA 之差=w_bytes 即 weight/scale 指针对）；canary 对照实验（已知好路径 S 组 vs 待验路径同进程同刻）分离"注册机制坏"与"指针翻译坏"。
 
+### 2026-11-04 社区 0.5.22 真实 Qwen3 0.6B Channel-FP8 精度门
+
+nmz7 卡4，真实原始 FP8 checkpoint、BF16、TP1、triton、page1，
+固定双语、512/2048 token、复用/变输入的 eager/graph 生成均通过。
+显式 `--quantized-reference ct-fp8-token-channel` 使用独立官方
+Transformers/compressed-tensors CPU FP32 执行；核对全部 507 个 tensor，
+并逐次观察 196 个 Linear 的动态 token FP8 激活 QDQ。
+原 V1 分布门 **FAIL**：top20 logprob 最大误差 2.673436，
+top20+tail JSD 0.016584；greedy regret 为 0 不能代替分布通过。
+社区 compressed-tensors 加载器拒绝整模型 FP32 诊断配置；未放宽其限制。
+默认 CPU 参考仍拒绝量化，此显式入口不支持 INT8/MoE 或其他 FP8 格式。
+源码完整性通过；配方差异、环境与证据见
+[启动就绪记录](l15-readiness-plan.md#真实-ct-fp8-的独立-cpu-qdq-参考2026-11-04)。
+
 ### 2026-11-03 社区 0.5.22 真实 Qwen3 30B Channel-INT8（nmz7 卡4）
 
 原始 checkpoint `/model/hygon/Qwen3-30B-A3B-Channel-INT8-w8a8`，

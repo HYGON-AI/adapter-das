@@ -193,6 +193,37 @@ def test_explicit_online_quantization_cannot_bypass_unquantized_reference_guard(
         run(SimpleNamespace(smoke_report=source, out=tmp_path / "out.json", threads=1))
 
 
+@pytest.mark.parametrize("fault", ["execution-override", "unbound"])
+def test_ct_reference_requires_matching_execution_and_byte_binding(
+    tmp_path, monkeypatch, request, fault,
+):
+    from _cpu_process import rerun_if_host_loaded
+    if rerun_if_host_loaded(request):
+        return
+    import json
+    from test_checkpoint_quantization_reference import configuration
+    from tools import l15_checkpoint_reference as reference
+    from hcu_adapter import hcu_env
+
+    model = tmp_path / "model"
+    model.mkdir()
+    config = configuration()
+    config["vocab_size"] = 32
+    (model / "config.json").write_text(json.dumps(config))
+    source = tmp_path / "smoke.json"
+    source.write_text(json.dumps({
+        "quantization": "w8a8_int8" if fault == "execution-override" else None,
+    }))
+    monkeypatch.setattr(hcu_env, "resolve", lambda _: ("none", "test"))
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(reference, "requests", lambda _: (model, []))
+    monkeypatch.setattr(reference, "execution_binding",
+                        lambda *_: None if fault == "unbound" else {"config.json": "test"})
+    with pytest.raises(ValueError, match="does not match|bound to HCU execution"):
+        run(SimpleNamespace(smoke_report=source, out=tmp_path / "out.json",
+                            threads=1, quantized_reference="ct-fp8-token-channel"))
+
+
 def test_accuracy_requests_use_explicit_ids_for_cached_prompts_and_require_top20():
     from tools.checkpoint_accuracy import cases
 

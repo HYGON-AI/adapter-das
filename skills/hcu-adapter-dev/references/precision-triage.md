@@ -39,6 +39,10 @@
   烘焙。三个桥（rope/rmsnorm/topk）全靠这招排除。
 - **金标在 fp32/torch 侧**：NCCL 也在被测链路里，不能当参考；AR 黄金
   参考 = all_gather 后 fp32 精确和。
+- **量化参考保留激活 QDQ**：CT channel-FP8 的 CPU 参考必须同时包含
+  动态 token-FP8 输入量化；只反量化权重会改变模型。显式参考入口逐个核对
+  绑定权重和真实逐层 QDQ 调用，默认拒绝其他量化格式。原分布门失败仍须
+  保留；社区 CT 只接受 FP16/BF16，不能扩大 dtype 准入来获取 FP32 对照。
 - **逐层对比先对齐计算约定**：HF Qwen3 RMSNorm 在乘权重前转回 BF16，
   社区 SGLang 默认在乘权重后转回；同输入下的首层差异不能直接判为
   adapter 错误。fused-add norm 必须分别保存相加前输入和残差，社区 JIT

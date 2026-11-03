@@ -17,7 +17,7 @@ def tree(tmp_path):
         return subprocess.check_output(["git", "-C", str(tmp_path), *args])
     git("init", "-q")
     git("config", "user.name", "Adapter Test")
-    git("config", "user.email", "1263739855@qq.com")
+    git("config", "user.email", "adapter-tests@example.com")
     (tmp_path / "common.py").write_bytes(b"def original(): return 1\n")
     (tmp_path / ".gitignore").write_bytes(b"ignored/\n")
     git("add", ".")

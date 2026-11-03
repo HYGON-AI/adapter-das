@@ -96,3 +96,22 @@ role-switch 使用的 capture-bs 列表，不能以空列表误判未捕获。
   最终验证按 family/mode 选择成功执行，并用最终规则重新核验原始输出。
 - 工具与失败判定回归 **91 passed**；包含真实 Linux 子进程及嵌套超时
   清理、空原因 XPASS 拒绝。未重新执行全量 adapter/vendor 套件。
+
+## 第四步验证（2026-11-03）
+
+- `ci/upstream_diff.py` 对不可变 Git 快照比较已声明的符号、签名/函数体、
+  白名单补丁 needle 的位置/次数、上游测试 nodeid 与版本绑定文件。
+  新路径复制同一个 needle 也要求审查。
+- `tools.l15_upgrade_check` 串接静态审查、严格组件门、模型闭环；陈旧或
+  其他 upstream commit 的报告不能使升级就绪，审查接受文件必须精确匹配
+  baseline/candidate/changes。未完成全部阶段时保持 `ready=false`。
+- nmz28 实际运行 `--baseline-ref HEAD --candidate-ref HEAD --audit-only`：
+  **0 changes、15 baseline gaps、19 dynamic registration sites**；
+  `same_revision=true`、`audit_only=true`、`ready=false`。这些缺口需运行时
+  验证，不能将零差异解释为所有绑定完整或完成一次版本升级。
+- 同容器工具组合回归 **91 passed**；补充 needle 新路径检查后，本地仅跑
+  漂移/编排 CPU 测试 **12 passed**。L0 **GREEN（31 warn）**。
+  故意修改签名、函数体、删除符号/nodeid/needle 的回归均能拒绝。
+- 证据：`results/l15-readiness/phase4-workflow-audit.json`、
+  同名 `-stages/upstream-diff.json`、`final-tool-tests.log`、`final-l0.log`。
+  本次交付手动升级工作流，未配置定时巡检，也未验证新社区版本。

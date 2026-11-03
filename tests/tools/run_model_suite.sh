@@ -8,8 +8,8 @@ export LD_LIBRARY_PATH=/opt/dtk/.hyhal/rocm_smi/lib:$LD_LIBRARY_PATH
 PORT=30036
 LOGD=/root/logs/model_suite
 mkdir -p $LOGD
-SGLANG_V0521=$HOME/sglang-v0521/python
-ADAPTER=/root/hcu_t2
+SGLANG_V0521="${SGLANG_V0521:-$HOME/sglang-v0521/python}"
+ADAPTER="${ADAPTER:-/root/hcu_t2}"
 export PYTHONPATH=$ADAPTER:$SGLANG_V0521
 export SGLANG_UNIFIED_RADIX_TREE_CORE_BACKEND=python
 export SGLANG_RUST_BUILD_MODE=never

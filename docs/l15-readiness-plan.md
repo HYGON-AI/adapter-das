@@ -891,6 +891,21 @@ Python <3.11 的 `tomli` 依赖；未跳过测试。该容器真实 wheel 构建
 `/public/share/GLM-5-W4A8_V2_6`，此错误暂作为环境/诊断问题保留，
 不计为算子通过。
 
+全量复跑 `iteration32-regression-full.log` 的真实结果为
+**971 passed、56 failed、29 errors、132 skipped、2 xfailed、1 deselected**；
+执行后社区源码完整性通过。47 项失败和 29 项 setup error 属于 vLLM 路径
+（包括 `test_model_mutation.py` 的实际 vLLM Worker），按用户要求暂缓。
+其余 9 项分别为 kpool pool fixture 两项、影子导入隔离一项、CPU
+参考/dtype 测试的宿主隔离五项及 all-reduce 快关一项；后续修复须以独立
+增量报告验收，不能修改这份原始全量结果。
+
+旧 triage `_pytest` 摘要只截取 passed 后面的内容，会漏掉前面的失败数。
+现保留完整 pytest 统计，并在失败时输出完整原始 stdout/stderr；
+统计/异常/非零返回码回归 **3 passed**，报告
+`iteration33-triage-reporting.log`。RoPE 使用显式
+`HCU_CKPT=/model/glm5/GLM-5` 的同节点独立复测得到 q/k cos=1、
+max_abs=0；见 `iteration32-rope-probe.log`。原路径错误没有被覆盖。
+
 ## 第四步验证（2026-11-03）
 
 - `ci/upstream_diff.py` 对不可变 Git 快照比较已声明的符号、签名/函数体、

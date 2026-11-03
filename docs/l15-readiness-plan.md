@@ -1095,9 +1095,30 @@ cookbook 固定 `40adc4d30ec2640e3391cfd78759bd3598e95f71`，
 triton、page1、mem0.25、eager+graph、context4096、total tokens16384，
 不能将其记作 cookbook 原配方已验收。
 
-资源检查：nmz21 的 `sglang_liph_adapter` 可访问，但 2026-11-04 本轮预检
-8 张卡显存仍占用 88%～89%，存在驻留进程，未在其上启动 GPU 调试。
-后续 nmz7/nmz21/nmz28 均先核对实时资源，再使用空闲卡。
+### 提交前全量回归（2026-11-04）
+
+nmz7 GPU4 执行 `pytest tests/kernels tests/adapter tests/vendor -k "not stress"`：
+**1017 passed、47 failed、29 errors、131 skipped、2 xfailed、1 deselected**，
+用时 682.58 秒。47 个失败与 29 个错误均属于 vLLM 路径，按当前范围暂缓；
+其中 13 个失败位于未以 vllm 命名的 `test_model_mutation.py`，
+实际依赖 `VLLM_TARGET_ROOT` 或 vLLM runner 的 `reload_weights`。
+不能仅按文件名判断宿主，也不能将整套报告记为 GREEN。
+其余 SGLang/adapter 用例未发现失败；跳过与 xfail 不算通过。
+CPU 算子契约另有 **38 passed**。原始日志为
+`iteration48-suite.log`、`iteration48-cpu.log`，运行戳及源码检查见
+`iteration48-validation.json`；测试时 adapter 为 e5d2943 加本功能未提交字节，
+随后相同实现提交为 b36ad0b，保留原始 dirty 戳。
+
+补跑 ops 分诊时，旧的默认 `/public/share/GLM-5-W4A8_V2_6` 不存在，
+因此该次 rope 记录为环境失败；将 `HCU_CKPT` 指向现有
+`/model/GLM-5-Channel-INT4-w4a8` 后重新通过，rope 最小 cosine
+**1.000000**，rmsnorm **0.999997**，BF16 GEMM excess **1.02x**，
+graph safety 通过。该路径问题属于探针默认配置，不是算子数值失败。
+
+nmz7 GPU5 空闲显存比例 **0.9697097** 时，完成一次完整的 32-case
+L1.5 family matrix：Dense 3、MLA 5、MoE 7、量化 12、Mamba 5，
+**32/32 PASS、零 skip/xfail**，结果为 `iteration49-all-families.json`，
+运行日志为 `iteration49-all-families.log`，执行后社区源完整性复核通过。
 
 ## 第四步验证（2026-11-03）
 

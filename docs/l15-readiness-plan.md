@@ -35,7 +35,7 @@
 每次任务启动前重新检查空闲状态，结果单独记录节点和设备，不沿用
 nmz28 的环境结论；不清理或占用其他用户任务。
 
-当前前置差距：`jit_*`、`dsv4_*`、`spec_h2d_pin`、
+当前前置差距：`jit_*`、`dsv4_*`
 等存在源码磁盘写回，须以实际调用点逐项审计，
 上述目标尚未完成。对象广播 `dist_bc` 已迁移为运行时只读 numpy buffer
 兼容，保留已导入函数别名，不再写回 `common.py`。nmz28 隐藏 GPU 的
@@ -93,6 +93,44 @@ nmz7 隐藏 GPU 的控制流/广播/安装结构回归 **24 passed**，包含直
 `results/l15-readiness/iteration3-moe-runtime.log`。这些是控制流证据，
 不冒称完整 DeepSeek checkpoint、数值或 graph 端到端已重新通过。
 
+独立干净工作树 `sglang-0.5.22-pristine-iter3` 在运行前完整性通过，
+commit 为 `baa9befa381511cd4d56f83980951e5a45fffc6d`。
+nmz7 物理 GPU 4 的 MLA dummy graph worker 启动/生成通过，
+但总控正确判为失败：启动仍改写 **28 个文件**（此前为 30 个），
+其中 `common.py` 和 `deepseek_v2.py` 均不再变化。
+其余为 25 个 JIT C++/HIP 输入文件和 `fp8.py`、`deepseek_v4.py`、
+`eagle_utils.py`。保留该工作树和失败证据，不回滚现场制造通过。
+报告为 `iteration3-pristine-before.json`、`iteration3-pristine-mla.json`；
+这不是源码零改写、多真实模型或精度验收通过的证据。
+
+### Speculative KV-lens pinned 分配迁移
+
+`spec_h2d_pin` 不再写回 `eagle_utils.py`，也不重编译原函数源码。
+仅给原函数克隆提供私有 Torch 分配接口，将两个 CPU int32 元数据
+tensor 直接分配为 pinned 内存；保留原函数对象、签名、已有别名和
+社区调度/检查/H2D 函数体。Torch pinned 分配负责异步复制生命周期，
+不再靠固定 8 深 ring 推测 DMA 已结束；pin 不可用时告警并使用社区
+pageable 行为。原 helper 的兼容调用也移除不安全的 ring 复用。
+安装移至算子桥之后，真正 CUDA 宿主与显式关闭时均不安装。
+
+nmz7 隐藏 GPU 的最终组合回归 **45 passed，6 skipped，1 deselected**：
+四个新增 GPU 参数项在隐藏 GPU 时跳过，另外两个 skip 分别为非 HIP
+专用入口及子进程无 SGLang PYTHONPATH；未把它们算作通过。
+CPU 算子契约另有 **38 passed**。此前空闲 GPU 4 上，原社区函数的真实
+H2D、离线协议的真实 H2D，以及 48 波三流变长度异步拷贝均通过；
+最终新增的旧 helper GPU 参数项尚待空闲卡复验。nmz7 后续检查
+GPU 4–7 空闲显存均不足 3%，已停止进一步 GPU 分配。
+日志为 `iteration4-spec-final-cpu.log`、`iteration4-ops-cpu.log`、
+`iteration4-spec-real-h2d.log`、`iteration4-spec-h2d-gpu.log`。
+
+独立干净社区树 `sglang-0.5.22-pristine-iter4` 的 MLA dummy graph worker
+通过，真实启动日志确认运行时桥已安装。总控因剩余 **27 个源码文件**
+改写仍判失败（25 个 JIT 文件、`fp8.py`、`deepseek_v4.py`）；
+`eagle_utils.py`、`common.py`、`deepseek_v2.py` 均保持原样。
+证据为 `iteration4-pristine-before.json`、`iteration4-pristine-mla.json`。
+启动日志另暴露 JIT warp needle/FP8 登记问题，后续迁移 JIT 时需一并处理。
+这不代表完整 speculative 模型、所有 GPU 参数项或全量套件已通过。
+
 ## 原四步实施与验证记录
 
 1. **严格执行与结果判定**：校验真实单卡 HIP、源码来源、版本绑定；
@@ -105,7 +143,7 @@ nmz7 隐藏 GPU 的控制流/广播/安装结构回归 **24 passed**，包含直
    固定基线与待适配版本分开记录，串接回归与模型冒烟。
 
 每步验证后单独提交；测试失败保留原始证据，不放宽断言制造绿色。
-GPU 测试仅在 nmz28 的 `sglang_liph_adapter` 容器运行。
+GPU 测试在用户授权的 nmz7/nmz28 的 `sglang_liph_adapter` 容器运行。
 本轮代码目录为 `/public/home/lipenghui/lph-adapter/adapter-das`；
 社区源码为同级 `sglang-0.5.22`。
 

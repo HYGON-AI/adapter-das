@@ -199,23 +199,6 @@ def install() -> None:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: jit fp8 ffi alias not installed", exc_info=True
             )
-        # Speculative-decode prepare H2D pinned ring: eagle_prepare_for_decode
-        # ships the per-request KV-lens CPU tensors with .to(non_blocking=True),
-        # which torch silently downgrades to a blocking copy for pageable
-        # memory -- stream-ordered behind the WAR-chained previous forward, the
-        # scheduler host thread stalls a full pipeline per spec decode step
-        # (DSV4F MTP nmz16: py-spy 12/12 at eagle_utils.py:1150, 1.29 s/step at
-        # bs1 vs ~0.4 s GPU, linear in batch). A pinned 8-deep ring makes the
-        # copy a true async DMA. Integer metadata only; HCU_SPEC_H2D_PIN=0 off.
-        try:
-            from hcu_adapter import spec_h2d_pin
-
-            spec_h2d_pin.install()
-        except Exception:
-            logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: spec_h2d_pin (spec H2D pinned ring) not installed",
-                exc_info=True,
-            )
         # JIT build progress reporter: one stderr/journal line per real ninja
         # compile (compiling/built/FAILED) so a cold 35-module JIT storm is
         # tellable from a wedge in gate logs; the gate heartbeat tails the
@@ -3145,6 +3128,17 @@ def install() -> None:
                     "HCU adapter: spec-loc safe routing not installed",
                     exc_info=True,
                 )
+
+        # Import speculative scheduling only after operator/vendor setup.
+        # Private metadata allocation preserves community source and aliases.
+        try:
+            from hcu_adapter import spec_h2d_pin
+
+            spec_h2d_pin.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: speculative pinned metadata not installed", exc_info=True,
+            )
 
         # Install the model-method binding only after operator/vendor bridges
         # are ready. This imports the community class and retains existing

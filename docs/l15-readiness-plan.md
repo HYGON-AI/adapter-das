@@ -832,7 +832,7 @@ nmz21 隐藏 GPU 的工具回归 **114 passed**，报告
 此次新增节点授权包括 nmz7、nmz21、nmz28 的 `sglang_liph_adapter`，
 代码共享目录相同；GPU 作业仍须逐次检查空闲资源。
 
-## 第四步验证（2026-11-03）
+## INT8 Linear 与量化模型验证（2026-11-03）
 
 ### INT8 Linear 公开路径的缺失符号修复
 
@@ -854,6 +854,44 @@ nmz21 GPU4 的既有 INT8 GEMM 与新增真实 W8A8 Linear 调用链共 **20 pas
 `iteration31-int8-linear-gpu.log`。严格 MoE 家族另获 **7/7 case PASS**，
 包括新 INT8 MoE，报告 `iteration30-moe-family.json` 的执行后社区源码
 完整性通过。以上仍不代表真实 30B 模型或完整精度验收通过。
+
+### 真实 30B Channel-INT8 模型启动与生成
+
+`iteration31-qwen3-moe-int8.json` 在 nmz7 GPU4/BW1100 gfx938 上记录
+真实 `Qwen3-30B-A3B-Channel-INT8-w8a8` 的 **eager/graph 2/2 PASS**。
+16 项 checkpoint 资产包含 7 个 safetensors shard，controller/worker
+前后字节绑定一致，两项执行后社区源码完整性通过。基线仍为
+`baa9befa381511cd4d56f83980951e5a45fffc6d`，实际执行时 adapter 戳为
+`2832e48 dirty=true`，包含随后提交的 `5efb916/11a282f/80432d2` 工作内容；
+不能把报告原始戳改写成后来的干净 commit。
+
+官方选项为 `quantization=w8a8_int8`、BF16、TP1；scheduler 回读 decode
+graph 分配 **0.021 GB**，eager 为 0。每模式两批、每批两请求，每请求
+8 token，保留输出 IDs、有限 logprob 与原始文本。部分输出以 Paris/4/6
+开头，中文请求是尚未完成的选择题续写；这些短输出不作为语义金标，
+也不证明 eager/graph 概率一致或全模型量化精度合格。
+
+参考 cookbook 固定 commit
+`40adc4d30ec2640e3391cfd78759bd3598e95f71` 的
+“Qwen3-30B-A3B-Channel-INT8-w8a8 IFB BW1100 1x SGLang 0.5.12”：
+相同模型/BF16/显式 W8A8/TP1，但本次社区 0.5.22 使用 MoE auto
+及 Triton attention、KV auto/page1、mem_fraction_static=0.25、
+context128/max_total_tokens512，区别于配方的 lightop/FA3/FP8 KV/page64/
+mem0.9。因此是社区基线启动探针，不是配方全部选项验收。
+
+### 全量回归中的 Python 兼容修复（2026-11-04）
+
+nmz21 的原始 `iteration31-regression-full.log` 在收集期失败：
+Python 3.10 缺少 `tomllib`，而包声明支持 Python ≥3.9。
+打包测试增加标准库/`tomli` 兼容导入，`test` extra 声明
+Python <3.11 的 `tomli` 依赖；未跳过测试。该容器真实 wheel 构建/
+内容检查与 entry-point 检查 **2 passed**，见 `iteration32-packaging.log`。
+完整 suites 复跑另存 `iteration32-regression-full.log`，须按最终结果判断。
+原纯 CPU 契约 **38 passed**。旧 triage 的 rope 探针默认引用不存在的
+`/public/share/GLM-5-W4A8_V2_6`，此错误暂作为环境/诊断问题保留，
+不计为算子通过。
+
+## 第四步验证（2026-11-03）
 
 - `ci/upstream_diff.py` 对不可变 Git 快照比较已声明的符号、签名/函数体、
   白名单补丁 needle 的位置/次数、上游测试 nodeid 与版本绑定文件。

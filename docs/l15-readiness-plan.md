@@ -310,6 +310,59 @@ cosine，未放宽首轮失败断言。隐藏 GPU 的 source/FFI 两臂回归
 **25 passed**（`iteration9-jit-cpu.log`）；L0 GREEN（31 既有 warning）。
 这是该设备上的算子证据，尚不代表真实 DSV4 checkpoint 或完整模型精度。
 
+### 真实 Qwen3 与可重复 CPU FP32 参考探针
+
+nmz21 物理 GPU 1 重新预检空闲显存比例 0.969343，
+真实 `/model/qwen3/Qwen3-0.6B` eager/graph **2/2 passed**，
+报告 `iteration9-qwen3-checkpoint.json`。同一 pristine-iter7 社区树，
+两批两请求每请求 8 token，控制器源码完整性 **0 changed、0 added sources**。
+硬件 BW1100/gfx938，Torch 2.11.0、HIP 6.3.26113。
+
+配方参考固定为 `HYGON-AI/inference-cookbook-das` commit
+`40adc4d30ec2640e3391cfd78759bd3598e95f71`，
+`docs/model-deployment/sglang/qwen3.md` 的
+“Qwen3-0.6B IFB BW1100 1x SGLang 0.5.12” 小节。保留单卡、BF16 和
+同一 checkpoint 选择；本轮为了验证社区 0.5.22 的 adapter 计算链，
+使用 Engine API、Triton attention、mem_fraction_static=0.25、
+context_length=128、max_total_tokens=512，并分别启用 eager/graph。
+配方原为 0.5.12、fa3、mem_fraction_static=0.9、page_size=64、关闭
+graph 和 overlap、跳过 warmup，且附带 HTTP 工具/推理解析器及定制环境。
+实际 page_size=1、trust_remote_code=False、overlap 与 warmup 启用，
+tool_call_parser/reasoning_parser 均为 None。
+这些部署项未按原配方逐一验收，本报告只覆盖实际 Engine 参数；
+未执行配方中的 sysctl 或套用其定制环境变量。
+
+新增可重复参考入口（远端容器内、隐藏 GPU）：
+
+```bash
+HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES= CUDA_VISIBLE_DEVICES= \
+  python3 -m tools.l15_checkpoint_reference \
+  --smoke-report results/l15-readiness/iteration9-qwen3-checkpoint.json \
+  --out results/l15-readiness/iteration10-qwen3-reference.json
+```
+
+工具要求严格源码检查成功、真实 checkpoint、eager/graph 两模式完整
+worker、两批两请求和完整 uncached prompt IDs，拒绝 dummy/失败/缺失/重复
+证据。独立 Transformers 5.12.1 的 CPU FP32 eager 模型对同一
+prompt+生成 token 序列 teacher-force，记录逐位置参考 logprob、绝对误差
+及相对参考 top1 的 greedy regret，保留 BF16 平局附近的差异。运行前后
+校验本轮参考权重/JSON 文件 SHA256 与输入 smoke 报告字节，禁止覆盖原报告。
+
+Qwen2/Qwen3 各 **64 个生成位置**：Qwen2 最大 logprob 绝对差
+**0.053874**，最大 regret **0**，top1 匹配 64/64；
+Qwen3 最大绝对差 **0.055951**，最大 regret **0.024235**，
+top1 匹配 62/64。报告为 `iteration10-qwen2-reference.json`、
+`iteration10-qwen3-reference.json`。这是对所选 token 概率的独立短输入
+探针，报告标记 `exploratory-short-prompts`，不输出精度验收 `passed`。
+历史 smoke 没有绑定 HCU 执行时的权重字节哈希，因此当前参考时间点的
+fingerprint 不能倒推证明此前 HCU 使用的权重完全一致。
+最终参考工具与原 smoke 失败契约回归 **23 passed**
+（`iteration10-reference-final-tests.log`），含 NaN、dummy、源码失败、
+重复 mode、缺波次/缓存 prompt、错误概率/非 greedy token、权重/配置变更及
+原报告防覆盖；L0 GREEN（31 既有 warning）。
+后续须补同轮 checkpoint 字节绑定、更全面的输入/长度/分布和模型族覆盖，
+才能提升为完整精度门禁。
+
 ## 原四步实施与验证记录
 
 1. **严格执行与结果判定**：校验真实单卡 HIP、源码来源、版本绑定；

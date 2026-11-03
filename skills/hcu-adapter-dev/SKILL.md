@@ -48,6 +48,12 @@ cache_once factory 与已有别名，warm cache 和 cold key 均须覆盖，
 DSV4 的 gfx938 编译输入使用 DTK OCP 转换，避免社区软件转换在
 exp8=15 过早饱和；不扩大到未验证架构或改变 gfx942/FNUZ 分支。
 此类编译成功后的错误必须以独立数值和变输入 graph 回归识别。
+`tools.l15_checkpoint_reference` 在隐藏 GPU、HOSTnone 的独立进程用
+CPU FP32 Transformers eager 对拍真实 checkpoint smoke 的所选 token 概率。
+它目前是短输入探针，不输出精度验收 passed；历史 smoke 缺少执行时权重
+字节绑定，参考时的 fingerprint 不能倒推补齐该证据。后续精度门禁必须先
+补同轮权重绑定、输入/长度/分布和模型族覆盖，不能把 top1 或有限 logprob
+单独当成完整模型精度。
 完整目标与证据见 `docs/l15-readiness-plan.md`。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测

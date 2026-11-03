@@ -26,8 +26,14 @@
 模型配方优先参考用户指定的
 [inference-cookbook-das](https://github.com/HYGON-AI/inference-cookbook-das)，
 逐模型记录 cookbook commit/脚本、checkpoint、卡型、依赖/框架/adapter
-版本、实际参数、生成与精度结果。GPU 测试继续只在指定 nmz28 容器运行；
+版本、实际参数、生成与精度结果。GPU 测试只在用户授权的远端空闲卡运行；
 禁止在本节点执行全量 adapter 测试。
+
+2026-11-03 用户新增 nmz7 调试授权：nmz7 与 nmz28 都使用
+`sglang_liph_adapter` 容器，代码目录相同。nmz7 经资源检查确认 GPU
+4–7 空闲、0–3 在用；首次回归选择物理 GPU 4，只暴露这一张卡。
+每次任务启动前重新检查空闲状态，结果单独记录节点和设备，不沿用
+nmz28 的环境结论；不清理或占用其他用户任务。
 
 当前前置差距：`jit_*`、`dsv4_*`、`spec_h2d_pin`、
 `moe_dualstream_gate` 等存在源码磁盘写回，须以实际调用点逐项审计，
@@ -40,6 +46,36 @@
 4 passed（需远端社区树的 Gloo 项在本地不运行），L0 GREEN（31 warn）。
 真实 checkpoint eager/graph 复验在启动前因 GPU 0 仅约 4% 空闲而被阻止，
 未运行，也未占用其他卡；该集成复验仍待空闲窗口补齐。
+
+新增 nmz7 授权后，在空闲物理 GPU 4 补齐真实 Qwen2-0.5B checkpoint
+eager/graph 回归，**2/2 PASS**；报告为
+`results/l15-readiness/iteration1-nmz7-checkpoint.json`。此次使用旧完整性
+判据，社区树仍包含其他历史磁盘补丁，所以只作为广播迁移后的启动回归，
+不作为新“原样源码”目标通过的证据。
+
+### 源码完整性门禁
+
+`HCU_ADAPTER_HOST=none python3 -S -m tools.upstream_source --up-tree <社区树>`
+逐文件将实际字节与 HEAD Git blob 比较，不依赖索引、mtime、
+assume-unchanged 或 skip-worktree。被忽略的新增 Python/JIT 源文件也
+计为失败；子模块未递归验证则明确拒绝。报告保存所有差异路径。
+该工具证明检查时的源码状态，不能单靠前后快照证明从未发生又被撤回的写入。
+
+严格组件和模型入口默认在 GPU 预检前拒绝已有改动；组件运行结束、每个
+模型 worker 结束后再核对一次，要求 commit 未改变且源码仍完整。
+模型即使生成成功，只要改写社区源码也判失败并停止后续模型；预检失败
+覆盖旧绿色报告。历史 27 case / 12 model-mode 的通过记录继续保留，
+但不转授为新完整性规则下的通过结果。
+
+nmz7 审计当前共享社区树：**10,594 tracked files，30 changed files，
+0 added sources**。报告为 `results/l15-readiness/iteration2-upstream-source.json`。
+这说明原样源码目标尚未达成；不通过 reset/删除现有工作树改动制造绿色，
+后续在保留现场的前提下迁移适配并从干净社区树验证。
+门禁与广播、编排工具组合远端 CPU 回归 **68 passed**；补充旧报告覆盖、
+已暂存新增源码等拒绝测试后，最终源码完整性专项远端 **12 passed**。
+日志为 `iteration2-nmz7-source-tests.log`、`iteration2-source-extra.log`；
+真实模型 CLI 对当前脏树在任何 GPU worker 启动前拒绝，并保存 30 文件差异
+（`iteration2-source-rejection.json`）；L0 GREEN（31 warn）。
 
 ## 原四步实施与验证记录
 

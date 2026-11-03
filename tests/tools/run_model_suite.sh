@@ -105,8 +105,10 @@ judge_model() {  # $1 id, $2 model-path
     echo "G2-generation FAIL" >> $res
   fi
 
-  # G3 precision: semantic anchor via /v1/chat/completions
-  local chat chat_tail
+  # G3 precision: two independent semantic anchors via /v1/chat/completions.
+  # A single geography answer can pass while a broken decode path stops on
+  # arithmetic, so require both a knowledge and a compositional answer.
+  local chat chat_tail arithmetic arithmetic_tail
   chat=$(curl -s --max-time 120 http://127.0.0.1:$PORT/v1/chat/completions \
     -H 'Content-Type: application/json' \
     -d '{"model": "x", "messages": [{"role": "user", "content": "What is the capital of France? Answer in one word."}], "max_tokens": 16, "temperature": 0}')
@@ -116,7 +118,17 @@ try:
 except Exception as e:
     print("parse-err:", e)' 2>/dev/null)
   echo "CHAT: $chat_tail" >> $res
-  if echo "$chat" | grep -qi paris; then
+  arithmetic=$(curl -s --max-time 120 http://127.0.0.1:$PORT/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d '{"model": "x", "messages": [{"role": "user", "content": "A box has 12 apples. Five are removed. How many apples remain? Answer with only the number."}], "max_tokens": 8, "temperature": 0}')
+  arithmetic_tail=$(echo "$arithmetic" | python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin)["choices"][0]["message"]["content"][-80:])
+except Exception as e:
+    print("parse-err:", e)' 2>/dev/null)
+  echo "ARITHMETIC: $arithmetic_tail" >> $res
+  if echo "$chat" | grep -qi paris && \
+     echo "$arithmetic" | grep -Eq '"content"[[:space:]]*:[[:space:]]*"[^"]*7'; then
     echo "G3-precision PASS" >> $res
   else
     echo "G3-precision FAIL" >> $res

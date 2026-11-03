@@ -676,6 +676,37 @@ server info 的 `quantization=None` 表示未显式设置该启动参数，
 解析，但仍需补实际加载层/内核的运行时证据及独立量化参考，不能
 把 config 声明、正常文本或启动成功当作量化数值验收。
 
+### 同卡整模型 FP32 对照（2026-11-03）
+
+smoke 新增显式 `--dtype float32`，通过社区 Engine 的公开 dtype 参数
+执行，默认仍为 `bfloat16`。controller、worker、server info 与参考报告
+必须一致；历史缺失 dtype 字段的报告仅按原 BF16 默认解释。未改社区
+源码、adapter 默认计算精度或任何 V1 阈值。
+
+nmz7 物理 GPU4，逐项预检空闲显存比例 0.969710，同一 checkpoint
+`/model/qwen3/Qwen3-0.6B`、容器、社区 commit 和固定 accuracy 用例，
+顺序执行 BF16、FP32，各完成 eager/graph **2/2** 生成及
+独立 CPU FP32 参考 **96 个位置**。两者实际 checkpoint 字节、
+每行输入与生成 token 序列完全一致，每次源码完整性检查通过。
+
+- BF16 仍 **FAIL**：所选 logprob 最大差 0.041772，
+  top20 最大差 **0.732379**，合并 JSD 0.001124，
+  tail mass 差 0.009020，missed mass 0.000101，greedy regret 0。
+- FP32 配置在**原 V1 策略**内 **PASS**：所选 logprob 最大差
+  **0.003732**，top20 最大差 **0.034702**，合并 JSD 0.00000419，
+  tail mass 差 0.000433，missed mass 0.000000223，greedy regret 0。
+  这不是更严格的 FP32 数值策略验收，也不能外推为 BF16 已通过。
+- 原 `short-en` 第 6 个输出位置 token16209 的 HCU FP32 logprob
+  为 -6.416562，CPU FP32 为 -6.438905，原 BF16 HCU 约 -7.1713；
+  执行精度改变明显缩小该偏差，BF16 的具体层/算子仍待定位。
+
+报告为 `iteration20-qwen3-{bfloat16,float32}-{generation,accuracy}.json`
+及相应日志。FP32 qknorm JIT 的编译尝试失败后社区走其原有 fallback，
+真实生成继续成功；本次未因这个有 fallback 的尝试改写社区实现。
+接口/配置/字节绑定/概率诊断组合 **76 passed**
+（`iteration20-dtype-option-cpu.log`），L0 GREEN（31 既有 warning）。
+本次未重新执行全量 adapter/vendor 套件。
+
 ## 模型最小闭环入口
 
 ```bash

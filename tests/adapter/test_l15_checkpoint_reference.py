@@ -145,6 +145,20 @@ def test_reference_cannot_mix_output_precision_configurations():
     assert len(requests(report)[1]) == 8
 
 
+def test_reference_cannot_mix_model_dtypes_or_reuse_legacy_bf16_as_fp32():
+    report = _report()
+    report["dtype"] = "float32"
+    with pytest.raises(ValueError, match="worker"):
+        requests(report)
+    for job in report["jobs"]:
+        job["evidence"]["dtype"] = "float32"
+    with pytest.raises(ValueError, match="runtime dtype"):
+        requests(report)
+    for job in report["jobs"]:
+        job["evidence"]["server_info"]["dtype"] = "float32"
+    assert len(requests(report)[1]) == 8
+
+
 def test_accuracy_requests_use_explicit_ids_for_cached_prompts_and_require_top20():
     from tools.checkpoint_accuracy import cases
 

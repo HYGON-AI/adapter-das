@@ -73,6 +73,15 @@ def test_output_precision_must_match_actual_server_configuration():
         validate_lm_head_option({"enable_fp32_lm_head": True}, False)
 
 
+def test_execution_dtype_must_match_actual_server_and_reject_unknown_precision():
+    smoke.validate_execution_dtype({}, "bfloat16")
+    smoke.validate_execution_dtype({"dtype": "float32"}, "float32")
+    for info, dtype in [({}, "float32"), ({"dtype": "float32"}, "bfloat16"),
+                        ({"dtype": "bfloat16"}, "float32"), ({}, "float16")]:
+        with pytest.raises(ValueError, match="runtime dtype"):
+            smoke.validate_execution_dtype(info, dtype)
+
+
 def _checkpoint(tmp_path):
     model = tmp_path / "model"
     model.mkdir()
@@ -122,8 +131,9 @@ def test_hashing_rechecks_assets_already_read(tmp_path, monkeypatch, coarse_meta
         fingerprint(model)
 
 
+@pytest.mark.parametrize("dtype", ["bfloat16", "float32"])
 @pytest.mark.parametrize("change", ["clean", "before", "during"])
-def test_worker_binds_bytes_before_loading_and_after_execution(tmp_path, monkeypatch, change):
+def test_worker_binds_bytes_before_loading_and_after_execution(tmp_path, monkeypatch, change, dtype):
     model = _checkpoint(tmp_path)
     expected = fingerprint(model)
     manifest = tmp_path / "manifest.json"
@@ -132,6 +142,7 @@ def test_worker_binds_bytes_before_loading_and_after_execution(tmp_path, monkeyp
 
     class Engine:
         def __init__(self, **kwargs):
+            assert kwargs["dtype"] == dtype
             created.append(kwargs)
 
         def __enter__(self):
@@ -148,18 +159,19 @@ def test_worker_binds_bytes_before_loading_and_after_execution(tmp_path, monkeyp
                     for _ in range(2)]
 
         def get_server_info(self):
-            return {"internal_states": [{"decode_cuda_graph_bs": [],
+            return {"dtype": dtype, "internal_states": [{"decode_cuda_graph_bs": [],
                     "memory_usage": {"graph": {"decode": 0}}}]}
 
     monkeypatch.setitem(sys.modules, "sglang", SimpleNamespace(Engine=Engine))
     args = SimpleNamespace(model=model, family="checkpoint", mode="eager",
-                           checkpoint_manifest=manifest, out=tmp_path / "worker.json")
+                           checkpoint_manifest=manifest, out=tmp_path / "worker.json", dtype=dtype)
     if change == "before":
         (model / "model.safetensors").write_bytes(b"changed before loading")
     if change == "clean":
         smoke.worker(args)
         evidence = json.loads(args.out.read_text())
         assert evidence["passed"] and evidence["checkpoint_files_sha256"] == expected
+        assert evidence["dtype"] == dtype
     else:
         with pytest.raises(ValueError, match="checkpoint changed"):
             smoke.worker(args)
@@ -168,8 +180,11 @@ def test_worker_binds_bytes_before_loading_and_after_execution(tmp_path, monkeyp
 
 
 @pytest.mark.parametrize("fp32_head", [False, True])
-@pytest.mark.parametrize("fault", ["clean", "worker-unbound", "after", "head-ignored"])
-def test_controller_cannot_accept_unbound_or_changed_checkpoint(tmp_path, monkeypatch, fault, fp32_head):
+@pytest.mark.parametrize("dtype", ["bfloat16", "float32"])
+@pytest.mark.parametrize("fault", ["clean", "worker-unbound", "after", "head-ignored", "dtype-ignored"])
+def test_controller_cannot_accept_unbound_or_changed_checkpoint(
+    tmp_path, monkeypatch, fault, fp32_head, dtype
+):
     model = _checkpoint(tmp_path)
     monkeypatch.setattr(smoke, "preflight",
                         lambda *args: {"upstream": {"commit": "community"}})
@@ -177,12 +192,14 @@ def test_controller_cannot_accept_unbound_or_changed_checkpoint(tmp_path, monkey
 
     def job(argv, **kwargs):
         assert ("--enable-fp32-lm-head" in argv) is fp32_head
+        assert argv[argv.index("--dtype") + 1] == dtype
         manifest = Path(argv[argv.index("--checkpoint-manifest") + 1])
         evidence = {
             "artifact": "l15-model-worker", "passed": True, "family": "checkpoint",
             "mode": argv[argv.index("--mode") + 1], "model": str(model),
             "weight_evidence": "real-checkpoint",
             "enable_fp32_lm_head": fp32_head if fault != "head-ignored" else False,
+            "dtype": dtype if fault != "dtype-ignored" else "bfloat16",
         }
         if fault != "worker-unbound":
             evidence["checkpoint_files_sha256"] = json.loads(manifest.read_text())
@@ -196,12 +213,15 @@ def test_controller_cannot_accept_unbound_or_changed_checkpoint(tmp_path, monkey
         up_tree=tmp_path, checkpoint=model, families="checkpoint", modes="eager,graph",
         binding_manifest=tmp_path / "bindings.json", out=tmp_path / "report.json", timeout=10,
         enable_fp32_lm_head=fp32_head,
+        dtype=dtype,
     )
-    expected = fault == "clean" or (fault == "head-ignored" and not fp32_head)
+    expected = (fault == "clean" or (fault == "head-ignored" and not fp32_head)
+                or (fault == "dtype-ignored" and dtype == "bfloat16"))
     assert smoke.run(args) == expected
     report = json.loads(args.out.read_text())
     assert report["passed"] == expected
     assert report["enable_fp32_lm_head"] is fp32_head
+    assert report["dtype"] == dtype
     if fault == "after":
         assert not report["complete"] and len(report["jobs"]) == 1
         assert report["jobs"][0]["checkpoint_integrity_after"]["passed"] is False

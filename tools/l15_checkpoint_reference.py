@@ -13,7 +13,9 @@ import json
 from pathlib import Path
 import sys
 
-from tools.l15_model_smoke import validate_generation, validate_lm_head_option, validate_mode
+from tools.l15_model_smoke import (
+    validate_execution_dtype, validate_generation, validate_lm_head_option, validate_mode,
+)
 from tools.l15_runtime import write_json
 from tools.checkpoint_files import fingerprint
 from tools.checkpoint_model import reference_loader, text_configuration, vocabulary_size
@@ -22,6 +24,7 @@ from tools.checkpoint_model import reference_loader, text_configuration, vocabul
 def requests(document):
     profile = document.get("generation_profile", "smoke")
     fp32_head = document.get("enable_fp32_lm_head", False)
+    dtype = document.get("dtype", "bfloat16")
     if (document.get("artifact") != "l15-model-smoke"
             or document.get("passed") is not True
             or document.get("complete") is not True
@@ -31,6 +34,7 @@ def requests(document):
             or len(document.get("jobs", [])) != 2
             or profile not in {"smoke", "accuracy"}
             or type(fp32_head) is not bool
+            or dtype not in ("bfloat16", "float32")
             or document.get("runtime", {}).get("source_integrity", {}).get("passed") is not True):
         raise ValueError("requires successful pristine-source eager/graph checkpoint evidence")
     rows, models, modes = [], set(), set()
@@ -46,12 +50,14 @@ def requests(document):
                 or evidence.get("mode") != mode
                 or evidence.get("generation_profile", "smoke") != profile
                 or evidence.get("enable_fp32_lm_head", False) is not fp32_head
+                or evidence.get("dtype", "bfloat16") != dtype
                 or mode not in {"eager", "graph"} or mode in modes):
             raise ValueError("invalid or duplicate checkpoint worker")
         modes.add(mode)
         models.add(str(Path(evidence["model"]).resolve()))
         validate_mode(evidence.get("server_info", {}), mode)
         validate_lm_head_option(evidence.get("server_info", {}), fp32_head)
+        validate_execution_dtype(evidence.get("server_info", {}), dtype)
         waves = evidence.get("generations", [])
         cases = evidence.get("accuracy_cases")
         if profile == "accuracy":
@@ -212,6 +218,7 @@ def run(args):
         "model": str(model_path), "reference_files_sha256": before,
         "checkpoint_binding": "matched-hcu-execution" if bound is not None else "legacy-unbound",
         "enable_fp32_lm_head": document.get("enable_fp32_lm_head", False),
+        "execution_dtype": document.get("dtype", "bfloat16"),
         "reference": {"torch": torch.__version__, "transformers": transformers.__version__,
                       "device": "cpu", "dtype": "float32", "attention": "eager",
                       "model_class": type(model).__name__,

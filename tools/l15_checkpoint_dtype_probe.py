@@ -160,6 +160,7 @@ def run(args):
         "model": str(model_path), "checkpoint_binding": "matched-hcu-execution",
         "reference_files_sha256": before,
         "enable_fp32_lm_head": document.get("enable_fp32_lm_head", False),
+        "execution_dtype": document.get("dtype", "bfloat16"),
         "reference": {
             "device": "cpu", "attention": "eager",
             "dtypes": ["float32", "bfloat16"], "torch": torch.__version__,

@@ -103,6 +103,11 @@ def validate_lm_head_option(info, requested):
         raise ValueError("runtime FP32 LM-head option differs from requested configuration")
 
 
+def validate_execution_dtype(info, requested):
+    if requested not in ("bfloat16", "float32") or info.get("dtype", "bfloat16") != requested:
+        raise ValueError("runtime dtype differs from requested configuration")
+
+
 def worker(args):
     checkpoint = None
     if args.family == "checkpoint":
@@ -117,6 +122,7 @@ def worker(args):
     vocab_size = vocabulary_size(config)
     profile = getattr(args, "profile", "smoke")
     fp32_head = getattr(args, "enable_fp32_lm_head", False)
+    dtype = getattr(args, "dtype", "bfloat16")
     accuracy_cases = None
     if profile == "accuracy":
         if args.family != "checkpoint":
@@ -127,7 +133,7 @@ def worker(args):
         accuracy_cases = cases(AutoTokenizer.from_pretrained(str(args.model), local_files_only=True))
         validate_cases(accuracy_cases)
     options = dict(
-        model_path=str(args.model), dtype="bfloat16", random_seed=42,
+        model_path=str(args.model), dtype=dtype, random_seed=42,
         tp_size=1, attention_backend="triton", max_total_tokens=512,
         context_length=128, max_running_requests=4, mem_fraction_static=0.25,
         cuda_graph_max_bs_decode=2, disable_cuda_graph=args.mode == "eager",
@@ -166,6 +172,7 @@ def worker(args):
         info = engine.get_server_info()
         validate_mode(info, args.mode)
         validate_lm_head_option(info, fp32_head)
+        validate_execution_dtype(info, dtype)
     if checkpoint is not None and not audit_checkpoint(args.model, checkpoint)["passed"]:
         raise ValueError("checkpoint changed during model execution")
     write_json(args.out, {
@@ -175,6 +182,7 @@ def worker(args):
         "checkpoint_files_sha256": checkpoint,
         "generation_profile": profile, "accuracy_cases": accuracy_cases,
         "enable_fp32_lm_head": fp32_head,
+        "dtype": dtype,
         "model_type": config.get("model_type"),
         "text_model_type": text_configuration(config).get("model_type"),
         "generations": generations, "server_info": info,
@@ -190,6 +198,9 @@ def run(args):
     modes = args.modes.split(",")
     profile = getattr(args, "profile", "smoke")
     fp32_head = getattr(args, "enable_fp32_lm_head", False)
+    dtype = getattr(args, "dtype", "bfloat16")
+    if dtype not in ("bfloat16", "float32"):
+        raise ValueError("select bfloat16 or float32 execution")
     if profile == "accuracy" and families != ["checkpoint"]:
         raise ValueError("accuracy profile requires only the real checkpoint family")
     if not modes or len(set(modes)) != len(modes) or set(modes) - {"eager", "graph"}:
@@ -226,7 +237,7 @@ def run(args):
             job = run_job(
                 [sys.executable, "-m", "tools.l15_model_smoke", "--worker",
                  "--model", str(model), "--family", family, "--mode", mode,
-                 "--out", str(report), "--profile", profile]
+                 "--out", str(report), "--profile", profile, "--dtype", dtype]
                 + (["--checkpoint-manifest", str(manifest)] if checkpoint is not None else [])
                 + (["--enable-fp32-lm-head"] if fp32_head else []),
                 cwd=root, env=test_env(args.up_tree.resolve(), root),
@@ -248,6 +259,7 @@ def run(args):
                     "real-checkpoint" if checkpoint is not None else "dummy")
                 and evidence.get("generation_profile", "smoke") == profile
                 and evidence.get("enable_fp32_lm_head", False) is fp32_head
+                and evidence.get("dtype", "bfloat16") == dtype
             )
             if checkpoint is not None:
                 binding = audit_checkpoint(model, checkpoint)
@@ -265,6 +277,7 @@ def run(args):
                 "families": families, "modes": modes, "jobs": jobs,
                 "generation_profile": profile,
                 "enable_fp32_lm_head": fp32_head,
+                "dtype": dtype,
             })
             print(f"model smoke: {family}/{mode} {'PASS' if job['passed'] else 'FAIL'}", flush=True)
             if not integrity["passed"] or (
@@ -280,6 +293,8 @@ def main():
     parser.add_argument("--families", default="dense,moe,mla,mamba,hybrid,checkpoint")
     parser.add_argument("--modes", default="eager,graph")
     parser.add_argument("--profile", choices=("smoke", "accuracy"), default="smoke")
+    parser.add_argument("--dtype", choices=("bfloat16", "float32"), default="bfloat16",
+                        help="official model compute dtype; float32 is an opt-in diagnostic")
     parser.add_argument("--enable-fp32-lm-head", action="store_true",
                         help="use the official FP32 output-layer option for precision attribution")
     parser.add_argument("--checkpoint", type=Path)

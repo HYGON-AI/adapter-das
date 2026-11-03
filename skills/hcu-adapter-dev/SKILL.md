@@ -75,6 +75,10 @@ accuracy 请求固定同一 prompt/输出序列，比较独立 CPU FP32/BF16 eag
 及 HCU 概率；记录具体输出位置、token 和三方 logprob。CPU BF16 包含
 BF16 输出层，不等价于 SGLang/HCU 实现；报告仅作诊断，不输出 passed，
 不能用 CPU 自身的 dtype 差异豁免原 FP32 精度门禁。
+smoke 的 `--dtype float32` 仅是显式整模型精度诊断，默认仍为 BF16；
+controller/worker/server 与参考报告须绑定同一执行 dtype。历史缺失字段
+只能按原 BF16 默认解释。FP32 配置在原 V1 阈值内不代表 BF16 通过，
+也不等同于建立了更严格的 FP32 数值策略，不能用改默认 dtype 替代定位。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测
    "能跑不崩"。案例：rope GPT-J cache 恒为半分 [cos|sin] 布局（fbc540c）。

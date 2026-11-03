@@ -213,8 +213,14 @@ decode graph 分配 0.021 GB；报告
 
 本轮使用 [hcu-adapter-dev](../skills/hcu-adapter-dev/SKILL.md)，输入为固定官方 v0.5.22、DAS PR #586 与 INT8 PLE checkpoint、指定四卡资源；交付为 DTK provider、QSA rebind、算子回归及组合服务证据。adapter 与 plugin 都从 `sglang_v0.5.22` 建立 `adapt/qwen38-flash-next-w4a8`；官方基线 `baa9befa381511cd4d56f83980951e5a45fffc6d`，adapter 基线 `8bed438`，plugin 基线 `fa592b5`。来源哈希见 [清单](qwen4-w4a8-source.json)。
 
-新增 `mapped_host_view=dtk` 将 pinned PLE 表暴露为 ATen 可捕获 tensor；`qsa_scatter=triton` 写入 key/compressed/rope pool；QSA CUDA JIT prep 在 HIP 使用官方 eager fallback，`qsa_mqa=torch` 沿用 DAS 已验证路径，避开 8-head TileLang 编译限制。新增 `qsa_prefill=triton` 在 gfx936 对 BLOCK_N=64/stages=2 使用 64/1（最多 64 行）或 32/2（更多行），避免 67584B 超过 64KiB LDS；对其他 head dimension 也采用此保守配置。四项保留 candidate 状态，没有基于本次局部验证晋级 production。运行时登记可由 registry dump 检查，没有新增环境变量。
+新增 `mapped_host_view=dtk` 将 pinned PLE 表暴露为 ATen 可捕获 tensor；`qsa_scatter=triton` 写入 key/compressed/rope pool；QSA CUDA JIT prep 在 HIP 使用官方 eager fallback。初次功能适配的 `qsa_mqa=torch` 保留官方参考实现，避开 in-tree HIP TileLang 编译限制；后续性能复测确认这与 DAS 的 BoltOPs vendor 路径不同，见下文修复。新增 `qsa_prefill=triton` 在 gfx936 对 BLOCK_N=64/stages=2 使用 64/1（最多 64 行）或 32/2（更多行），避免 67584B 超过 64KiB LDS；对其他 head dimension 也采用此保守配置。四项保留 candidate 状态，没有基于本次局部验证晋级 production。运行时登记可由 registry dump 检查，没有新增环境变量。
 
 本次 mapped-host INT8/BF16/FP8 的 capture/replay 变 ID 对拍 3 项通过，QSA BF16/int64/FP8 scatter 的 reserved-slot/变索引 Graph 通过。plugin 负责 HCU FA KV 提取、checkpoint、compact/INT8 与 MTP 行为。目标 verify、draft decode/extend full Graph 均已捕获；组合服务 32/32 smoke（28 文本、4 图像）与 5/5 扩展请求通过，最长输入 10538 tokens、实际分块 8192+2346，最长生成 150 tokens；fresh/chunk QSA prefill 64/96 行的四项 public API 数学对拍通过。这里的 FP8 是 E5M2 KV 存储，计算前转换 BF16，不要求 gfx936 执行 FP8 GEMM。
 
 共享容器未删除其他任务的镜像包，使用隔离 venv、editable adapter/plugin 和显式官方 PYTHONPATH，并通过安装态实际路径检查。官方工作树存在 adapter 基线 bootstrap 自动产生的 portability diff；本次未额外通过源码 text patch 接入新增 QSA 功能。vLLM、gfx938、其他模型与并行布局没有本次 e2e 结论。
+
+### QSA MQA vendor 路径与性能回归
+
+长上下文复测发现，Torch QSA MQA 回退不能复现 DAS 的性能。adapter 新增 `kernels/qsa_mqa_boltops.py`，在 gfx936、BF16、4 个 128 维 query heads 时调用容器现有 BoltOPs prefill/decode，重绑定公共 MQA 出口和已预导入的 QSAIndexer 消费者。其他几何和缺少 BoltOPs 时保留当前 Torch 有效基线；vendor 调用错误直接传播，不吞异常。`HCU_DISABLE_OPS=qsa_mqa` 可用于 A/B 与精度隔离。
+
+prefill 使用 host shape 给出合法的可见 span 上界，不读取 GPU scalar；decode 保留官方 `min_scored_len` 调用合同，但 vendor 完整计算所有有效行。in-tree HIP TileLang 仍关闭，这不影响独立 BoltOPs provider。首批 ragged prefill 数值、分页 decode 变输入 Graph 与快关回归 7 项通过；随后零长度/重新激活场景和完整服务、GSM8K、128K 性能验收仍在本轮执行，完成后补记结果。

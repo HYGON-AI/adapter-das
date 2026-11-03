@@ -30,6 +30,23 @@ def install():
     from sglang.srt.layers.attention.qsa import mqa
     mqa.HAS_TILELANG = False
     register("qsa_mqa", "torch", mqa.__name__+".HAS_TILELANG", MECH_REBIND, source=__name__)
+    if not getattr(mqa.qsa_mqa_prefill, "_hcu_boltops", False):
+        from .kernels import qsa_mqa_boltops
+        original_prefill, original_decode = mqa.qsa_mqa_prefill, mqa.qsa_mqa_decode
+        @functools.wraps(original_prefill)
+        def prefill(*args, **kwargs):
+            return qsa_mqa_boltops.prefill(original_prefill, *args, **kwargs)
+        @functools.wraps(original_decode)
+        def decode(*args, **kwargs):
+            return qsa_mqa_boltops.decode(original_decode, *args, **kwargs)
+        prefill._hcu_boltops = decode._hcu_boltops = True
+        mqa.qsa_mqa_prefill, mqa.qsa_mqa_decode = prefill, decode
+        from sglang.srt.layers.attention.qsa import qsa_indexer
+        qsa_indexer.qsa_mqa_prefill, qsa_indexer.qsa_mqa_decode = prefill, decode
+        for module in (mqa, qsa_indexer):
+            for name in ("qsa_mqa_prefill", "qsa_mqa_decode"):
+                register("qsa_mqa", "boltops", module.__name__+"."+name,
+                         MECH_REBIND, source=__name__)
     from sglang.srt.layers.attention.qsa import sparse_attn
     if not getattr(sparse_attn._get_best_config, "_hcu_lds_guard", False):
         original_config = sparse_attn._get_best_config

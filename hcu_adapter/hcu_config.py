@@ -62,7 +62,10 @@ BACKEND_CATALOG = {
     },
     "qsa_mqa": {
         "var": None, "summary": "QSA indexer MQA on HCU",
-        "backends": {"torch": {"status": "candidate", "note": "Official Torch path; HIP TileLang disabled as in DAS PR 586."}},
+        "backends": {
+            "boltops": {"status": "candidate", "note": "gfx936 BF16 QSA indexer with four 128-wide query heads; ragged prefill and paged decode. HCU_DISABLE_OPS=qsa_mqa selects the Torch reference."},
+            "torch": {"status": "candidate", "note": "Official Torch reference for unsupported geometry or disabled BoltOPs; in-tree HIP TileLang remains disabled."},
+        },
     },
     "qsa_scatter": {
         "var": None,

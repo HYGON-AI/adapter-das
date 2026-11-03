@@ -20,7 +20,8 @@ QSA indexer MQA on HCU
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| torch | candidate Official Torch path; HIP TileLang di |
+| torch | candidate Official Torch reference for unsuppo |
+| boltops | candidate gfx936 BF16 QSA indexer with four 12 |
 
 路由变量：（auto）
 

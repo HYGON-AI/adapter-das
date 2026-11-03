@@ -480,18 +480,29 @@ def test_gpu_original_rope_compilation_and_variable_graph_replay(neox):
 
 
 @pytest.mark.parametrize("group_size", [32, 128])
-def test_gpu_original_quant_compilation_and_variable_graph_replay(group_size):
+@pytest.mark.parametrize("backend", ["generic", "v2"])
+def test_gpu_original_quant_compilation_and_variable_graph_replay(group_size, backend):
     torch = _gpu()
     bridge.install()
-    from sglang.kernels.ops.quantization.per_token_group_quant import _jit_module
-    module = _jit_module(torch.bfloat16, torch.float8_e4m3fn, group_size,
-                         False, True, True, False, False, False)
+    from importlib import import_module
+    from hcu_adapter.jit_fp8_ffi import _OutputStorage
+    if backend == "generic":
+        api = import_module("sglang.kernels.ops.quantization.per_token_group_quant")
+        module = api._jit_module(torch.bfloat16, torch.float8_e4m3fn, group_size,
+                                 False, True, True, False, False, False)
+    else:
+        api = import_module("sglang.kernels.ops.quantization.per_token_group_quant_8bit_v2")
+        module = api._jit_module(torch.bfloat16, torch.float8_e4m3fn, False)
+    assert isinstance(module, _OutputStorage)
     x = torch.ones((9, 256), device="cuda", dtype=torch.bfloat16)
     q = torch.empty_like(x, dtype=torch.float8_e4m3fn)
     s = torch.empty((9, 256 // group_size), device="cuda", dtype=torch.float32)
 
     def run():
-        module.per_token_group_quant(x, q, s)
+        if backend == "generic":
+            api.per_token_group_quant(x, output_q=q, output_s=s, group_size=group_size)
+        else:
+            api.per_token_group_quant_8bit_v2(x, q, s, group_size, 1e-10, -448., 448.)
 
     run()
     graph = torch.cuda.CUDAGraph()
@@ -510,4 +521,5 @@ def test_gpu_original_quant_compilation_and_variable_graph_replay(group_size):
         dequant = (q.float().reshape_as(groups) * s[..., None]).flatten()
         want = (ref_q.float() * ref_s[..., None]).flatten()
         torch.testing.assert_close(dequant, want, atol=magnitude * .02, rtol=.13)
+        assert torch.nn.functional.cosine_similarity(dequant, want, dim=0) >= .9999
         assert torch.nn.functional.cosine_similarity(dequant, groups.flatten(), dim=0) >= .999

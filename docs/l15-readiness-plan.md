@@ -40,9 +40,9 @@ nmz28 的环境结论；不清理或占用其他用户任务。
 清理该新容器镜像残留的 SGLang 0.5.18 DTK 定制包与 kernel 包，
 核对 SGLang 从社区源码、`sgl_kernel` 从 adapter 导入；不更改其他节点环境。
 
-当前前置差距：`jit_*`、`dsv4_*`
-等存在源码磁盘写回，须以实际调用点逐项审计，
-上述目标尚未完成。对象广播 `dist_bc` 已迁移为运行时只读 numpy buffer
+历史前置差距包括 `jit_*`、`dsv4_*` 的源码磁盘写回，
+现已逐项迁移；Qwen2 当前组合通过严格源码完整性检查，其他模型与配置
+仍须逐项验证，上述完整目标尚未完成。对象广播 `dist_bc` 已迁移为运行时只读 numpy buffer
 兼容，保留已导入函数别名，不再写回 `common.py`。nmz28 隐藏 GPU 的
 回归为 **6 passed**：包括以 Git 原始社区广播函数执行两 rank spawn/Gloo，
 验证双向广播、空/中文/bytes/大对象和测试源文件字节不变。
@@ -259,12 +259,40 @@ RoPE NeoX/interleaved 及 FP8 group32/group128 **4 passed**
 隐藏 GPU 导致部分其他可选桥无法取得设备 capability，导入日志保留相关
 warning；该结果只证明本次导入没有源码写回，不作为功能就绪证据。
 
-本轮新增 RoPE 两种布局与 FP8 分组量化的真实编译/独立数值/变输入
-graph 回归，尚未执行：nmz21 多次显存预检不足而在分配测试张量前拒绝，
-随后确认宿主有其他用户的 8 卡 `all_reduce_perf` 压测；nmz7/nmz28
-也有占用，未停止其他任务。必须在空闲卡补齐这些 GPU 测试及真实
-Qwen2 eager/graph 的严格源码完整性复验，才能将该迁移计为模型集成通过。
-此前 25 个 JIT 文件写回的失败报告继续保留，不能用本次 CPU 导入覆盖。
+此前 nmz21 多次显存预检不足，确认有其他用户的 8 卡
+`all_reduce_perf` 压测，未停止其任务。节点释放后重新预检，
+物理 GPU 0 空闲显存比例 0.969343，再补齐设备验证。
+
+### JIT FP8 输出存储接口与源码不变的真实 Qwen2 回归
+
+首轮 GPU 测试中 RoPE 两种布局通过，FP8 分组量化在 FFI 边界失败：
+DTK DLPack 暴露名义 `float8_e4m3fn`，社区 HIP kernel 要求 `uint8`
+存储。原始失败日志保留为 `iteration7-jit-inputs-gpu.log`。
+`jit_fp8_ffi` 现在覆盖 generic/v2 与已有 DSV4 两个 factory，仅在
+调用编译导出时对输出做零拷贝 uint8 view；输入、scale、其他 dtype
+及 factory 的名义 dtype 选择不变。保留原 `cache_once` 函数对象与
+已有 factory 别名，适配 warm cache 与后续 cold key；布局漂移拒绝。
+原有 `HCU_JIT_FP8_FFI` 补入环境注册表，显式 0 在启动时跳过安装。
+
+nmz21 隐藏 GPU 的最终接口/环境/启动顺序回归 **25 passed、3 skipped**
+（`iteration8-fp8-ffi-cpu-final.log`，排除另行探测的 4 个 DSV4 GPU 项）。
+包括离线及 Git 原始社区 factory/cache、指针和 stride、warm/cold
+别名、spawn、非目标 dtype、快关与失败原子性。
+RoPE 两布局及 generic/v2 FP8 group32/128 的真实编译、独立参考与
+三轮变输入 graph 共 **6 passed**（`iteration8-jit-inputs-gpu.log`）。
+
+真实 `/model/qwen2/Qwen2-0.5B-Instruct` 在
+`sglang-0.5.22-pristine-iter7`、社区 commit
+`baa9befa381511cd4d56f83980951e5a45fffc6d` 上 eager/graph **2/2 passed**，
+报告 `iteration8-qwen2-checkpoint.json`。每模式两批两请求各生成 8 token，
+检查词表、有限 logprob 及实际 graph 分配；控制器核对 10,594 个跟踪文件，
+最终 **0 changed、0 added sources**。这证明该组合的加载和生成以及源码
+不变，不代表模型精度已验收。此前 25 个 JIT 文件写回失败报告继续保留。
+
+额外 DSV4 连续/变长布局 × group32/128 数值探测发现 **4 failed**：
+编译及 FFI 已通过，scale 对拍通过，FP8 输出值失败。原始日志
+`iteration8-dsv4-ffi-gpu.log` 保留；初步定位共享软件转换的最高指数段
+过早饱和，待独立修复，不能以 generic/v2 的通过代替 DSV4 数值验收。
 
 ## 原四步实施与验证记录
 

@@ -41,6 +41,10 @@ key 包含输入字节和变换实现，已有缓存损坏须拒绝。保留原
 默认/显式/依赖 provider 的 include。保持官方 BuildSpec/ninja/cache
 与依赖追踪；量化先生成 packed shuffle 分支，再由 warp 修正 generic T。
 `jit-input:` 注册仍按原 needle 白名单治理，但表示缓存中的编译数据。
+`jit_fp8_ffi` 只在编译导出边界对 e4m3fn 输出做零拷贝 uint8 view；
+不能把输入或 scale 一并转换，也不能改变上层 dtype 选型。保留原
+cache_once factory 与已有别名，warm cache 和 cold key 均须覆盖，
+签名/闭包漂移拒绝；快关通过环境注册表解析。FFI 通过不代表量化数值通过。
 完整目标与证据见 `docs/l15-readiness-plan.md`。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测

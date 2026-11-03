@@ -128,7 +128,12 @@ except Exception as e:
     print("parse-err:", e)' 2>/dev/null)
   echo "ARITHMETIC: $arithmetic_tail" >> $res
   if echo "$chat" | grep -qi paris && \
-     echo "$arithmetic" | grep -Eq '"content"[[:space:]]*:[[:space:]]*"[^"]*7'; then
+     echo "$arithmetic" | python3 -c 'import json,re,sys
+try:
+    text = json.load(sys.stdin)["choices"][0]["message"]["content"]
+    sys.exit(0 if re.search(r"(?<![0-9])7(?![0-9])", text) else 1)
+except Exception:
+    sys.exit(1)' 2>/dev/null; then
     echo "G3-precision PASS" >> $res
   else
     echo "G3-precision FAIL" >> $res

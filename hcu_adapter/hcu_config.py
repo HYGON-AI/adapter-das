@@ -97,11 +97,14 @@ BACKEND_CATALOG = {
         "summary": "residual += input; input = rmsnorm(residual)*w, in-place",
         "backends": {
             "triton": {"status": "production", "note": "default (auto)"},
-            "lightop": {"status": "candidate",
+            "lightop": {"status": "validated",
                         "note": "lightop.fused_add_rms_norm(x, residual, w, "
                                 "eps, limit=-1) in-place; gemma variant "
-                                "gemma_fused_add_rmsnorm; one-strike "
-                                "fallback to triton on a raising call"},
+                                "gemma_fused_add_rmsnorm; parity + cuda-graph "
+                                "replay passed 2026-11-03 (dtk2610/BW200, "
+                                "py3.10 wheel has both fns too); perf 0.76x "
+                                "vs triton @4096x7168 bf16 — triton stays "
+                                "default; one-strike fallback on a raise"},
             "torch": {"status": "production",
                       "note": "reference path"},
         },

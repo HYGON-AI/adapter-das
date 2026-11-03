@@ -1014,6 +1014,32 @@ L0 **GREEN（31 warn）**、纯 CPU 算子 **38 passed**；见
 当前清单 32 case，Mamba 与量化分别验证，未合成一次全家族整轮证据；
 真实 DeepEP 多卡 dispatch/combine、模型精度和其他原定缺口仍需继续。
 
+### 修复既有 DeepGEMM 开关漏登（2026-11-04）
+
+检查 FP8 合同时发现 `HCU_TRITON_MASKED` 和
+`HCU_TRITON_MASKED_FP8` 已被 installer 使用，但不在 `hcu_env.REGISTRY`。
+实际复现：两键显式 0/1 都解析为 `(None, "unknown")`，
+而 `enabled` 将该值当作开启，导致显式关闭被忽略。
+补齐两个既有键的登记和手册，默认 1 保持原有实际选择；
+未修改通用 `enabled` 的未知键行为，也不新增数学实现或更换默认内核。
+关闭 FP8 路由时保留 vendor 入口及未验证 scale-layout 的响亮拒绝，
+不为未验证 vendor 数值背书；开关只在安装阶段生效。
+
+干净 HOSTnone 子进程以 provider 替身运行真实 installer，覆盖默认、
+显式 0、显式 1 优先于配置 0、配置 0；检查 BF16 ABI wrapper、
+FP8 两入口和 layout 拒绝。修复前新增 **8 failed**，修复后连同
+环境守卫、平台默认及启动结构回归 **24 passed**，L0
+**GREEN（31 warn）**；见 `iteration42-deepgemm-switch-before.log`、
+`iteration42-switch-after.log`、`iteration42-l0.log`。
+
+随后在 nmz7 GPU4 暴露单卡、真实社区与 DTK 依赖下分别启动干净
+SGLang 宿主解释器：默认、两键显式 0、两键显式 1 **3/3 成功**，
+真实 `deep_gemm` 函数绑定及解析值/来源均符合预期，
+执行后社区源码完整性通过。证据为
+`iteration42-real-installer-{default,0,1}.log` 和
+`iteration42-real-installer-runtime.json`。这只证明真实安装/导入和选路，
+没有在关闭态执行已知未验证的 vendor GEMM，也不替代模型或多卡精度。
+
 ## 第四步验证（2026-11-03）
 
 - `ci/upstream_diff.py` 对不可变 Git 快照比较已声明的符号、签名/函数体、

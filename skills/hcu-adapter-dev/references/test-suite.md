@@ -114,6 +114,12 @@ kernel）时，以下矩阵是最低要求：
 
 ## 新增算子的最低测试配置
 
+既有开关也须验证 `hcu_env.resolve` 的值和来源，再经真实 installer
+验证路由。DeepGEMM 的 masked BF16/FP8 曾漏登 REGISTRY，
+`enabled` 将未知键的 `None` 当作开启，导致显式 0 被忽略；
+回归见 `tests/adapter/test_deepgemm_env.py`，默认、配置、显式覆盖分开验证。
+该 CPU provider 替身测试只证明接线，不为 vendor 数值背书。
+
 FP8 grouped GEMM 小形状门见 `test_gemm_fp8.py` 的
 `test_fp8_grouped_expert_contract`：反量化参考分别展开 per-token-group
 与 128×128 block scale；覆盖有符号输入、非单位尺度、strided scale、

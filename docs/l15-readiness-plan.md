@@ -917,6 +917,12 @@ nmz21 后续资源检查显示显存已占用，GPU 作业在启动前拒绝；�
 场景，deselected 为本轮不运行的双卡 stress 项。
 该证据是全量失败后的增量验证，不把原 56 failed/29 errors 改为整轮全绿。
 
+最终增量检查：nmz7 GPU4 的量化家族严格门 **9/9 case PASS**，零
+skip/xfail，执行后社区源码完整性通过，见
+`iteration34-quantization-family.json`。最终 L0 **GREEN（31 warn）**，
+见 `iteration34-final-l0.log`。当前保留的 vLLM 47 failed/29 errors
+尚未修复；全模型 BF16/量化精度及其他既定覆盖缺口仍需继续迭代。
+
 ## 第四步验证（2026-11-03）
 
 - `ci/upstream_diff.py` 对不可变 Git 快照比较已声明的符号、签名/函数体、

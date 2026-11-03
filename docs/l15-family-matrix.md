@@ -113,6 +113,11 @@ graph，共 6 个参数化节点。输入设为可精确量化的二进制格点
 nmz21 GPU4 的原始 INT8 GEMM 与该新链路合计 **20 passed**，
 见 `iteration31-int8-linear-gpu.log`；完整 30 case 尚待整轮验证。
 
+2026-11-04 nmz7 GPU4 的量化家族严格门 **9/9 case PASS**，包含新增
+W8A8 Linear 的 6 个节点及 CT-FP8 等 9 个 quant-linear 节点，零 skip/xfail，
+执行后社区源码完整性通过；报告 `iteration34-quantization-family.json`。
+这是量化家族整轮证据，与 MoE 7/7 的独立报告分别保留。
+
 新目录组合在 nmz28 单卡 GPU 0 的严格矩阵实测为 **27/27 PASS**，
 原始报告 `results/l15-readiness/phase2-all.json`。其中 25 个 GPU case，
 另 2 个是显式 CPU 契约。社区路由入口接入后，计算链与 GDN 桥回归

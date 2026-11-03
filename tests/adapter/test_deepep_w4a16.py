@@ -115,3 +115,38 @@ def test_deepep_w4a16_shape_contract():
             torch.ones((2, 2, 1), dtype=torch.bfloat16),
             torch.ones(2, dtype=torch.int32),
         )
+
+
+def test_deepep_expert_major_pipeline_masks_empty_experts(monkeypatch):
+    calls = []
+
+    def fake_prepare(qweight, scales):
+        return qweight, scales
+
+    def fake_grouped(a, b, scales, counts, capacity, out_feats, out_dtype):
+        calls.append((tuple(a.shape), counts.clone(), capacity, out_feats))
+        visible = a[..., :out_feats]
+        if visible.shape[-1] < out_feats:
+            visible = torch.nn.functional.pad(
+                visible, (0, out_feats - visible.shape[-1])
+            )
+        rows = torch.arange(capacity).view(1, capacity, 1)
+        return visible.to(out_dtype) * (rows < counts.view(-1, 1, 1))
+
+    monkeypatch.setattr(w4a16_moe, "_prepare", fake_prepare)
+    monkeypatch.setattr(w4a16_moe, "_grouped_gemm", fake_grouped)
+
+    hidden = torch.ones((2, 4, 3), dtype=torch.bfloat16)
+    w1 = torch.empty((2, 6, 2), dtype=torch.uint8)
+    w2 = torch.empty((2, 3, 1), dtype=torch.uint8)
+    s1 = torch.ones((2, 6, 1), dtype=torch.bfloat16)
+    s2 = torch.ones((2, 3, 1), dtype=torch.bfloat16)
+    out = w4a16_moe.deepgemm_w4a16_deepep_ll(
+        hidden, w1, w2, s1, s2, torch.tensor([2, 0]), expected_m=2
+    )
+
+    assert out.shape == (2, 4, 3)
+    assert torch.count_nonzero(out[1]) == 0
+    assert [c[0] for c in calls] == [(2, 4, 3), (2, 4, 3)]
+    assert all(torch.equal(c[1], torch.tensor([2, 0])) for c in calls)
+    assert [c[3] for c in calls] == [6, 3]

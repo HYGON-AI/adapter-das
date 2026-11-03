@@ -975,6 +975,25 @@ hooks 仅用于 eager 归因，含主机同步，不进入生产或 graph 路径
 后续仍需在固定输入上逐段分离 GEMM、attention 和激活舍入的贡献，
 并继续既定模型族与配置覆盖。
 
+### Mamba2 真实变输入 graph 计算链（2026-11-04）
+
+新增 `test_mamba2_decode_fresh_input_graph` 并接入严格家族矩阵，
+补齐原先只有 metadata 生命周期和模型 graph 启动的组件数值缺口。
+官方 `MambaMixer2` 执行 in-projection、causal Conv1D、SSM、gated
+RMSNorm 与 out-projection；独立 CPU FP32 参考实现整个递推，保留
+BF16 激活/卷积状态存储边界。batch1/page1/group1 和
+batch3/page16/group2 各做 eager/真实 graph，三轮改变输入与映射槽位，
+同时检查输出、连续递推状态、图内外状态一致性及其他槽位禁止改写。
+本功能没有替换生产计算或修改社区源码。
+
+nmz7 GPU4：整个计算链文件 **25 passed**，严格 Mamba 家族
+**7/7 case PASS**、零 skip/xfail，矩阵工具回归 **32 passed**；
+执行后社区源码完整性通过。证据为 `iteration39-chains.log`、
+`iteration39-mamba-family.json`、`iteration39-matrix-cpu.log` 和
+`iteration39-mamba-runtime.json`。清单目前 31 case，本次没有重跑其他
+四个家族；纯 Mamba2 真实 checkpoint 和 speculative/padded graph
+等范围仍不因该组件通过而视为验收完成。
+
 ## 第四步验证（2026-11-03）
 
 - `ci/upstream_diff.py` 对不可变 Git 快照比较已声明的符号、签名/函数体、

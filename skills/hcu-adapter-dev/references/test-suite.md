@@ -114,6 +114,13 @@ kernel）时，以下矩阵是最低要求：
 
 ## 新增算子的最低测试配置
 
+Mamba2 graph 数值门见 `test_l15_execution_chains.py` 的
+`test_mamba2_decode_fresh_input_graph`：独立 CPU FP32 计算投影、卷积、
+SSM 与门控归一化，保留激活存储 dtype。捕获后连续三轮改变输入与
+映射槽位，参考状态独立递推；同时检查输出、卷积/SSM 状态和其他槽位
+不被改写。仅 replay metadata、同输入 replay 或仅检查输出不足以覆盖
+状态链路；组件通过也不能外推为 scheduler/speculative/真实权重模型通过。
+
 契约测试（维度 1）必带；进 decode 链路的加维度 2（参照
 `_graph_safety_probe.py` 模式）；vendor 档再加维度 3 压测 + 快关。
 跑法写在文件 docstring，容器外开发时用 `HCU_ADAPTER_ROOT`/`HCU_CKPT`

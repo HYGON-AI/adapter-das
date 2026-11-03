@@ -5,6 +5,139 @@ import torch
 import torch.nn.functional as F
 
 
+def _mamba2_decode_reference(mixer, case, hidden, conv, ssm, slots):
+    """CPU FP32 recurrence, with BF16 storage at the public layer boundaries.
+
+    No production projection, convolution, scan or normalization function is
+    called. Return the entire updated pools so writes to unrelated slots can
+    be checked independently of the model output.
+    """
+    def cpu(tensor):
+        return tensor.detach().cpu().float()
+
+    projected = F.linear(cpu(hidden), cpu(mixer.in_proj.weight)).bfloat16()
+    width = case.intermediate_size
+    conv_width = width + 2 * case.n_groups * case.state_size
+    gate, xbc, dt = projected.split([width, conv_width, case.num_heads], -1)
+    conv = conv.clone()
+    ssm = ssm.clone()
+    outputs = []
+    for row, slot in enumerate(slots):
+        window = torch.cat([conv[slot].float(), xbc[row].float()[:, None]], -1)
+        preactivation = (
+            window * cpu(mixer.conv1d.weight).squeeze(1)
+        ).sum(-1) + cpu(mixer.conv1d.bias)
+        convolved = F.silu(preactivation).bfloat16().float()
+        conv[slot] = window[:, 1:].to(conv.dtype)
+        x, b, c = convolved.split(
+            [width, case.n_groups * case.state_size,
+             case.n_groups * case.state_size]
+        )
+        x = x.reshape(case.num_heads, case.head_dim)
+        b = b.reshape(case.n_groups, case.state_size)
+        c = c.reshape(case.n_groups, case.state_size)
+        delta = F.softplus(dt[row].float() + cpu(mixer.dt_bias))
+        y = torch.empty_like(x)
+        for head in range(case.num_heads):
+            group = head * case.n_groups // case.num_heads
+            state = ssm[slot, head] * torch.exp(delta[head] * cpu(mixer.A)[head])
+            state = state + delta[head] * torch.outer(x[head], b[group])
+            ssm[slot, head] = state
+            y[head] = state @ c[group] + cpu(mixer.D)[head] * x[head]
+        # The SSM output is stored in activation dtype before gated RMSNorm.
+        gated = y.flatten().bfloat16().float() * F.silu(gate[row].float())
+        grouped = gated.reshape(case.n_groups, -1)
+        normalized = grouped * torch.rsqrt(
+            grouped.square().mean(-1, keepdim=True) + mixer.norm.variance_epsilon
+        )
+        normed = (normalized.flatten() * cpu(mixer.norm.weight)).bfloat16()
+        outputs.append(F.linear(normed.float(), cpu(mixer.out_proj.weight)).bfloat16())
+    return torch.stack(outputs), conv, ssm
+
+
+@pytest.mark.parametrize("batch,page_size,groups", [(1, 1, 1), (3, 16, 2)])
+def test_mamba2_decode_fresh_input_graph(runtime, batch, page_size, groups):
+    """Real MambaMixer2 eager/graph; three changing inputs and remapped state slots."""
+    from sglang.srt.model_executor.forward_batch_info import ForwardMode
+    from sglang.srt.model_executor.forward_context import ForwardContext, forward_context
+    from sglang.test.kits.attention_unittest.attention_methods.mamba2_attention import (
+        Mamba2AttentionCase, _conv_states, _ssm_states,
+        build_mamba2_attention_fixture,
+    )
+
+    class RequiredBackend:
+        def skipTest(self, reason):
+            pytest.fail(f"required Mamba2 backend unavailable: {reason}")
+
+    case = Mamba2AttentionCase(
+        name="adapter_mamba2_fresh_graph", backend="triton",
+        forward_mode=ForwardMode.DECODE, num_heads=2, head_dim=16,
+        state_size=16, n_groups=groups, conv_kernel=4,
+        mamba_chunk_size=16, hidden_size=32, page_size=page_size,
+        prefix_lens=(14, 15, 16)[:batch],
+    )
+    fixture = build_mamba2_attention_fixture(
+        RequiredBackend(), case, disable_cuda_graph=False, runner_batch_size=8,
+    )
+    backend, fb = fixture.backend, fixture.forward_batch
+    conv, ssm = _conv_states(fixture), _ssm_states(fixture)
+    assert conv.shape[-1] == case.conv_kernel - 1
+    assert ssm.shape[1:] == (case.num_heads, case.head_dim, case.state_size)
+    conv.copy_(torch.randn_like(conv) * 0.1)
+    ssm.copy_(torch.randn_like(ssm) * 0.1)
+    initial_conv, initial_ssm = conv.clone(), ssm.clone()
+    expected_conv, expected_ssm = conv.cpu().clone(), ssm.cpu().clone()
+    backend.init_cuda_graph_state(max_bs=batch, max_num_tokens=batch)
+    backend.init_forward_metadata_out_graph(fb, in_capture=True)
+
+    def run():
+        with torch.no_grad(), forward_context(ForwardContext(attn_backend=backend)):
+            return fixture.actual_module(fb, fixture.hidden_states)
+
+    for _ in range(3):
+        run()
+    torch.cuda.synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        captured = run()
+    conv.copy_(initial_conv)
+    ssm.copy_(initial_ssm)
+    mapping = fixture.runner.req_to_token_pool.req_index_to_mamba_index_mapping
+    previous = None
+    for wave in range(3):
+        # The captured graph must read refreshed metadata rather than the slots
+        # used at capture. Selected slots are unique, non-monotonic and nonzero.
+        slots = [(2 * row + wave) % 7 + 1 for row in range(batch)][::-1]
+        mapping[fb.req_pool_indices] = torch.tensor(slots, device="cuda", dtype=torch.int32)
+        fixture.hidden_states.copy_(torch.randn_like(fixture.hidden_states) * (wave + 1) * 0.3)
+        backend.init_forward_metadata_out_graph(fb)
+        before_conv, before_ssm = conv.clone(), ssm.clone()
+        expected, expected_conv, expected_ssm = _mamba2_decode_reference(
+            fixture.actual_module.mixer, case, fixture.hidden_states,
+            expected_conv, expected_ssm, slots,
+        )
+        if previous is not None:
+            assert not torch.allclose(expected.float(), previous.float(), atol=0.02, rtol=0.05)
+        previous = expected.clone()
+        eager = run()
+        check(eager.cpu(), expected)
+        eager_conv, eager_ssm = conv.clone(), ssm.clone()
+        conv.copy_(before_conv)
+        ssm.copy_(before_ssm)
+        graph.replay()
+        torch.cuda.synchronize()
+        check(captured.cpu(), expected)
+        # Both output and recurrent state are checked; an output-only oracle
+        # misses corruption that first becomes visible on the next token.
+        torch.testing.assert_close(conv, eager_conv, rtol=0, atol=0)
+        torch.testing.assert_close(ssm, eager_ssm, rtol=0, atol=0)
+        torch.testing.assert_close(conv.cpu(), expected_conv, rtol=0.05, atol=0.002)
+        torch.testing.assert_close(ssm.cpu(), expected_ssm, rtol=0.05, atol=0.002)
+        untouched = [slot for slot in range(conv.shape[0]) if slot not in slots]
+        assert torch.equal(conv[untouched], before_conv[untouched])
+        assert torch.equal(ssm[untouched], before_ssm[untouched])
+
+
 @pytest.fixture
 def runtime():
     if not torch.cuda.is_available():

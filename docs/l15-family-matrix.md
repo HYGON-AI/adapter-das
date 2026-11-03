@@ -69,7 +69,8 @@ python tools/l15_family_matrix.py run \
 
 ## 当前明确缺口
 
-1. Mamba 真实 CUDAGraph fresh-input replay；
+1. Mamba2 组件级真实 CUDAGraph fresh-input replay 已补齐（见下）；纯
+   Mamba2 真实 checkpoint、更多形状及 speculative/graph padding 仍未覆盖；
 2. FP8 grouped expert GEMM 的小形状数值合同；
 3. INT8 MoE 两段 GEMM 的端到端合成合同已增加，完整真实 checkpoint 精度仍缺；
 4. INT4/W4A8 在 HCU 上主要是 correctness-first W4A16 降级，不能宣称原生 CUTLASS 行为；
@@ -131,6 +132,23 @@ W8A8 Linear 的 6 个节点及 CT-FP8 等 9 个 quant-linear 节点，零 skip/x
 原 27 case 的整轮报告与新增 case 的增量报告分别保留，没有将两次执行
 描述成一次完整 28 case 运行。模型级 Mamba graph 也已通过，但不替代
 上述组件级 Mamba 独立变输入数值对拍缺口。
+
+2026-11-04 新增 `mamba-fresh-input-graph`，固定清单增至 31 case。
+用社区 fixture 构造真实 `MambaMixer2`，执行官方投影、causal Conv1D、
+SSM、gated RMSNorm 和输出投影。CPU FP32 参考独立计算上述数学，
+仅在公开的激活/状态存储边界转 BF16，不调用生产算子或其参考 forward。
+batch1/page1/group1 与 batch3/page16/group2 各捕获一次真实 CUDAGraph，
+三轮改变输入及非连续状态槽位；独立参考状态连续递推，
+检查输出、卷积与 SSM 状态、eager/graph 一致性及未使用槽位不被改写。
+这不替代 scheduler 图回放、纯 Mamba2 模型或 speculative 验收。
+
+nmz7 GPU4 的整个计算链文件 **25 passed**；严格 Mamba 家族
+**7/7 case PASS**（包含 2 个新参数节点，零 skip/xfail），矩阵工具
+回归 **32 passed**，执行后社区源码完整性通过。证据：
+`results/l15-readiness/iteration39-chains.log`、
+`iteration39-mamba-family.json`、`iteration39-matrix-cpu.log`、
+`iteration39-mamba-runtime.json`。该报告仅覆盖 Mamba 家族，
+不是完整 31 case 的一次整轮运行。
 
 ## DoD
 

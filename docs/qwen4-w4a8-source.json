@@ -1,0 +1,79 @@
+{
+  "das_commit": "35719b43ce247a2ddb72297a62f95554d828f56a",
+  "pr": "https://github.com/HYGON-AI/sglang-das/pull/586",
+  "official_commit": "baa9befa381511cd4d56f83980951e5a45fffc6d",
+  "patch": {
+    "name": "optimized-compact-local-int8-with-mm-fix.patch",
+    "sha256": "2e97811e2528e1873c077ac963d141284dcdf9fe2d210a7e277e0e40828ccea3"
+  },
+  "patched_source_files": [
+    {
+      "file": "srt/models/qwen4_exp.py",
+      "sha256": "da24980a8c257fe43b7f4964f7d2c86958e1be5d062f434f1fef9b676341c6a4"
+    },
+    {
+      "file": "srt/models/qwen4_exp_mtp.py",
+      "sha256": "689696d5bec897e4c33d81d70d9ac5698035669b5c8a4396ddcdff8ed08e82d4"
+    },
+    {
+      "file": "srt/layers/dp_attention.py",
+      "sha256": "3e1fa1b5fb41bc8021ec3f89b88263555e26608119b4a26f66d09768e1e166ea"
+    },
+    {
+      "file": "srt/layers/attention/qwen_sparse_attn_backend.py",
+      "sha256": "17ea1dc39d3ab5a29ac4628fbe6ec9585174927796ff6344d4c9df42632089dd"
+    },
+    {
+      "file": "srt/layers/quantization/slimquant_w4a8_marlin.py",
+      "sha256": "a3410df0c8be16e03abb724e7343bc98d110bb143b383decac11c6e72d792333"
+    },
+    {
+      "file": "srt/managers/schedule_batch.py",
+      "sha256": "a0da6f3bed11cc733504ea00e57402d99e47c9d61ac6eef7cb2900b5bfd3d184"
+    },
+    {
+      "file": "srt/model_executor/forward_batch_info.py",
+      "sha256": "3faaee69d992347c61cbef6ba50ed18ce4a25880426deaf0282ce6867044bd07"
+    },
+    {
+      "file": "srt/speculative/eagle_worker_v2.py",
+      "sha256": "5dfb66f4247961595360e3b2e96765b9290585b6a9dac92d71051acf392138f4"
+    },
+    {
+      "file": "srt/mem_cache/ple_state_pool.py",
+      "sha256": "5d7a32931c1765c4e174ded9bb04b7e42b56a66833d81853b3e46932e943e8e2"
+    },
+    {
+      "file": "srt/models/utils.py",
+      "sha256": "192886eac1fafcd0fdc6cd69af40515d5625edea8df67a94715e7c738c7c4f03"
+    },
+    {
+      "file": "srt/layers/attention/qsa/metadata.py",
+      "sha256": "e94856e96e09b62d087050c7910492891ce38675866be71e8b46e98ff1044c21"
+    },
+    {
+      "file": "srt/layers/attention/qsa/qsa_indexer.py",
+      "sha256": "4f930478501f05f8967bbe23f8da2f29410966cd2c6967bebfad09e5f9dc33ac"
+    },
+    {
+      "file": "srt/layers/attention/qsa/sparse_attn.py",
+      "sha256": "e69f81a7d345d9da45a00c2024521b49a784bfff8bc52193fc37a135af28f55f"
+    },
+    {
+      "file": "kernels/ops/moe/moe_c_native_sort.py",
+      "sha256": "2135a95054a9f9578cf2a3eb633223c85379c1240d880e04137a4eec13175897"
+    },
+    {
+      "file": "kernels/ops/attention/fla/index.py",
+      "sha256": "5dedd62542247c5c2fcf1f4bc79252854b258e97566b9e55cdffc20db8b94243"
+    },
+    {
+      "file": "srt/layers/attention/linear/gdn_backend.py",
+      "sha256": "8bbe801d10094de2abcbe1ca2aec29ab107dd91568c1b505b7202ddefdc2f074"
+    },
+    {
+      "file": "srt/mem_cache/qsa_kv_pool.py",
+      "sha256": "82aeea22ae5bedff836dd55f9816adeb36056333de4181bcb4950be9ffb150a1"
+    }
+  ]
+}

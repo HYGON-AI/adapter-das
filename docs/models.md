@@ -208,3 +208,13 @@ decode graph 分配 0.021 GB；报告
 - **1.1 topk_v2 ragged 转正**：96 例 parity 集合语义 0 错（rem/topk/L/offsets 正交扫，4 reps）；非确定性=atomicAppend 发射到达序（topk_impl.cuh 612/617，paged 臂同源同在跑）；2.2-2.9× 快过 legacy；`HCU_TOPK_V2_RAGGED` 默认翻 1（nmz18 容器 dsa_topk_backend.py 已改）。**方法论：topk parity 一律比排序后集合，双跑分离"错"与"序"。**
 - **1.2/1.3 口径翻案（双双达标）**：rmsnorm 5.3-5.9µs=das 地板；router 10µs 快 das 2.8×。教训入库：**①trace 家族和÷单核地板=假膨胀 ②墙钟(bench loop)≠核时，必须 CUDA graph 重放 ③旧 trace 不代表当前树**（act_and_mul 3.1ms/reduce_bf16 438µs 都是 1.0a/b 前旧账）。P1 真残余=eager 段 per-call 50-90µs host 开销（→1.5/1.6）。
 - 容器遗产（/root）：topk_ragged_parity/bench.py、rmsnorm_bench2.py、router_graph/matrix.py、router_baseline.pt——复跑即可。
+
+## 2026-11-03 Qwen3.8-Flash-Next W4A8 组合适配
+
+本轮使用 [hcu-adapter-dev](../skills/hcu-adapter-dev/SKILL.md)，输入为固定官方 v0.5.22、DAS PR #586 与 INT8 PLE checkpoint、指定四卡资源；交付为 DTK provider、QSA rebind、算子回归及组合服务证据。adapter 与 plugin 都从 `sglang_v0.5.22` 建立 `adapt/qwen38-flash-next-w4a8`；官方基线 `baa9befa381511cd4d56f83980951e5a45fffc6d`，adapter 基线 `8bed438`，plugin 基线 `fa592b5`。来源哈希见 [清单](qwen4-w4a8-source.json)。
+
+新增 `mapped_host_view=dtk` 将 pinned PLE 表暴露为 ATen 可捕获 tensor；`qsa_scatter=triton` 写入 key/compressed/rope pool；QSA CUDA JIT prep 在 HIP 使用官方 eager fallback，`qsa_mqa=torch` 沿用 DAS 已验证路径，避开 8-head TileLang 编译限制。新增 `qsa_prefill=triton` 在 gfx936 对 BLOCK_N=64/stages=2 使用 64/1（最多 64 行）或 32/2（更多行），避免 67584B 超过 64KiB LDS；对其他 head dimension 也采用此保守配置。四项保留 candidate 状态，没有基于本次局部验证晋级 production。运行时登记可由 registry dump 检查，没有新增环境变量。
+
+本次 mapped-host INT8/BF16/FP8 的 capture/replay 变 ID 对拍 3 项通过，QSA BF16/int64/FP8 scatter 的 reserved-slot/变索引 Graph 通过。plugin 负责 HCU FA KV 提取、checkpoint、compact/INT8 与 MTP 行为。目标 verify、draft decode/extend full Graph 均已捕获；组合服务 32/32 smoke（28 文本、4 图像）与 5/5 扩展请求通过，最长输入 10538 tokens、实际分块 8192+2346，最长生成 150 tokens；fresh/chunk QSA prefill 64/96 行的四项 public API 数学对拍通过。这里的 FP8 是 E5M2 KV 存储，计算前转换 BF16，不要求 gfx936 执行 FP8 GEMM。
+
+共享容器未删除其他任务的镜像包，使用隔离 venv、editable adapter/plugin 和显式官方 PYTHONPATH，并通过安装态实际路径检查。官方工作树存在 adapter 基线 bootstrap 自动产生的 portability diff；本次未额外通过源码 text patch 接入新增 QSA 功能。vLLM、gfx938、其他模型与并行布局没有本次 e2e 结论。

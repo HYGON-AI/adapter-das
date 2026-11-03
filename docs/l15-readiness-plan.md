@@ -591,6 +591,40 @@ token 序列均相同。源码完整性检查通过，未改写社区源码。
 `iteration16-final-cpu.log`；L0 GREEN（31 既有 warning）。
 本次未重新执行全量 adapter/vendor 套件。
 
+### 固定序列 CPU dtype 归因入口
+
+```bash
+HCU_ADAPTER_HOST=none VLLM_PLUGINS=none HIP_VISIBLE_DEVICES= CUDA_VISIBLE_DEVICES= \
+  python3 -m tools.l15_checkpoint_dtype_probe \
+    --smoke-report results/l15-readiness/iteration13-qwen2-accuracy-generation.json \
+    --out results/l15-readiness/iteration17-qwen2-dtype.json --threads 4
+```
+
+仅接受已通过 eager/graph 执行且绑定实际 checkpoint 字节的 accuracy
+请求；加载前后复核资产与输入报告，拒绝量化 checkpoint。两种 CPU dtype
+都 teacher-force 相同 HCU 输出序列，完全相同的输入/输出才去重。
+通过官方 `from_pretrained` 分别加载 FP32、BF16（包括输出层），
+以相同的 Transformers eager、禁用 KV cache 计算；不能整体 `.to(BF16)`
+舍入原本 FP32 的 RoPE buffer。报告保留两次加载的浮点 buffer dtype、
+shape 和字节摘要。保留三组
+top20+tail 对比：HCU→CPU FP32、HCU→CPU BF16、CPU BF16→FP32；
+后者使用 CPU BF16 自己的 top20，另在 HCU 的同组 token 标签上定位
+最大 dtype 差异。具体位置从 0 开始，报告的 HCU rank 从 1 开始。
+
+输出 `l15-checkpoint-dtype-diagnostic`、`diagnostic_only=true`，
+不输出精度 passed 或替换 V1 策略。CPU BF16 并不是相同实现的
+SGLang/HCU 基线，既不能直接证明 HCU 存在错误，也不能豁免原失败。
+
+2026-11-03，nmz21/nmz7/nmz28 均无满足预检条件的空闲 GPU，
+本轮仅使用隐藏 GPU 的 CPU 进程。初次整体转换模型的试跑因 RoPE buffer
+舍入风险而作废，保留在 `iteration17-*-converted-rope-invalid.*`
+及 `iteration17-converted-rope-invalid.txt`，未用于精度判断。
+修正后分别加载 dtype，回归覆盖官方 loader 参数、独立加载、FP32 buffer
+保持、序列与预测位置对齐、三方误差定位、权重绑定拒绝和运行中证据变化：
+**34 passed**（`iteration18-dtype-cpu.log`），L0 GREEN（31 既有 warning）。
+真实 Qwen2/Qwen3 的多长度 CPU 对照使用 `iteration18-*-dtype.json/log`，
+具体实验结论需在执行结束后读取报告，不以测试通过替代。
+
 ## 模型最小闭环入口
 
 ```bash

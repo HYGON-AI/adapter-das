@@ -70,6 +70,11 @@ checkpoint 哈希结束还须重新读取资产字节确认一致；同 tick 的
 输出层归因可显式使用 smoke 的 `--enable-fp32-lm-head`，它只转发社区
 公开选项；controller、worker、实际 server info 和 CPU 参考报告必须一致。
 默认保持社区默认配置，不能因局部指标改善而启用为 adapter 默认或改精度阈值。
+`tools.l15_checkpoint_dtype_probe` 在隐藏 GPU 的 HOSTnone 进程，对已绑定
+accuracy 请求固定同一 prompt/输出序列，比较独立 CPU FP32/BF16 eager
+及 HCU 概率；记录具体输出位置、token 和三方 logprob。CPU BF16 包含
+BF16 输出层，不等价于 SGLang/HCU 实现；报告仅作诊断，不输出 passed，
+不能用 CPU 自身的 dtype 差异豁免原 FP32 精度门禁。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测
    "能跑不崩"。案例：rope GPT-J cache 恒为半分 [cos|sin] 布局（fbc540c）。

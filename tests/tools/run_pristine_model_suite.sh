@@ -25,4 +25,8 @@ export HCU_ADAPTER_HOST="${HCU_ADAPTER_HOST:-sglang}"
 export PYTHONPATH="$ADAPTER_TREE:$SGLANG_TREE/python${PYTHONPATH:+:$PYTHONPATH}"
 
 python -m tools.upstream_source --up-tree "$SGLANG_TREE"
+if [[ "${1:-}" == "--preflight-only" ]]; then
+  python -c 'import sglang; print("sglang:", sglang.__file__)'
+  exit 0
+fi
 exec bash "$ADAPTER_TREE/tests/tools/run_model_suite.sh" "$@"

@@ -234,16 +234,12 @@ REGISTRY = {
     },
     "HCU_DSV4_WQKV_SCALE": {
         "env": "HCU_DSV4_WQKV_SCALE", "default": "1",
-        "about": "DSV4 wqkv_a CT-int8 scale 融合针脚（dsv4_wqkv_scale_patch."
-                 "py）：v0522 load_weights 融合分支抓 .weight/.weight_"
-                 "scale_inv/.qweight 但漏 CT INT8 per-channel .weight_"
-                 "scale——DAS w4a8 检查点的 wq_a/wkv int8 scale 被 'not "
-                 "found in params_dict' 丢弃，wqkv_a.weight_scale（W8A8Int8 "
-                 "create_weights 所建）拿不到数据=注意力投影带未初始化 "
-                 "scale 反量化（boot 正常、数值垃圾；nmz16 2026-10-26）。"
-                 "针脚幂等补两个 endswith；关融合不是绕法（mapper 后的组 "
-                 "targets 只认融合名 wqkv_a）。上游各平台同病，PR 前由本"
-                 "针脚顶住；=0 跳过",
+        "about": "DSV4 wqkv_a CT-int8 scale 运行时兼容：原融合分支漏 "
+                 ".weight_scale，导致 per-channel scale 未加载。扩展两处 "
+                 "str.endswith 参数为 suffix 元组，保留社区原加载字节码、"
+                 "过滤与异步流程及已有别名，不读写或重编译 deepseek_v4.py。"
+                 "关融合不是绕法（mapper 后的组 targets 只认融合名）；"
+                 "=0 跳过安装。",
     },
     # custom all-reduce
     "HCU_AITER_AR": {

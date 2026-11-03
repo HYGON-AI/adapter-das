@@ -29,6 +29,10 @@ facade 的运行时桥替代磁盘补丁；不可重新引入 common.py 写回�
 不写回 fp8.py。block 元数据必须同时用于当前加载和后续 runner，
 不能只改 method.weight_block_size 而让 quant_config 仍为 32×32，
 也不能修改其他层共享的 checkpoint config。
+`dsv4_wqkv_scale_patch` 仅扩展原加载函数两处 `name.endswith`
+的参数常量，以 tuple 接纳 CT-int8 `.weight_scale`，保留原函数对象、
+指令字节及 PP/MTP、异步加载、流式 buffer 与原融合路径，不写回
+`deepseek_v4.py`；签名或调用位置漂移须拒绝，不能重写权重流绕开原过滤。
 完整目标与证据见 `docs/l15-readiness-plan.md`。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测

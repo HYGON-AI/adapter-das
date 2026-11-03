@@ -167,16 +167,6 @@ TEXT_PATCH_ALLOWLIST = {
     # per the tree's own lora JIT convention) — DSV4-Flash decode graph
     # capture, nmz16 gfx938 2026-10-20. See hcu_adapter/jit_dpskmeta.py.
     ("platform_detect", "#include <cub/block/block_scan.cuh>"),
-    # Remaining python-tree text patches (needle == register detail, §3).
-    # dsv4 wqkv_a fuse branch (deepseek_v4.py load_weights) catches fp8
-    # .weight_scale_inv + GGUF .qweight but not the compressed-tensors INT8
-    # per-channel .weight_scale: DAS w4a8 attn scales dropped, wqkv_a
-    # dequantizes with uninitialized scale. nmz16 2026-10-26; upstream gap
-    # on every platform. See hcu_adapter/dsv4_wqkv_scale_patch.py.
-    (
-        "platform_detect",
-        "dsv4 wqkv_a fuse: accept CT int8 per-channel .weight_scale shards",
-    ),
     # same file, Phase-1/2 hand scans: mask-form shuffles undeclared on DTK;
     # width=32 HIP forms keep the exact CUDA 32-lane warp segmentation.
     ("platform_detect", "uint32_t y = __shfl_up_sync(0xffffffff, v, o);"),

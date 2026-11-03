@@ -190,6 +190,36 @@ GPU 0 空闲检查后，转换专项 **4 passed**，包含社区原始函数和�
 此证据不等于真实 DSV4 checkpoint、DeepEP 多卡执行或全部精度验收。
 L0 GREEN（31 项既有 warning），未执行全量 adapter/vendor 套件。
 
+### DSV4 CT-int8 WQKV scale 加载迁移
+
+`dsv4_wqkv_scale_patch` 不再读写或重编译 `deepseek_v4.py`。
+仅将原 `load_weights` 两处 `name.endswith` 的 suffix 常量扩展为 tuple，
+让 `.weight_scale` 走原 q/kv 融合分支；原函数对象、指令字节、签名、
+已缓存别名、权重迭代及 PP/MTP、异步加载和错误检查保持原路径。
+安装器验证签名与两处单参数调用位置，漂移拒绝；上游已有对应支持时不改 code。
+移除该 Python 文件的 text-patch 白名单，安装放到算子/vendor 初始化之后。
+
+nmz21 隐藏 GPU 的六模块组合回归 **97 passed、12 skipped、1 deselected**；
+随后新增的 spawn 与上游原生支持加载回归 **3 passed**。测试包含从 Git
+HEAD 提取的社区原始加载器与融合 helper、非单位 INT8 per-channel scales、
+独立反量化投影、PP/MTP、真实线程池异步、未配对/重复分片及只读源码。
+物理 GPU 1 的两臂加载与投影数值测试 **2 passed**；CPU 算子契约
+**38 passed**。日志为 `iteration6-scale-runtime-cpu.log`、
+`iteration6-scale-spawn.log`、`iteration6-scale-runtime-gpu.log`、
+`iteration6-ops-cpu.log`，均位于远端 `results/l15-readiness/`。
+
+GPU 0–3 后续出现占用，模型任务预检拒绝后重新检查并选择物理 GPU 4
+（约 96.9% 空闲）。干净隔离树 `sglang-0.5.22-pristine-iter6` 启动前
+完整性通过；真实 Qwen2-0.5B-Instruct graph worker 启动及两批生成通过、
+退出码 0。总控仍正确判失败：运行后 **25 个 JIT C++/HIP 文件变化**，
+没有 Python 文件变化，也没有新增源码。`deepseek_v4.py` 保持原样，
+worker 日志确认运行时 scale 桥已安装。报告为
+`iteration6-pristine-before.json`、`iteration6-checkpoint.json`。
+L0 GREEN（31 项既有 warning），未运行全量 adapter/vendor 套件。
+这是本次加载桥和真实 Qwen2 执行回归证据，不等于真实 DSV4 CT-int8
+checkpoint 已验证，亦不等于整体源码零改写或多模型精度目标已完成。
+下一步迁移剩余 JIT 编译输入，保留这些 portability 修复和数值语义。
+
 ## 原四步实施与验证记录
 
 1. **严格执行与结果判定**：校验真实单卡 HIP、源码来源、版本绑定；

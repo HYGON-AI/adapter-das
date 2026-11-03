@@ -2688,27 +2688,6 @@ def install() -> None:
                 exc_info=True,
             )
 
-        # 10.9. DSV4 wqkv_a CT-int8 scale fuse (2026-10-26, nmz16 dsv41f
-        #      Channel-INT4-w4a8): the v0522 load_weights fuse branch catches
-        #      .weight / .weight_scale_inv / .qweight but NOT the CT INT8
-        #      per-channel .weight_scale -- the DAS w4a8 attn scales are
-        #      dropped ("not found in params_dict") and wqkv_a dequantizes
-        #      with an uninitialized scale (boot-fine, numerics-garbage).
-        #      Idempotent needle; disabling the fuse is NOT a workaround (the
-        #      name-mapped group targets only match the fused wqkv_a name).
-        #      Knob: HCU_DSV4_WQKV_SCALE = 1 (default) | 0.
-        try:
-            from hcu_adapter import dsv4_wqkv_scale_patch as _dwsp
-
-            _dwsp.install()
-        except ImportError:
-            pass
-        except Exception:
-            logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: dsv4 wqkv_a scale-fuse patch not installed",
-                exc_info=True,
-            )
-
         # 11. Prefill context-parallel bridge (2026-10-12): stock v0.5.21
         #     validate_prefill_cp_platform rejects HIP outright; HCU_PREFILL_CP=1
         #     (opt-in) opens the gate so the upstream CP machinery (zigzag/
@@ -3099,6 +3078,17 @@ def install() -> None:
                     "HCU adapter: spec-loc safe routing not installed",
                     exc_info=True,
                 )
+
+        # DSV4 CT-int8 q/kv scales must use the existing fused loader arm.
+        # Extend its endswith arguments at runtime after operator/vendor setup.
+        try:
+            from hcu_adapter import dsv4_wqkv_scale_patch
+
+            dsv4_wqkv_scale_patch.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: DSV4 CT scale loader not installed", exc_info=True,
+            )
 
         # Import quantization only after operator/vendor setup. The original
         # loader receives a private cast interface; community files stay intact.

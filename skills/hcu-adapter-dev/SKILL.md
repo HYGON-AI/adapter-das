@@ -96,6 +96,10 @@ graph 错误；最终输出阈值保持原样，routing 在 down-GEMM 存 BF16 �
 显式 `w8a8_int8` 和自动 CT 的 Linear 都需绑定既有 `int8_scaled_mm`；
 只修 CT 模块不能覆盖前者。`int8_linear` 在验证两个原方法的全局符号契约后
 补 module global，保留方法和已有别名，不新增 GEMM 或改社区源码。
+退役自研 all-reduce 后，vendor 拒绝门不得再引用其旧安装状态；
+`HCU_DISABLE_OPS=aiter_ar` 必须在新解释器真实 bootstrap 中拒绝并回退 NCCL。
+CPU 参考工具的单测也必须在干净 HOSTnone/隐藏 GPU 的进程执行；
+GPU 全套已加载宿主时，以独立进程复测，不能放宽生产工具的隔离守卫。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测
    "能跑不崩"。案例：rope GPT-J cache 恒为半分 [cos|sin] 布局（fbc540c）。

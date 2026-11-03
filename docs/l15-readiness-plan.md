@@ -906,6 +906,17 @@ Python <3.11 的 `tomli` 依赖；未跳过测试。该容器真实 wheel 构建
 `HCU_CKPT=/model/glm5/GLM-5` 的同节点独立复测得到 q/k cos=1、
 max_abs=0；见 `iteration32-rope-probe.log`。原路径错误没有被覆盖。
 
+上述 9 项非 vLLM 失败已完成增量修复：删除 all-reduce 拒绝门对退役
+`_tar_installed` 的引用，恢复显式快关；kpool pool fixture 增补社区
+`index_page_size` 字段；影子导入与 CPU 参考测试使用干净 HOSTnone
+子进程，生产工具的“已加载宿主即拒绝”守卫不变。
+nmz21 后续资源检查显示显存已占用，GPU 作业在启动前拒绝；未终止其他进程。
+改在已确认空闲的 nmz7 GPU5 验证全部相关文件，得到
+**51 passed、1 skipped、1 deselected**，见
+`iteration34-regression-fixes.log`。skip 是旧 aiter 布局才适用的 opt-in
+场景，deselected 为本轮不运行的双卡 stress 项。
+该证据是全量失败后的增量验证，不把原 56 failed/29 errors 改为整轮全绿。
+
 ## 第四步验证（2026-11-03）
 
 - `ci/upstream_diff.py` 对不可变 Git 快照比较已声明的符号、签名/函数体、

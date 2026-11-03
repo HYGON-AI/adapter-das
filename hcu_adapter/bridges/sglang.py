@@ -1561,7 +1561,7 @@ def install() -> None:
             if _ks and _ks.op_disabled("aiter_ar")
             else f"{_ar_val} [{_ar_src}]"
         )
-        if _ar_refuse and not _tar_installed:
+        if _ar_refuse:
             try:
                 import sglang.srt.distributed.device_communicators.\
                     custom_all_reduce as _car

@@ -1137,4 +1137,50 @@ L1.5 family matrix：Dense 3、MLA 5、MoE 7、量化 12、Mamba 5，
   故意修改签名、函数体、删除符号/nodeid/needle 的回归均能拒绝。
 - 证据：`results/l15-readiness/phase4-workflow-audit.json`、
   同名 `-stages/upstream-diff.json`、`final-tool-tests.log`、`final-l0.log`。
-  本次交付手动升级工作流，未配置定时巡检，也未验证新社区版本。
+本次交付手动升级工作流，未配置定时巡检，也未验证新社区版本。
+
+### DeepSeek-V4.1-Flash-Channel-INT4 真实启动闭环（2026-11-04）
+
+在 nmz7 的 `sglang_liph_adapter` 容器中，以 adapter
+`d1df244867a5738c4c4a15f35e4eae5c5e7fec09`、社区 SGLang
+`baa9befa381511cd4d56f83980951e5a45fffc6d` 和 cookbook
+`40adc4d30ec2640e3391cfd78759bd3598e95f71` 运行真实
+`/model/DeepSeek-V4.1-Flash-Channel-INT4-w4a8` checkpoint。checkpoint
+执行前后保持相同的顶层文件清单指纹
+`b2f7e8532d6cfd5ec459f51f18e30ecac58292dc2279957b3ebf519b7d3b373f`；
+`config.json`、`model.safetensors.index.json` 和
+`tokenizer_config.json` 的 SHA256 也保持不变。社区源码目录执行前后仍为
+固定 commit 且工作区干净。
+
+当前可复现的启动配方是 TP4/EP1 correctness 路径：
+
+```text
+--tp-size 4 --ep-size 1
+--moe-a2a-backend none --moe-runner-backend triton
+--mem-fraction-static 0.90 --max-running-requests 16
+--chunked-prefill-size 8192 --cuda-graph-max-bs-decode 16
+--language-model-only
+```
+
+模型后端自动选择 page size 256，prefill graph 关闭，decode graph 捕获
+`[1, 2, 4, 8, 12, 16]` 六个 batch 桶。运行时设置
+`SGLANG_DSV4_FP4_DEQUANT=1`、`SGLANG_HCU_EP_BF16=1`，并关闭
+`SGLANG_OPT_FUSE_MHC_POST_PRE`、两个 TileLang mHC pre/post 路径以及
+`SGLANG_ROCM_USE_AITER_TILELANG_MHC`。460GB 真实权重加载完成，每卡约
+116.4GiB；decode graph 捕获成功，用时约 67 秒；两次 `/generate` 均返回
+HTTP 200 且请求返回码为 0。巴黎/埃菲尔铁塔请求生成连贯文本；算术请求
+立即输出 stop token，仍需补充更强的语义断言后再记作完整语义验收。
+
+这次验证确认了“L1.5 用例通过后可启动真实模型”的 TP4/EP1 闭环，不能
+外推为 DeepEP EP4 已通过。TileLang 0.1.15 的 mHC pre 融合仍因
+`ThreadSync: Cannot lower a required shared-memory sync inside the else branch`
+而关闭；`mem-fraction-static=0.78` 不足以同时容纳权重和 KV cache，当前
+实测最低可行值约为 0.8683。TP4/EP4 在社区 dispatcher 中会把 adapter
+的 CT W4A8→W4A16 correctness 路径送入已退役的
+`forward_deepgemm_masked`，所以 EP4 作为后续独立功能点处理，不能纳入
+当前启动通过结论。
+
+完整配方、环境、指纹和请求证据见
+`results/l15-readiness/iteration51-dsv41-int4.json`，原始服务日志和请求
+结果见同名目录。下一步先在 nmz21 做离线 EP4 dispatcher 复现，再修改
+adapter 运行时路由；修改前必须增加离线回归，且不写回社区源码。

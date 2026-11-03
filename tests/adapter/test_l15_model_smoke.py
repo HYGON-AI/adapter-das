@@ -86,11 +86,14 @@ def test_incomplete_and_escaping_shard_indices_are_refused(tmp_path):
     assert failed["passed"] is False and "missing checkpoint shard" in failed["error"]
 
 
-def test_hashing_rechecks_assets_already_read(tmp_path, monkeypatch):
+@pytest.mark.parametrize("coarse_metadata", [False, True])
+def test_hashing_rechecks_assets_already_read(tmp_path, monkeypatch, coarse_metadata):
     import tools.checkpoint_files as files
 
     model = _checkpoint(tmp_path)
     original = files.hashlib.sha256
+    if coarse_metadata:
+        monkeypatch.setattr(files, "_identity", lambda stat: "same-timestamp-tick")
 
     class Digest:
         def __init__(self):

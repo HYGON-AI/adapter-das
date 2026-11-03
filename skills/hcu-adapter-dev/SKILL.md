@@ -55,6 +55,8 @@ worker 加载/执行前后绑定实际 checkpoint 字节，参考执行也必须
 历史 smoke 的缺失绑定不能靠参考时 fingerprint 倒推补齐，须明确标记
 legacy-unbound。精度门禁还须补输入/长度/分布和模型族覆盖，不能把 top1 或有限 logprob
 单独当成完整模型精度。
+checkpoint 哈希结束还须重新读取资产字节确认一致；同 tick 的等长写入可能
+保持相同 stat 元数据，不能仅依赖时间戳判断已读文件是否变化。
 固定 `--profile accuracy` 另覆盖双语、512/2048 token、复用/变输入，
 以 CPU FP32 的所选概率与 top-20+tail 合并分布按版本化策略验收；
 必须匹配 HCU 权重字节并执行完整 eager/graph，不能把合并分布称为

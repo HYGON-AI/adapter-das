@@ -11,6 +11,14 @@ def _identity(stat):
     return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
 
 
+def _digest(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _files(model):
     model = Path(model)
     files = {p.relative_to(model).as_posix(): p for pattern in _ASSETS
@@ -45,19 +53,23 @@ def fingerprint(model):
     result, stamps = {}, {}
     for name, path in sorted(files.items()):
         before = path.stat()
-        digest = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-                digest.update(chunk)
+        digest = _digest(path)
         after = path.stat()
         if _identity(before) != _identity(after):
             raise ValueError(f"checkpoint asset changed while hashing: {name}")
         stamps[name] = _identity(after)
-        result[name] = digest.hexdigest()
+        result[name] = digest
     if set(_files(model)) != set(files):
         raise ValueError("checkpoint asset inventory changed while hashing")
     if any(_identity(path.stat()) != stamps[name] for name, path in files.items()):
         raise ValueError("checkpoint asset changed while hashing other files")
+    # Metadata may have coarse timestamps or be cached on a shared filesystem.
+    # Confirm bytes too: earlier assets can change while later shards are read,
+    # without producing any observable stat difference.
+    if any(_digest(path) != result[name] for name, path in sorted(files.items())):
+        raise ValueError("checkpoint asset bytes changed while hashing other files")
+    if set(_files(model)) != set(files):
+        raise ValueError("checkpoint asset inventory changed during byte confirmation")
     return result
 
 

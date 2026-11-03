@@ -498,6 +498,17 @@ context_length=128、max_total_tokens=512、mem_fraction_static=0.25，
 分别 eager/graph；与原配方的 TP2/fa3/page64/FP8 KV/NEXTN 存在差异，
 不套用其定制环境或声明原部署配方逐项通过。
 
+### checkpoint 哈希结束时的字节复核
+
+后续 CPU 组合复现哈希负控偶发漏检：config 在读取后由 256 改为 512，
+等长写入若处于同一时间戳粒度，stat 身份可能没有可见差异。
+失败保留在 `iteration16-lm-head-option-cpu.log`。
+`fingerprint` 现在结束时再次流式读取全部资产并比较 SHA256，
+同时重新核对清单，不仅依靠 inode/mtime/ctime。
+回归包含真实元数据与强制完全相同元数据两臂，均在
+`iteration16-final-cpu.log` 中通过。额外读取不改变模型文件、内存占用仍按块限制；
+本阶段优先保证权重绑定检查，不以 I/O 性能作为验收条件。
+
 ## 原四步实施与验证记录
 
 1. **严格执行与结果判定**：校验真实单卡 HIP、源码来源、版本绑定；

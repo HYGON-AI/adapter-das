@@ -33,6 +33,56 @@ def _jit_module(in_dtype, out_dtype, group_size, scale_ue8m0, row_major, aligned
 """
 
 
+@pytest.mark.parametrize("layout", ["contig", "masked"])
+@pytest.mark.parametrize("group_size", [32, 128])
+def test_gpu_dsv4_output_storage_and_variable_graph_replay(layout, group_size):
+    if os.environ.get("HCU_TEST_JIT_GPU") != "1":
+        pytest.skip("requires explicit remote HIP compiler validation")
+    assert torch.version.hip and torch.cuda.is_available()
+    from hcu_adapter import jit_sources
+    from sglang.kernels.ops.moe import dsv4
+
+    jit_sources.install()
+    bridge.install()
+    shape = (2, 5, 1024) if layout == "masked" else (5, 1024)
+    x = torch.ones(shape, device="cuda", dtype=torch.bfloat16)
+    q = torch.zeros((*shape[:-1], 512), device="cuda", dtype=torch.float8_e4m3fn)
+    scales = torch.empty((*shape[:-1], 512 // group_size), device="cuda")
+    counts = torch.tensor([3, 5], device="cuda", dtype=torch.int32)
+
+    def run():
+        if layout == "masked":
+            dsv4.silu_and_mul_masked_post_quant(
+                x, q, scales, group_size, counts, topk=2)
+        else:
+            dsv4.silu_and_mul_contig_post_quant(x, q, scales, group_size)
+
+    run()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        run()
+    generator = torch.Generator(device="cuda").manual_seed(92)
+    for magnitude, lengths in zip((.25, 2., 7.), ((3, 5), (5, 2), (1, 4))):
+        x.copy_(torch.randn(shape, device="cuda", generator=generator) * magnitude)
+        counts.copy_(torch.tensor(lengths, device="cuda", dtype=torch.int32))
+        graph.replay()
+        gate, up = x.float().chunk(2, -1)
+        activation = torch.nn.functional.silu(gate) * up
+        groups = activation.reshape(*shape[:-1], -1, group_size)
+        ref_s = groups.abs().amax(-1).clamp_min(1e-10) / 448.
+        ref_q = (groups / ref_s[..., None]).clamp(-448, 448).to(torch.float8_e4m3fn)
+        # Masked rows outside each expert's count have no output contract.
+        valid = (torch.arange(5, device="cuda")[None, :] < counts[:, None]
+                 if layout == "masked" else slice(None))
+        torch.testing.assert_close(scales[valid], ref_s[valid], rtol=2e-5, atol=1e-7)
+        actual = (q.float().reshape_as(groups) * scales[..., None])[valid].flatten()
+        want = (ref_q.float() * ref_s[..., None])[valid].flatten()
+        torch.testing.assert_close(actual, want, rtol=.13, atol=magnitude ** 2 * .02)
+        assert torch.nn.functional.cosine_similarity(actual, want, dim=0) >= .9999
+        assert torch.nn.functional.cosine_similarity(
+            actual, activation[valid].flatten(), dim=0) >= .999
+
+
 @pytest.fixture(params=["offline", "community-git"])
 def sources(request):
     if request.param == "offline":

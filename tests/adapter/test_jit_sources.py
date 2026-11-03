@@ -49,6 +49,8 @@ def _synthetic(root):
         add("csrc/" + name, needle)
     for _, needle, _ in jit_quant_fp8._PATCHES_WARP:
         add(jit_warp._RELPATH, needle)
+    for name, needle, _ in jit_quant_fp8._PATCHES_INCLUDE:
+        add("include/sgl_kernel/" + name, needle)
     for needle, _ in jit_warp._SHFL_MAP:
         add(jit_warp._RELPATH, needle)
     for needle, _ in jit_dot_product._PATCHES:

@@ -60,6 +60,16 @@ _PATCHES_V2 = (
     ("gemm/per_token_group_quant_8bit_v2.cuh", _NEEDLE_V2_CVT, _REPL_V2_CVT),
 )
 
+# The community DSV4 software converter saturates exp8 >= 15, collapsing
+# the valid OCP top segment [256, 448] to 448. On verified gfx938, use
+# DTK's OCP conversion branch, as already used by generic/v2 quantization.
+# Keep other architectures (especially gfx942/FNUZ) on their original path.
+_NEEDLE_DSV4_CVT = "#elif defined(__gfx950__) || defined(__gfx1200__) || defined(__gfx1201__)"
+_REPL_DSV4_CVT = _NEEDLE_DSV4_CVT + " || defined(__gfx938__)"
+_PATCHES_INCLUDE = (
+    ("deepseek_v4/fp8_utils.cuh", _NEEDLE_DSV4_CVT, _REPL_DSV4_CVT),
+)
+
 # HIP: __hip_bfloat162 has no __shfl_xor overload (reduce<double/bf162> in
 # the quant kernel goes through warp.cuh) — route it through the uint16
 # bit pattern and shuffle that.
@@ -105,7 +115,7 @@ def _apply(root, register):
     missing = []
     for base, rel, needle, repl in (
         [(csrc, r, n, rp) for (r, n, rp) in _PATCHES + _PATCHES_V2]
-        + [(inc, r, n, rp) for (r, n, rp) in _PATCHES_WARP]
+        + [(inc, r, n, rp) for (r, n, rp) in _PATCHES_WARP + _PATCHES_INCLUDE]
     ):
         # _PATCHES_WARP rel paths are already relative to inc
         p = base / rel
@@ -129,7 +139,7 @@ def _apply(root, register):
     # TEXT_PATCH_ALLOWLIST keys are (op, exact needle); the registry gate
     # fingerprints a text patch by its detail, so each needle registers as
     # its own record (same op on the same file target is not a conflict).
-    for r, n, _rp in _PATCHES + _PATCHES_V2 + _PATCHES_WARP:
+    for r, n, _rp in _PATCHES + _PATCHES_V2 + _PATCHES_WARP + _PATCHES_INCLUDE:
         register(
             "per_token_quant",
             "gfx936-hipcc-fp8-cvt",

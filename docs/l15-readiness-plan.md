@@ -294,6 +294,22 @@ RoPE 两布局及 generic/v2 FP8 group32/128 的真实编译、独立参考与
 `iteration8-dsv4-ffi-gpu.log` 保留；初步定位共享软件转换的最高指数段
 过早饱和，待独立修复，不能以 generic/v2 的通过代替 DSV4 数值验收。
 
+### DSV4 gfx938 FP8 最高指数段转换修复
+
+已确认社区 `deepseek_v4/fp8_utils.cuh` 的软件转换在 `exp8 >= 15`
+时直接饱和，使 OCP E4M3 的合法最高段（256～448）过早变为 448。
+`jit_quant_fp8` 在 adapter 编译输入缓存内仅把 gfx938 纳入现有
+DTK OCP 转换分支，原始头文件字节不变；其他架构继续原有分支，
+尤其不修改 gfx942 的 FNUZ 语义。新增 needle 仍经白名单登记和缓存哈希。
+
+nmz21 GPU 0 对原失败用例原样复测，连续/变长布局 × group32/128
+**4 passed**（`iteration9-dsv4-ffi-gpu.log`）。每项由原社区 public API
+实际编译，独立 FP32 SiLU×mul/分组 scale/FP8 参考对拍，三轮改变输入
+幅度和专家有效 token 数后 replay；有效行检查 scale、逐元素误差和
+cosine，未放宽首轮失败断言。隐藏 GPU 的 source/FFI 两臂回归
+**25 passed**（`iteration9-jit-cpu.log`）；L0 GREEN（31 既有 warning）。
+这是该设备上的算子证据，尚不代表真实 DSV4 checkpoint 或完整模型精度。
+
 ## 原四步实施与验证记录
 
 1. **严格执行与结果判定**：校验真实单卡 HIP、源码来源、版本绑定；

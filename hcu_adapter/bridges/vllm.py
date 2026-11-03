@@ -21,7 +21,7 @@ from hcu_adapter.runtime_lifecycle import ProcessLocalLifecycle
 
 
 SUPPORTED_VLLM_RELEASE_PREFIXES = frozenset({(0, 32), (0, 33)})
-SUPPORTED_HCU_ARCHES = frozenset({"gfx928", "gfx936", "gfx938"})
+SUPPORTED_HCU_ARCHES = frozenset({"gfx928", "gfx92a", "gfx936", "gfx938"})
 HYGON_PCI_VENDOR_ID = "0x1d94"
 _PCI_DEVICES_ROOT = Path("/sys/bus/pci/devices")
 _PLATFORM_CLASS = "hcu_adapter.bridges.vllm.HcuPlatform"
@@ -110,7 +110,7 @@ def _has_hygon_pci_device(
 
 
 def detect_hcu(torch_module: object | None = None) -> HcuDetection:
-    """Detect a validated HCU lazily and fail safely on other HIP hosts."""
+    """Detect a supported HCU identity lazily; provider admission is separate."""
     if torch_module is None:
         if not _has_hygon_pci_device():
             return HcuDetection(

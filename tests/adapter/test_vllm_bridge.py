@@ -89,9 +89,10 @@ def _fake_torch(*, hip="6.2", available=True, architecture="gfx938"):
     ), accelerator
 
 
-@pytest.mark.parametrize("architecture", ("gfx928", "gfx936", "gfx938"))
-def test_hcu_detection_accepts_the_validated_architectures(architecture):
-    torch_module, _ = _fake_torch(architecture=architecture)
+@pytest.mark.parametrize("architecture", ("gfx928", "gfx92a", "gfx936", "gfx938"))
+@pytest.mark.parametrize("suffix", ("", ":sramecc+:xnack-"))
+def test_hcu_detection_accepts_supported_architectures(architecture, suffix):
+    torch_module, _ = _fake_torch(architecture=architecture + suffix)
 
     result = bridge.detect_hcu(torch_module)
 
@@ -110,13 +111,14 @@ def test_hcu_detection_rejects_non_hip_without_querying_a_device():
     assert accelerator.property_calls == 0
 
 
-def test_hcu_detection_rejects_an_unvalidated_rocm_architecture():
-    torch_module, _ = _fake_torch(architecture="gfx942")
+@pytest.mark.parametrize("architecture", ("gfx942", "gfx950", "gfx92a0"))
+def test_hcu_detection_rejects_an_unsupported_architecture(architecture):
+    torch_module, _ = _fake_torch(architecture=architecture)
 
     result = bridge.detect_hcu(torch_module)
 
     assert result.detected is False
-    assert result.architecture == "gfx942"
+    assert result.architecture == architecture
     assert "unsupported" in result.reason
 
 

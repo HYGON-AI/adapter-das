@@ -6,6 +6,11 @@ HYGON-AI/vllm-plugin-das 分别使用 `v0.33.0` 发布线；本仓继续在主�
 公共机制，版本准入同时接受 epoch 为 0 的 `0.32.x` 和 `0.33.x`，包括
 RC/dev/post/local 后缀。准入通过不表示 native ABI、算子或模型验收通过。
 
+HCU 身份清单为 `gfx928`、`gfx92a`、`gfx936`、`gfx938`；设备属性中的
+`:sramecc+:xnack-` 等后缀在匹配前移除。Core 的 DTK 构建清单须同步维护。
+识别 `gfx92a` 不代表其数值、Graph 或模型验证已完成，也不扩大仅在
+`gfx936` 验证的 FP8 linear fallback 等 provider 准入范围。
+
 ## 三仓定位
 
 | 仓库 | 负责内容 | 接入位置 |

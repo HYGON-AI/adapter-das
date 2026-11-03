@@ -86,6 +86,9 @@ CT-FP8 的组件回归必须经过真实 scheme、加载后处理与默认 paddi
 仅 `apply_fp8_linear` 的非 CT、显式关闭 padding 分支不能代替。
 CPU BF16 参考也受 CPU 架构/内核实现影响；跨节点比较需保留环境，
 不能把不同 CPU 的 BF16 数值差异直接归因 HCU。
+smoke 的 `--quantization` 只转发社区公开选项，默认仍按 checkpoint 自动检测；
+controller/worker/server 及参考报告必须绑定同一显式选项。配置未声明量化
+但显式在线量化的执行也须拒绝普通 CPU FP32/dtype 参考，不能据此绕过量化限制。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测
    "能跑不崩"。案例：rope GPT-J cache 恒为半分 [cos|sin] 布局（fbc540c）。

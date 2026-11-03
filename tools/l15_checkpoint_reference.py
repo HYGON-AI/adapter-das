@@ -15,6 +15,7 @@ import sys
 
 from tools.l15_model_smoke import (
     validate_execution_dtype, validate_generation, validate_lm_head_option, validate_mode,
+    validate_quantization_option,
 )
 from tools.l15_runtime import write_json
 from tools.checkpoint_files import fingerprint
@@ -25,6 +26,7 @@ def requests(document):
     profile = document.get("generation_profile", "smoke")
     fp32_head = document.get("enable_fp32_lm_head", False)
     dtype = document.get("dtype", "bfloat16")
+    quantization = document.get("quantization")
     if (document.get("artifact") != "l15-model-smoke"
             or document.get("passed") is not True
             or document.get("complete") is not True
@@ -51,6 +53,7 @@ def requests(document):
                 or evidence.get("generation_profile", "smoke") != profile
                 or evidence.get("enable_fp32_lm_head", False) is not fp32_head
                 or evidence.get("dtype", "bfloat16") != dtype
+                or evidence.get("quantization") != quantization
                 or mode not in {"eager", "graph"} or mode in modes):
             raise ValueError("invalid or duplicate checkpoint worker")
         modes.add(mode)
@@ -58,6 +61,7 @@ def requests(document):
         validate_mode(evidence.get("server_info", {}), mode)
         validate_lm_head_option(evidence.get("server_info", {}), fp32_head)
         validate_execution_dtype(evidence.get("server_info", {}), dtype)
+        validate_quantization_option(evidence.get("server_info", {}), quantization)
         waves = evidence.get("generations", [])
         cases = evidence.get("accuracy_cases")
         if profile == "accuracy":
@@ -167,8 +171,9 @@ def run(args):
         raise ValueError("reference output must be outside the checkpoint directory")
     config = json.loads((model_path / "config.json").read_text())
     vocab_size = vocabulary_size(config)
-    if config.get("quantization_config") or text_configuration(config).get("quantization_config"):
-        raise ValueError("this FP32 probe does not validate quantized checkpoints")
+    if (document.get("quantization") is not None or config.get("quantization_config")
+            or text_configuration(config).get("quantization_config")):
+        raise ValueError("this FP32 probe does not validate quantized checkpoints or execution")
     before = fingerprint(model_path)
     if bound is not None and before != bound:
         raise ValueError("reference checkpoint bytes differ from HCU execution")
@@ -219,6 +224,7 @@ def run(args):
         "checkpoint_binding": "matched-hcu-execution" if bound is not None else "legacy-unbound",
         "enable_fp32_lm_head": document.get("enable_fp32_lm_head", False),
         "execution_dtype": document.get("dtype", "bfloat16"),
+        "execution_quantization": document.get("quantization"),
         "reference": {"torch": torch.__version__, "transformers": transformers.__version__,
                       "device": "cpu", "dtype": "float32", "attention": "eager",
                       "model_class": type(model).__name__,

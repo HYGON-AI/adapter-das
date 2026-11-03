@@ -159,6 +159,37 @@ def test_reference_cannot_mix_model_dtypes_or_reuse_legacy_bf16_as_fp32():
     assert len(requests(report)[1]) == 8
 
 
+def test_reference_cannot_mix_explicit_and_automatic_quantization_evidence():
+    report = _report()
+    report["quantization"] = "w8a8_int8"
+    with pytest.raises(ValueError, match="worker"):
+        requests(report)
+    for job in report["jobs"]:
+        job["evidence"]["quantization"] = "w8a8_int8"
+    with pytest.raises(ValueError, match="runtime quantization"):
+        requests(report)
+    for job in report["jobs"]:
+        job["evidence"]["server_info"]["quantization"] = "w8a8_int8"
+    assert len(requests(report)[1]) == 8
+
+
+def test_explicit_online_quantization_cannot_bypass_unquantized_reference_guard(tmp_path, monkeypatch):
+    from tools import l15_checkpoint_reference as reference
+    from hcu_adapter import hcu_env
+
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "config.json").write_text('{"vocab_size":32}')
+    source = tmp_path / "smoke.json"
+    source.write_text('{"quantization":"w8a8_int8"}')
+    monkeypatch.setattr(hcu_env, "resolve", lambda _: ("none", "test"))
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(reference, "requests", lambda _: (model, []))
+    monkeypatch.setattr(reference, "execution_binding", lambda *_: None)
+    with pytest.raises(ValueError, match="quantized checkpoints or execution"):
+        run(SimpleNamespace(smoke_report=source, out=tmp_path / "out.json", threads=1))
+
+
 def test_accuracy_requests_use_explicit_ids_for_cached_prompts_and_require_top20():
     from tools.checkpoint_accuracy import cases
 

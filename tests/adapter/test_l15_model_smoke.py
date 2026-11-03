@@ -82,6 +82,14 @@ def test_execution_dtype_must_match_actual_server_and_reject_unknown_precision()
             smoke.validate_execution_dtype(info, dtype)
 
 
+def test_explicit_quantization_requires_actual_server_agreement():
+    smoke.validate_quantization_option({}, None)
+    smoke.validate_quantization_option({"quantization": "w8a8_int8"}, "w8a8_int8")
+    for info, requested in [({}, "w8a8_int8"), ({"quantization": "fp8"}, "w8a8_int8")]:
+        with pytest.raises(ValueError, match="runtime quantization"):
+            smoke.validate_quantization_option(info, requested)
+
+
 def _checkpoint(tmp_path):
     model = tmp_path / "model"
     model.mkdir()
@@ -132,8 +140,11 @@ def test_hashing_rechecks_assets_already_read(tmp_path, monkeypatch, coarse_meta
 
 
 @pytest.mark.parametrize("dtype", ["bfloat16", "float32"])
+@pytest.mark.parametrize("quantization", [None, "w8a8_int8"])
 @pytest.mark.parametrize("change", ["clean", "before", "during"])
-def test_worker_binds_bytes_before_loading_and_after_execution(tmp_path, monkeypatch, change, dtype):
+def test_worker_binds_bytes_before_loading_and_after_execution(
+    tmp_path, monkeypatch, change, dtype, quantization
+):
     model = _checkpoint(tmp_path)
     expected = fingerprint(model)
     manifest = tmp_path / "manifest.json"
@@ -143,6 +154,7 @@ def test_worker_binds_bytes_before_loading_and_after_execution(tmp_path, monkeyp
     class Engine:
         def __init__(self, **kwargs):
             assert kwargs["dtype"] == dtype
+            assert kwargs.get("quantization") == quantization
             created.append(kwargs)
 
         def __enter__(self):
@@ -159,12 +171,14 @@ def test_worker_binds_bytes_before_loading_and_after_execution(tmp_path, monkeyp
                     for _ in range(2)]
 
         def get_server_info(self):
-            return {"dtype": dtype, "internal_states": [{"decode_cuda_graph_bs": [],
+            return {"dtype": dtype, "quantization": quantization,
+                    "internal_states": [{"decode_cuda_graph_bs": [],
                     "memory_usage": {"graph": {"decode": 0}}}]}
 
     monkeypatch.setitem(sys.modules, "sglang", SimpleNamespace(Engine=Engine))
     args = SimpleNamespace(model=model, family="checkpoint", mode="eager",
-                           checkpoint_manifest=manifest, out=tmp_path / "worker.json", dtype=dtype)
+                           checkpoint_manifest=manifest, out=tmp_path / "worker.json",
+                           dtype=dtype, quantization=quantization)
     if change == "before":
         (model / "model.safetensors").write_bytes(b"changed before loading")
     if change == "clean":
@@ -172,6 +186,7 @@ def test_worker_binds_bytes_before_loading_and_after_execution(tmp_path, monkeyp
         evidence = json.loads(args.out.read_text())
         assert evidence["passed"] and evidence["checkpoint_files_sha256"] == expected
         assert evidence["dtype"] == dtype
+        assert evidence["quantization"] == quantization
     else:
         with pytest.raises(ValueError, match="checkpoint changed"):
             smoke.worker(args)
@@ -181,9 +196,12 @@ def test_worker_binds_bytes_before_loading_and_after_execution(tmp_path, monkeyp
 
 @pytest.mark.parametrize("fp32_head", [False, True])
 @pytest.mark.parametrize("dtype", ["bfloat16", "float32"])
-@pytest.mark.parametrize("fault", ["clean", "worker-unbound", "after", "head-ignored", "dtype-ignored"])
+@pytest.mark.parametrize("quantization", [None, "w8a8_int8"])
+@pytest.mark.parametrize("fault", [
+    "clean", "worker-unbound", "after", "head-ignored", "dtype-ignored", "quantization-ignored",
+])
 def test_controller_cannot_accept_unbound_or_changed_checkpoint(
-    tmp_path, monkeypatch, fault, fp32_head, dtype
+    tmp_path, monkeypatch, fault, fp32_head, dtype, quantization
 ):
     model = _checkpoint(tmp_path)
     monkeypatch.setattr(smoke, "preflight",
@@ -193,6 +211,9 @@ def test_controller_cannot_accept_unbound_or_changed_checkpoint(
     def job(argv, **kwargs):
         assert ("--enable-fp32-lm-head" in argv) is fp32_head
         assert argv[argv.index("--dtype") + 1] == dtype
+        assert ("--quantization" in argv) == (quantization is not None)
+        if quantization is not None:
+            assert argv[argv.index("--quantization") + 1] == quantization
         manifest = Path(argv[argv.index("--checkpoint-manifest") + 1])
         evidence = {
             "artifact": "l15-model-worker", "passed": True, "family": "checkpoint",
@@ -200,6 +221,7 @@ def test_controller_cannot_accept_unbound_or_changed_checkpoint(
             "weight_evidence": "real-checkpoint",
             "enable_fp32_lm_head": fp32_head if fault != "head-ignored" else False,
             "dtype": dtype if fault != "dtype-ignored" else "bfloat16",
+            "quantization": quantization if fault != "quantization-ignored" else None,
         }
         if fault != "worker-unbound":
             evidence["checkpoint_files_sha256"] = json.loads(manifest.read_text())
@@ -214,14 +236,17 @@ def test_controller_cannot_accept_unbound_or_changed_checkpoint(
         binding_manifest=tmp_path / "bindings.json", out=tmp_path / "report.json", timeout=10,
         enable_fp32_lm_head=fp32_head,
         dtype=dtype,
+        quantization=quantization,
     )
     expected = (fault == "clean" or (fault == "head-ignored" and not fp32_head)
-                or (fault == "dtype-ignored" and dtype == "bfloat16"))
+                or (fault == "dtype-ignored" and dtype == "bfloat16")
+                or (fault == "quantization-ignored" and quantization is None))
     assert smoke.run(args) == expected
     report = json.loads(args.out.read_text())
     assert report["passed"] == expected
     assert report["enable_fp32_lm_head"] is fp32_head
     assert report["dtype"] == dtype
+    assert report["quantization"] == quantization
     if fault == "after":
         assert not report["complete"] and len(report["jobs"]) == 1
         assert report["jobs"][0]["checkpoint_integrity_after"]["passed"] is False

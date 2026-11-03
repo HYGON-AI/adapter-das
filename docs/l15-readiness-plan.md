@@ -812,6 +812,26 @@ role-switch 使用的 capture-bs 列表，不能以空列表误判未捕获。
 - 工具与失败判定回归 **91 passed**；包含真实 Linux 子进程及嵌套超时
   清理、空原因 XPASS 拒绝。未重新执行全量 adapter/vendor 套件。
 
+## 显式量化选项与参考边界（2026-11-03）
+
+`tools.l15_model_smoke --quantization w8a8_int8` 转发社区 Engine 公开选项，
+默认仍使用 checkpoint 自动检测。controller、worker、实际 server info 和
+参考输入必须一致，忽略选项或陈旧 worker 报告会失败。CPU FP32 参考和
+dtype 诊断同时拒绝 checkpoint 量化声明与显式在线量化，不能把未声明量化
+的原始 config 当作在线量化执行的数值金标。
+
+真实 `/model/hygon/Qwen3-30B-A3B-Channel-INT8-w8a8` 自动检测的失败保留于
+`results/l15-readiness/iteration23-qwen3-moe-int8.json/log`：社区 CT MoE
+构造拒绝并提示仅支持 NPU。社区另有 GPU `W8A8Int8MoEMethod`，且 cookbook
+固定版本 `40adc4d30ec2640e3391cfd78759bd3598e95f71` 的同模型 BW1100
+配方显式指定 `--quantization w8a8_int8`，因此先验证现有官方入口。
+该入口是否完成真实加载、生成及数值验证须分别保留后续实测证据。
+
+nmz21 隐藏 GPU 的工具回归 **114 passed**，报告
+`results/l15-readiness/iteration25-quantization-option-cpu.log`。
+此次新增节点授权包括 nmz7、nmz21、nmz28 的 `sglang_liph_adapter`，
+代码共享目录相同；GPU 作业仍须逐次检查空闲资源。
+
 ## 第四步验证（2026-11-03）
 
 - `ci/upstream_diff.py` 对不可变 Git 快照比较已声明的符号、签名/函数体、

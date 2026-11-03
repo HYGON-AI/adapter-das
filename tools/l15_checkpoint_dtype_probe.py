@@ -102,8 +102,9 @@ def run(args):
     if model_path == args.out.resolve() or model_path in args.out.resolve().parents:
         raise ValueError("diagnostic output must be outside checkpoint directory")
     config = json.loads((model_path / "config.json").read_text())
-    if config.get("quantization_config") or text_configuration(config).get("quantization_config"):
-        raise ValueError("dtype attribution does not support quantized checkpoints")
+    if (document.get("quantization") is not None or config.get("quantization_config")
+            or text_configuration(config).get("quantization_config")):
+        raise ValueError("dtype attribution does not support quantized checkpoints or execution")
     before = fingerprint(model_path)
     if before != bound:
         raise ValueError("reference checkpoint bytes differ from HCU execution")
@@ -161,6 +162,7 @@ def run(args):
         "reference_files_sha256": before,
         "enable_fp32_lm_head": document.get("enable_fp32_lm_head", False),
         "execution_dtype": document.get("dtype", "bfloat16"),
+        "execution_quantization": document.get("quantization"),
         "reference": {
             "device": "cpu", "attention": "eager",
             "dtypes": ["float32", "bfloat16"], "torch": torch.__version__,

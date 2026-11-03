@@ -92,13 +92,16 @@ def test_diagnostic_cannot_replace_original_evidence(tmp_path):
     assert report.read_text() == "original"
 
 
-@pytest.mark.parametrize("fault", ["clean", "unbound", "changed"])
+@pytest.mark.parametrize("fault", ["clean", "unbound", "changed", "explicit-quantization"])
 def test_run_records_diagnostic_without_gate_and_checks_final_bytes(tmp_path, monkeypatch, fault):
     model_path = tmp_path / "model"
     model_path.mkdir()
     (model_path / "config.json").write_text('{"vocab_size":32,"model_type":"test"}')
     source = tmp_path / "smoke.json"
-    source.write_text('{"generation_profile":"accuracy"}')
+    source.write_text(json.dumps({
+        "generation_profile": "accuracy",
+        "quantization": "w8a8_int8" if fault == "explicit-quantization" else None,
+    }))
     bound = {"asset": "original"}
     row = {"prompt_ids": [2, 3], "output_ids": [4, 5], "mode": "eager", "case": "test",
            "observed_top_logprobs": head(torch.zeros(2, 32).log_softmax(-1))}
@@ -138,7 +141,7 @@ def test_run_records_diagnostic_without_gate_and_checks_final_bytes(tmp_path, mo
     monkeypatch.setattr(probe, "reference_loader", lambda *_: loader)
     args = SimpleNamespace(out=tmp_path / "diagnostic.json", smoke_report=source, threads=1)
     if fault != "clean":
-        with pytest.raises(ValueError, match="byte-bound|changed during"):
+        with pytest.raises(ValueError, match="byte-bound|changed during|quantized checkpoints"):
             run(args)
         assert not args.out.exists()
         return

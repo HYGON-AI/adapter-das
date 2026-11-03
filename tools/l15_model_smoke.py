@@ -108,6 +108,11 @@ def validate_execution_dtype(info, requested):
         raise ValueError("runtime dtype differs from requested configuration")
 
 
+def validate_quantization_option(info, requested):
+    if info.get("quantization") != requested:
+        raise ValueError("runtime quantization option differs from requested configuration")
+
+
 def worker(args):
     checkpoint = None
     if args.family == "checkpoint":
@@ -123,6 +128,7 @@ def worker(args):
     profile = getattr(args, "profile", "smoke")
     fp32_head = getattr(args, "enable_fp32_lm_head", False)
     dtype = getattr(args, "dtype", "bfloat16")
+    quantization = getattr(args, "quantization", None)
     accuracy_cases = None
     if profile == "accuracy":
         if args.family != "checkpoint":
@@ -144,6 +150,8 @@ def worker(args):
         options.update(context_length=4096, max_total_tokens=16384)
     if fp32_head:
         options["enable_fp32_lm_head"] = True
+    if quantization is not None:
+        options["quantization"] = quantization
     with sgl.Engine(**options) as engine:
         generations = []
         # Two batches test fresh inputs and cache reuse through the real
@@ -173,6 +181,7 @@ def worker(args):
         validate_mode(info, args.mode)
         validate_lm_head_option(info, fp32_head)
         validate_execution_dtype(info, dtype)
+        validate_quantization_option(info, quantization)
     if checkpoint is not None and not audit_checkpoint(args.model, checkpoint)["passed"]:
         raise ValueError("checkpoint changed during model execution")
     write_json(args.out, {
@@ -183,6 +192,7 @@ def worker(args):
         "generation_profile": profile, "accuracy_cases": accuracy_cases,
         "enable_fp32_lm_head": fp32_head,
         "dtype": dtype,
+        "quantization": quantization,
         "model_type": config.get("model_type"),
         "text_model_type": text_configuration(config).get("model_type"),
         "generations": generations, "server_info": info,
@@ -199,6 +209,7 @@ def run(args):
     profile = getattr(args, "profile", "smoke")
     fp32_head = getattr(args, "enable_fp32_lm_head", False)
     dtype = getattr(args, "dtype", "bfloat16")
+    quantization = getattr(args, "quantization", None)
     if dtype not in ("bfloat16", "float32"):
         raise ValueError("select bfloat16 or float32 execution")
     if profile == "accuracy" and families != ["checkpoint"]:
@@ -239,7 +250,8 @@ def run(args):
                  "--model", str(model), "--family", family, "--mode", mode,
                  "--out", str(report), "--profile", profile, "--dtype", dtype]
                 + (["--checkpoint-manifest", str(manifest)] if checkpoint is not None else [])
-                + (["--enable-fp32-lm-head"] if fp32_head else []),
+                + (["--enable-fp32-lm-head"] if fp32_head else [])
+                + (["--quantization", quantization] if quantization is not None else []),
                 cwd=root, env=test_env(args.up_tree.resolve(), root),
                 timeout=args.timeout, log=work / f"{family}-{mode}.log",
             )
@@ -260,6 +272,7 @@ def run(args):
                 and evidence.get("generation_profile", "smoke") == profile
                 and evidence.get("enable_fp32_lm_head", False) is fp32_head
                 and evidence.get("dtype", "bfloat16") == dtype
+                and evidence.get("quantization") == quantization
             )
             if checkpoint is not None:
                 binding = audit_checkpoint(model, checkpoint)
@@ -278,6 +291,7 @@ def run(args):
                 "generation_profile": profile,
                 "enable_fp32_lm_head": fp32_head,
                 "dtype": dtype,
+                "quantization": quantization,
             })
             print(f"model smoke: {family}/{mode} {'PASS' if job['passed'] else 'FAIL'}", flush=True)
             if not integrity["passed"] or (
@@ -295,6 +309,8 @@ def main():
     parser.add_argument("--profile", choices=("smoke", "accuracy"), default="smoke")
     parser.add_argument("--dtype", choices=("bfloat16", "float32"), default="bfloat16",
                         help="official model compute dtype; float32 is an opt-in diagnostic")
+    parser.add_argument("--quantization",
+                        help="official quantization override; default is checkpoint auto-detection")
     parser.add_argument("--enable-fp32-lm-head", action="store_true",
                         help="use the official FP32 output-layer option for precision attribution")
     parser.add_argument("--checkpoint", type=Path)

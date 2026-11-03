@@ -35,9 +35,16 @@ from hcu_adapter.extensions import (
         "0.32.1",
         "0.32.1rc1",
         "0.32.99+vendor.7",
+        "0.33.0",
+        "0.33.0rc1",
+        "0.33.0.dev7",
+        "0.33.0.post1",
+        "0.33.0+dtk2610",
+        "0.33.1",
+        "0.33.99+vendor.7",
     ),
 )
-def test_vllm_release_gate_accepts_the_032_patch_line(version):
+def test_vllm_release_gate_accepts_supported_patch_lines(version):
     assert bridge.is_supported_vllm_version(version) is True
 
 
@@ -47,10 +54,11 @@ def test_vllm_release_gate_accepts_the_032_patch_line(version):
         None,
         "not-a-version",
         "1!0.32.0",
+        "1!0.33.0",
         "0.3.0",
         "0.31.99",
-        "0.33.0rc1",
-        "0.33.0",
+        "0.34.0rc1",
+        "0.34.0",
     ),
 )
 def test_vllm_release_gate_rejects_missing_malformed_or_other_releases(version):

@@ -114,6 +114,13 @@ kernel）时，以下矩阵是最低要求：
 
 ## 新增算子的最低测试配置
 
+FP8 grouped GEMM 小形状门见 `test_gemm_fp8.py` 的
+`test_fp8_grouped_expert_contract`：反量化参考分别展开 per-token-group
+与 128×128 block scale；覆盖有符号输入、非单位尺度、strided scale、
+空专家/padding 禁写及 64-row aligned contiguous 尾 tile。graph 必须
+同时更新输入/权重/尺度与 counts/expert IDs。该直接内核合同不能
+代替真实 DeepEP 分布式 dispatch/combine 或模型精度证据。
+
 Mamba2 graph 数值门见 `test_l15_execution_chains.py` 的
 `test_mamba2_decode_fresh_input_graph`：独立 CPU FP32 计算投影、卷积、
 SSM 与门控归一化，保留激活存储 dtype。捕获后连续三轮改变输入与

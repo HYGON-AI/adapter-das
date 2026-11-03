@@ -994,6 +994,26 @@ nmz7 GPU4：整个计算链文件 **25 passed**，严格 Mamba 家族
 四个家族；纯 Mamba2 真实 checkpoint 和 speculative/padded graph
 等范围仍不因该组件通过而视为验收完成。
 
+### FP8 grouped expert GEMM 数值与图合同（2026-11-04）
+
+新增 `test_fp8_grouped_expert_contract`，直接检查既有 adapter Triton
+masked/contiguous 实现；不改变 DeepEP 路由或实现默认值。4 个参数节点
+覆盖 K/N=128/256、有符号 FP8、非单位 128×128 权重 block scale、
+per-token-group 激活 scale 和非连续 scale view。masked 覆盖空专家、
+1/17/32 token 及 padding 禁写；contiguous 覆盖 64-row aligned
+专家分组和 129 行尾 tile。FP32 独立反量化对拍保持 cosine ≥0.9999、
+maxrel ≤0.05；真实 graph 三轮改变输入、权重、尺度与 counts/expert IDs。
+
+nmz7 GPU5：完整 FP8 GEMM 文件 **17 passed**，接入后的严格量化家族
+**10/10 case PASS**、零 skip/xfail，矩阵工具 **32 passed**，社区源码
+执行后完整性通过。见 `iteration40-fp8-grouped.log`、
+`iteration40-fp8-grouped-runtime.json`、`iteration41-quantization-family.json`、
+`iteration41-matrix-cpu.log` 和 `iteration41-quantization-runtime.json`。
+L0 **GREEN（31 warn）**、纯 CPU 算子 **38 passed**；见
+`iteration41-l0.log`、`iteration41-ops-cpu.log`。
+当前清单 32 case，Mamba 与量化分别验证，未合成一次全家族整轮证据；
+真实 DeepEP 多卡 dispatch/combine、模型精度和其他原定缺口仍需继续。
+
 ## 第四步验证（2026-11-03）
 
 - `ci/upstream_diff.py` 对不可变 Git 快照比较已声明的符号、签名/函数体、

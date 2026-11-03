@@ -29,7 +29,7 @@ python tools/l15_family_matrix.py run \
 | MLA | Tiny DeepSeek MLA 构造、compressed KV prefill/decode、碎片布局、graph contract、sparse virtual sink | 上游 MLA Triton 三项 + adapter sparse FlashMLA |
 | MoE | Top-K 权重、grouped gate、block alignment、EP `-1` sentinel、capture-safe metadata | adapter MoE gate/align 五项 |
 | Quantization | FP8 row/group/fused/scaled quant、scale 语义、异形 fallback | adapter Aiter quant 五项 |
-| Mamba | Mamba2 prefill/decode、碎片布局、replay metadata、hybrid dispatch、Conv1D varlen state | 上游 Mamba2 四项 + adapter Conv1D |
+| Mamba | Mamba2 prefill/decode、碎片布局、真实变输入 graph、状态槽位隔离、hybrid dispatch | 上游 Mamba2 四项 + adapter Mamba2/GDN 计算链与 Conv1D |
 
 ## 裁决口径
 
@@ -71,7 +71,8 @@ python tools/l15_family_matrix.py run \
 
 1. Mamba2 组件级真实 CUDAGraph fresh-input replay 已补齐（见下）；纯
    Mamba2 真实 checkpoint、更多形状及 speculative/graph padding 仍未覆盖；
-2. FP8 grouped expert GEMM 的小形状数值合同；
+2. FP8 grouped expert GEMM 已增加小形状数值合同（见下），但真实 DeepEP
+   多卡路由及模型精度仍未由此验证；
 3. INT8 MoE 两段 GEMM 的端到端合成合同已增加，完整真实 checkpoint 精度仍缺；
 4. INT4/W4A8 在 HCU 上主要是 correctness-first W4A16 降级，不能宣称原生 CUTLASS 行为；
 5. v0.5.22 部分候选路径在本地后续快照已重命名，必须以 manifest 指纹绑定的目标树 collect 为准；
@@ -149,6 +150,27 @@ nmz7 GPU4 的整个计算链文件 **25 passed**；严格 Mamba 家族
 `iteration39-mamba-family.json`、`iteration39-matrix-cpu.log`、
 `iteration39-mamba-runtime.json`。该报告仅覆盖 Mamba 家族，
 不是完整 31 case 的一次整轮运行。
+
+2026-11-04 新增 `fp8-grouped-expert-contract`，清单增至 32 case。
+masked 与 contiguous 两种 DeepEP 布局各覆盖 K/N=128 和 256，
+128×128 权重 block scale、per-token-group 激活 scale、有符号 FP8，
+以及非连续 scale view。masked 覆盖空专家、1/17/32 个有效 token
+及 padding 禁写；contiguous 按 64-row expert alignment，覆盖 129 行
+的尾 tile。每项独立 FP32 反量化对拍，保持 cosine ≥0.9999、
+maxrel ≤0.05，真实 graph 三轮改变输入、权重、尺度和设备端
+counts/expert IDs。这些是 adapter Triton 实现的直接合同，
+不宣称已经覆盖分布式 dispatch/combine 或默认 DeepEP 选型。
+
+nmz7 GPU5 整个 FP8 GEMM 文件 **17 passed**（含新增 4 个参数节点），
+执行后社区源码完整性通过，见
+`results/l15-readiness/iteration40-fp8-grouped.log` 和
+`iteration40-fp8-grouped-runtime.json`。
+接入后的严格量化家族 **10/10 case PASS**，零 skip/xfail，矩阵工具
+**32 passed**，执行后社区源码完整性通过；分别见
+`iteration41-quantization-family.json`、`iteration41-matrix-cpu.log` 和
+`iteration41-quantization-runtime.json`。L0 **GREEN（31 warn）**、纯
+CPU 算子 **38 passed**，见 `iteration41-l0.log`、`iteration41-ops-cpu.log`。
+Mamba 7/7 与量化 10/10 是分别执行的家族报告，不拼接为整轮 32 case。
 
 ## DoD
 

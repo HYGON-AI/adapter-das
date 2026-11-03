@@ -80,7 +80,7 @@ def test_triton_moe_expert_chain(runtime, tokens, topk):
     replay_three(run, [x, logits], reference)
 
 
-@pytest.mark.parametrize("kind", ["int8", "fp8"])
+@pytest.mark.parametrize("kind", ["int8", "fp8", "ct-fp8"])
 @pytest.mark.parametrize("tokens", [1, 17, 33])
 def test_quantized_linear_chain(runtime, monkeypatch, kind, tokens):
     from compressed_tensors.quantization import QuantizationStrategy
@@ -105,6 +105,22 @@ def test_quantized_linear_chain(runtime, monkeypatch, kind, tokens):
 
         def run():
             return scheme.apply_weights(layer, x, bias)
+    elif kind == "ct-fp8":
+        from compressed_tensors.quantization import QuantizationArgs
+        from sglang.srt.layers.quantization.compressed_tensors.schemes.compressed_tensors_w8a8_fp8 import (
+            CompressedTensorsW8A8Fp8,
+        )
+
+        # The real checkpoint route: channel weights, dynamic token
+        # activations, process-after-loading and default output padding.
+        scheme = CompressedTensorsW8A8Fp8(
+            QuantizationArgs(num_bits=8, type="float", strategy="channel"),
+            is_static_input_scheme=False,
+        )
+        scheme.process_weights_after_loading(layer)
+
+        def run():
+            return scheme.apply_weights(layer, x, bias)
     else:
         # Keep the real platform dispatch: claiming CUTLASS support on HIP
         # would exercise an unreachable NVIDIA branch.
@@ -125,6 +141,8 @@ def test_quantized_linear_chain(runtime, monkeypatch, kind, tokens):
             values = values.sign() * torch.floor(values.abs() + 0.5)
         q = values.to(dtype).float()
         result = (q @ weight.float().t()) * activation_scale * scale.view(1, -1)
+        if kind == "ct-fp8":
+            return (result + bias.float()).to(x.dtype)
         return result.to(x.dtype) + bias
 
     check(run(), reference())

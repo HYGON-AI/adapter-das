@@ -79,6 +79,13 @@ smoke 的 `--dtype float32` 仅是显式整模型精度诊断，默认仍为 BF1
 controller/worker/server 与参考报告须绑定同一执行 dtype。历史缺失字段
 只能按原 BF16 默认解释。FP32 配置在原 V1 阈值内不代表 BF16 通过，
 也不等同于建立了更严格的 FP32 数值策略，不能用改默认 dtype 替代定位。
+真实量化启动须核对实际执行路径：config 声明或 server 的未显式设置
+`quantization=None` 不足以判断路由。可用社区公开 profiler 接口获得
+scheme/量化/scaled-mm/设备内核调用证据，报告绑定原始 trace 字节摘要。
+CT-FP8 的组件回归必须经过真实 scheme、加载后处理与默认 padding；
+仅 `apply_fp8_linear` 的非 CT、显式关闭 padding 分支不能代替。
+CPU BF16 参考也受 CPU 架构/内核实现影响；跨节点比较需保留环境，
+不能把不同 CPU 的 BF16 数值差异直接归因 HCU。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测
    "能跑不崩"。案例：rope GPT-J cache 恒为半分 [cos|sin] 布局（fbc540c）。

@@ -84,6 +84,16 @@ python tools/l15_family_matrix.py run \
 CUTLASS 支持。独立 GEMM 用例验证 adapter 的 Triton 实现。
 Conv1D emu 项与 sparse emu 一样明确标为 CPU 契约，不计 GPU 覆盖。
 
+2026-11-03 真实 Channel-FP8 模型 trace 确认了社区 CT W8A8-FP8 →
+dynamic token quant → fallback scaled-mm 路径。`quant-linear-chain`
+补充 `ct-fp8` 参数：使用真实 scheme、channel scale、加载后处理和默认
+padding，在 1/17/33 token 下独立 FP32 对拍并做三轮变输入 graph replay，
+没有强制 CUTLASS 或替换平台路由。该 case 下现在收集 9 个参数化节点。
+nmz7 GPU5 的量化家族严格门 **8/8 case PASS**，包括这 9 个节点，
+各执行后社区源码完整性通过；报告
+`results/l15-readiness/iteration21-quantization-family.json`。
+这不是重跑全部五家族，也不替代真实量化模型的独立数值验收。
+
 新目录组合在 nmz28 单卡 GPU 0 的严格矩阵实测为 **27/27 PASS**，
 原始报告 `results/l15-readiness/phase2-all.json`。其中 25 个 GPU case，
 另 2 个是显式 CPU 契约。社区路由入口接入后，计算链与 GDN 桥回归

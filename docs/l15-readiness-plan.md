@@ -707,6 +707,64 @@ nmz7 物理 GPU4，逐项预检空闲显存比例 0.969710，同一 checkpoint
 （`iteration20-dtype-option-cpu.log`），L0 GREEN（31 既有 warning）。
 本次未重新执行全量 adapter/vendor 套件。
 
+### FP8 实际路由与 CT 组件数值闭环
+
+nmz7 物理 GPU5 再次预检空闲显存比例 0.969710，使用社区公开
+`Engine.start_profile(activities=["CPU","GPU"], with_stack=True,
+record_shapes=True)` / `stop_profile()`，在 eager 模型预热后记录两个请求
+各 8 token 的实际执行。未改社区源码或用调试 wrapper 替换模型计算。
+加载日志明确 `Qwen3ForCausalLM, quant=compressed-tensors`，
+trace 记录以下实际调用链：
+
+- `CompressedTensorsW8A8Fp8.apply_weights`、`apply_fp8_linear`、
+  `scaled_fp8_quant`、`_apply_fallback_scaled_mm` 与
+  `aten::_scaled_mm` 各 **1008 次**；
+- 设备端 dynamic-per-token quant 内核合计 **1008 次**；
+- gfx938 `F8SS` FP8 GEMM 内核三种变体合计 **1008 次**。
+
+原始 trace 598120 个事件，压缩约 13 MB，SHA256
+`755d0eddde15e37c0d2f880562555b7018226ff6ef91fe26f79491cadab5f25d`。
+`iteration21-fp8-runtime.json` 绑定 9 项 checkpoint 资产、原始 trace
+及执行后社区源码检查；`iteration21-fp8-route-evidence.json` 从已校验
+hash 的原始 trace 抽取调用计数。运行时 adapter stamp 为
+`306c11c, dirty=true`（当时存在后续 `2406183` 的 dtype 诊断改动），
+不能将其写成干净提交。profiler 的 ROCTracer duplicate-flow 警告不用于
+性能分析，本阶段也不设置性能门槛。
+
+发现旧组件测试的 FP8 分支未进入 CT scheme，且显式关闭 padding，
+不能替代这条真实路径。已在 `test_quantized_linear_chain` 增加
+`ct-fp8`：真实 scheme、channel scale、加载后处理、dynamic token
+激活量化、默认 padding，覆盖 1/17/33 token、非零 bias、
+独立 FP32 oracle 和三轮变输入 graph replay。新增 **3 passed**，
+源码完整性通过；随后正式量化家族严格门 **8/8 case PASS**，
+其中该链的 INT8/FP8/CT-FP8 合计 **9 个参数化节点**均执行，
+无 skip/xfail，源码检查通过，L0 GREEN（31 既有 warning）。
+报告为 `iteration21-ct-fp8-chain.json/log`、
+`iteration21-quantization-family.json` 及其 cases。
+实际路由与组件数值闭环均已补齐；真实量化模型的完整概率对拍仍待补。
+
+### 同机 Transformers CPU/HCU 定点归因
+
+`iteration22-qwen3-device-probe.json` 在 nmz7 GPU4（预检空闲比例
+0.969710），对原 `short-en` 的同一冻结序列，分别官方加载 FP32/BF16，
+先 CPU、再仅将设备迁到 HCU；保留 FP32 RoPE buffer，eager attention、
+禁用 KV cache，不安装 SGLang 宿主桥。checkpoint 与输入报告前后字节
+检查通过。该探针只覆盖一个短序列，不是完整模型验收。
+
+- Transformers FP32 的同机 CPU/HCU top20 最大差 **0.0000601**，
+  合并 JSD 0.00000000836；目标位置 token16209 的 logprob 分别
+  **-6.438941 / -6.438981**。说明该探针的普通 HCU Torch FP32
+  路径与 CPU 很接近，不能把 SGLang BF16 的偏差笼统归为设备不支持。
+- Transformers BF16 同机 CPU/HCU top20 最大差 **0.5625**，
+  合并 JSD 0.002814；目标位置分别 **-6.256028 / -6.635359**。
+  SGLang BF16 原目标值约 -7.1713，与 HCU Transformers BF16
+  也有差异；仍需在融合 GEMM/归一化/attention/增量执行之间继续归因。
+- nmz7 CPU 是 Intel Xeon Platinum 8558P，而之前 nmz21 是
+  Hygon C86-4G；BF16 CPU 结果不能跨节点当成同一实现。
+  环境、Torch build/git 与诊断字节绑定保存在
+  `iteration22-qwen3-device-environment.json`。该探针保持诊断性质，
+  不改变原 BF16 V1 FAIL。
+
 ## 模型最小闭环入口
 
 ```bash

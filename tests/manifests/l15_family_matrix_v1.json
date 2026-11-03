@@ -45,7 +45,7 @@
     },
     {
       "id": "quantization",
-      "intent": "FP8 row/group/fused quantization, scale contracts and correctness-preserving fallback",
+      "intent": "FP8 row/group/fused quantization, CT channel FP8 dynamic-token linear with default padding, scale contracts and correctness-preserving fallback",
       "cases": [
         {"id": "quant-linear-chain", "kind": "adapter-pytest", "nodeid": "tests/kernels/test_l15_execution_chains.py::test_quantized_linear_chain"},
         {"id": "fp8-gemm-replay", "kind": "adapter-pytest", "nodeid": "tests/kernels/test_gemm_fp8.py::test_fp8_scaled_mm_graph_replay_tracks_fresh_inputs"},

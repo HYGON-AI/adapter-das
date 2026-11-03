@@ -33,6 +33,11 @@ python tools/l15_family_matrix.py run \
 
 ## 裁决口径
 
+- 严格运行现强制单张真实 HIP 设备、绑定文件指纹和源码导入来源；
+  逐 nodeid 的 call 阶段必须通过，skip/xfail/xpass/缺失报告均失败。
+  一键入口与本轮执行计划见 [l15-readiness-plan.md](l15-readiness-plan.md)。
+- sparse emu 数学项标为 `cpu-contract`，不计 HCU 内核覆盖。
+
 - 上游 class method 内的 `subTest` 会作为一个 exact nodeid 整体裁决；这是上游粒度限制。
 - 名称带 `cuda_graph` 的上游 Dense/MLA/Mamba runner 主要验证 capture/replay metadata 生命周期，不自动等价于真实 `torch.cuda.CUDAGraph` launch 证明。
 - MoE/Quantization 先使用 adapter-owned GPU contract，因为 v0.5.22 不同源码快照中的上游文件路径已有漂移；应在目标 HCU 树实际 collect 后再把稳定 nodeid 纳入主 classified baseline。

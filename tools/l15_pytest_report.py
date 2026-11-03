@@ -14,6 +14,17 @@ from typing import Any
 
 
 _RESULTS: dict[str, dict[str, Any]] = {}
+_COLLECTION_ERRORS: list[str] = []
+
+
+def pytest_sessionstart(session: Any) -> None:
+    _RESULTS.clear()
+    _COLLECTION_ERRORS.clear()
+
+
+def pytest_collectreport(report: Any) -> None:
+    if report.failed:
+        _COLLECTION_ERRORS.append(_bounded(report.longrepr))
 
 
 def _bounded(value: object, limit: int = 500) -> str:
@@ -42,6 +53,11 @@ def pytest_runtest_logreport(report: Any) -> None:
         phase["fingerprint"] = _bounded(report.longrepr)
     if report.skipped:
         phase["reason"] = _bounded(report.longrepr)
+    # pytest-subtests emits multiple call reports for one node. Preserve each
+    # one: a final passing parent must not erase a skipped/failed subcase.
+    if hasattr(report, "context"):
+        record.setdefault("subtests", []).append(phase)
+        return
     record["phases"][report.when] = phase
 
     if report.when == "setup" and report.skipped:
@@ -68,6 +84,7 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:
         "artifact": "l15-pytest-outcomes",
         "exitstatus": int(exitstatus),
         "tests": sorted(_RESULTS.values(), key=lambda item: item["nodeid"]),
+        "collection_errors": list(_COLLECTION_ERRORS),
     }
     path = Path(output)
     path.parent.mkdir(parents=True, exist_ok=True)

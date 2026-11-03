@@ -27,7 +27,7 @@
         {"id": "mla-prefill-decode", "kind": "upstream-pytest", "nodeid": "test/registered/attention/unittests/mla/test_triton.py::TestTritonMLAAttentionBackendCorrectness::test_tiny_deepseek_mla_attention_cases"},
         {"id": "mla-layout", "kind": "upstream-pytest", "nodeid": "test/registered/attention/unittests/mla/test_triton.py::TestTritonMLAAttentionBackendCorrectness::test_layout_robustness_cases"},
         {"id": "mla-graph-contract", "kind": "upstream-pytest", "nodeid": "test/registered/attention/unittests/mla/test_triton.py::TestTritonMLAAttentionBackendCorrectness::test_runner_mode_cuda_graph_decode_cases"},
-        {"id": "mla-sparse-sink", "kind": "adapter-script", "path": "tests/kernels/test_flash_mla_sparse.py"}
+        {"id": "mla-sparse-sink", "kind": "adapter-pytest", "nodeid": "tests/kernels/test_flash_mla_sparse.py::test_sparse_emu_contract", "coverage": "cpu-contract"}
       ]
     },
     {

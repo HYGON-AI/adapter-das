@@ -21,18 +21,20 @@ def _install_fake_ep_moe(monkeypatch):
     layers = ModuleType("sglang.srt.layers")
     moe = ModuleType("sglang.srt.layers.moe")
     ep_moe = ModuleType("sglang.srt.layers.moe.ep_moe")
+    ep_moe_layer = ModuleType("sglang.srt.layers.moe.ep_moe.layer")
 
     class DeepEPMoE:
         def run_moe_core(self, dispatch_output):
             return ("upstream", dispatch_output)
 
-    ep_moe.DeepEPMoE = DeepEPMoE
+    ep_moe_layer.DeepEPMoE = DeepEPMoE
     for name, module in (
         ("sglang", root),
         ("sglang.srt", srt),
         ("sglang.srt.layers", layers),
         ("sglang.srt.layers.moe", moe),
         ("sglang.srt.layers.moe.ep_moe", ep_moe),
+        ("sglang.srt.layers.moe.ep_moe.layer", ep_moe_layer),
     ):
         monkeypatch.setitem(sys.modules, name, module)
     return DeepEPMoE

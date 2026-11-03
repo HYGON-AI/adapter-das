@@ -155,7 +155,7 @@ def install_deepep_w4a16():
     global _deepep_installed
     if _deepep_installed:
         return
-    from sglang.srt.layers.moe.ep_moe import DeepEPMoE
+    from sglang.srt.layers.moe.ep_moe.layer import DeepEPMoE
 
     original = DeepEPMoE.run_moe_core
     if getattr(original, "_hcu_w4a16_deepep", False):

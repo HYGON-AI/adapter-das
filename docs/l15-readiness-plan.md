@@ -29,10 +29,17 @@
 版本、实际参数、生成与精度结果。GPU 测试继续只在指定 nmz28 容器运行；
 禁止在本节点执行全量 adapter 测试。
 
-当前前置差距：`dist_bc`、`jit_*`、`dsv4_*`、`spec_h2d_pin`、
+当前前置差距：`jit_*`、`dsv4_*`、`spec_h2d_pin`、
 `moe_dualstream_gate` 等存在源码磁盘写回，须以实际调用点逐项审计，
-上述目标尚未完成。第一项迁移是对象广播的只读 numpy buffer 兼容，
-需保留已导入函数别名并验证 spawn/分布式协议，不再写回 `common.py`。
+上述目标尚未完成。对象广播 `dist_bc` 已迁移为运行时只读 numpy buffer
+兼容，保留已导入函数别名，不再写回 `common.py`。nmz28 隐藏 GPU 的
+回归为 **6 passed**：包括以 Git 原始社区广播函数执行两 rank spawn/Gloo，
+验证双向广播、空/中文/bytes/大对象和测试源文件字节不变。
+这是广播路径的迁移证据，尚不代表整个 adapter 启动不再修改源码。
+回归日志为 `results/l15-readiness/pristine-dist-bc.log`；本地 CPU 契约
+4 passed（需远端社区树的 Gloo 项在本地不运行），L0 GREEN（31 warn）。
+真实 checkpoint eager/graph 复验在启动前因 GPU 0 仅约 4% 空闲而被阻止，
+未运行，也未占用其他卡；该集成复验仍待空闲窗口补齐。
 
 ## 原四步实施与验证记录
 

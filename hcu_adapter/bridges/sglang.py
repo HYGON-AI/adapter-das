@@ -81,6 +81,7 @@ def install() -> None:
                 "HCU adapter: platform semantics seam not installed", exc_info=True
             )
         # TP init-broadcast payload fix (torch2.11 dlpack readonly BufferError);
+        # runtime binding retains imported aliases without source writes;
         # needs sglang.srt.utils.common importable -- after the seam above.
         try:
             from hcu_adapter import dist_bc

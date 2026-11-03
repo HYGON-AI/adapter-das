@@ -12,6 +12,14 @@ description: hcu-sglang-adapter 仓库开发规约：算子垫片/影子库新�
 
 ## 黄金法则（历史 bug 换来的，违反必踩坑）
 
+当前 SGLang 迭代（2026-11-03 用户要求）：社区源码文件不改写；
+以功能和精度为验收标准，性能不设门槛；每日追新推迟到其余优化完成后。
+历史磁盘 text/JIT 补丁逐项迁移，不能把运行时写回源码称为“零修改”。
+迁移函数绑定需测试已缓存别名和 spawn 子进程；仅换 module 属性可能遗漏
+早先的 `from ... import ...`。`dist_bc` 已以保留函数对象和私有 numpy
+facade 的运行时桥替代磁盘补丁；不可重新引入 common.py 写回。
+完整目标与证据见 `docs/l15-readiness-plan.md`。
+
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测
    "能跑不崩"。案例：rope GPT-J cache 恒为半分 [cos|sin] 布局（fbc540c）。
 2. **eager 对 ≠ graph 对**：凡进 decode 链路的算子必须过 capture-replay

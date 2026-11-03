@@ -54,11 +54,6 @@ TEXT_PATCH_ALLOWLIST = {
     # portable equivalents at JIT-source-read time.
     ("rotary_embedding", "  __syncwarp();  // to avoid warp divergence"),
     ("rotary_embedding", "      const auto [x0, x1] = cast<fp32x2_t>(input_vec_x[j]);"),
-    # torch2.11 exports numpy arrays through DLPack; numpy 1.25 cannot signal
-    # the read-only flag, so the frombuffer payload must be a writable copy
-    # before ByteTensor construction (source-level: every import path binds
-    # the patched body).
-    ("dist_broadcast", "torch.ByteTensor(\n                np.frombuffer(serialized_data, dtype=np.uint8)\n            )"),
     # JIT per-token-group-quant fp8: the CUDA DTypeTrait<fp8>::kFloatMax
     # member is compiled out under USE_ROCM; the HIP-side packed convert is
     # not the CUDA intrinsic. Repoint the clamp constant at the literal

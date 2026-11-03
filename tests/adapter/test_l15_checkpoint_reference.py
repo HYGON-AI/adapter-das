@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from tools.l15_checkpoint_reference import compare, fingerprint, requests, run
+from tools.l15_checkpoint_reference import compare, execution_binding, fingerprint, requests, run
 
 
 def _report():
@@ -112,3 +112,20 @@ def test_reference_output_cannot_replace_original_smoke_evidence(tmp_path):
     with pytest.raises(ValueError, match="preserve the original"):
         run(SimpleNamespace(out=source, smoke_report=source))
     assert source.read_text() == "original evidence"
+
+
+def test_reference_binding_requires_controller_and_worker_agreement():
+    report = _report()
+    model, _ = requests(report)
+    assert execution_binding(report, model) is None
+    bound = {"config.json": "abc", "model.safetensors": "def"}
+    report["runtime"]["checkpoints"] = {str(model): bound}
+    with pytest.raises(ValueError, match="inconsistent HCU"):
+        execution_binding(report, model)
+    for job in report["jobs"]:
+        job["evidence"]["checkpoint_files_sha256"] = dict(bound)
+        job["checkpoint_integrity_after"] = {"passed": True, "files_sha256": dict(bound)}
+    assert execution_binding(report, model) == bound
+    report["jobs"][1]["evidence"]["checkpoint_files_sha256"]["model.safetensors"] = "changed"
+    with pytest.raises(ValueError, match="inconsistent HCU"):
+        execution_binding(report, model)

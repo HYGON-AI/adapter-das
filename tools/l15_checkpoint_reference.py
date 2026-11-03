@@ -15,6 +15,7 @@ import sys
 
 from tools.l15_model_smoke import validate_generation, validate_mode
 from tools.l15_runtime import write_json
+from tools.checkpoint_files import fingerprint
 
 
 def requests(document):
@@ -66,18 +67,20 @@ def requests(document):
     return Path(models.pop()), rows
 
 
-def fingerprint(model):
-    files = sorted({*model.glob("*.safetensors"), *model.glob("*.json")})
-    if not (model / "config.json").is_file() or not list(model.glob("*.safetensors")):
-        raise ValueError("reference requires local config and real safetensors")
-    result = {}
-    for path in files:
-        digest = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-                digest.update(chunk)
-        result[path.name] = digest.hexdigest()
-    return result
+def execution_binding(document, model):
+    expected = document.get("runtime", {}).get("checkpoints", {}).get(str(model))
+    if expected is None:
+        # Historical reports remain explicitly exploratory and unbound.
+        return None
+    if not isinstance(expected, dict) or not expected:
+        raise ValueError("invalid HCU checkpoint manifest")
+    for job in document["jobs"]:
+        checked = job.get("checkpoint_integrity_after", {})
+        if (job["evidence"].get("checkpoint_files_sha256") != expected
+                or checked.get("passed") is not True
+                or checked.get("files_sha256") != expected):
+            raise ValueError("inconsistent HCU checkpoint byte binding")
+    return expected
 
 
 def compare(logprobs, output_ids, observed):
@@ -119,11 +122,15 @@ def run(args):
         raise ValueError("CPU reference must not expose a GPU or install host bridges")
     torch.set_num_threads(args.threads)
     raw = args.smoke_report.read_bytes()
-    model_path, rows = requests(json.loads(raw))
+    document = json.loads(raw)
+    model_path, rows = requests(document)
+    bound = execution_binding(document, model_path)
     config = json.loads((model_path / "config.json").read_text())
     if config.get("quantization_config"):
         raise ValueError("this FP32 probe does not validate quantized checkpoints")
     before = fingerprint(model_path)
+    if bound is not None and before != bound:
+        raise ValueError("reference checkpoint bytes differ from HCU execution")
     model = AutoModelForCausalLM.from_pretrained(
         str(model_path), dtype=torch.float32, attn_implementation="eager",
         local_files_only=True,
@@ -147,11 +154,13 @@ def run(args):
         "smoke_report": str(args.smoke_report.resolve()),
         "smoke_sha256": hashlib.sha256(raw).hexdigest(),
         "model": str(model_path), "reference_files_sha256": before,
+        "checkpoint_binding": "matched-hcu-execution" if bound is not None else "legacy-unbound",
         "reference": {"torch": torch.__version__, "transformers": transformers.__version__,
                       "device": "cpu", "dtype": "float32", "attention": "eager"},
-        "limitations": [
-            "Weight fingerprints were collected at reference time; historical smoke "
-            "reports do not bind the HCU execution to those weight bytes.",
+        "limitations": ([
+            "Historical smoke did not bind weight bytes to HCU execution; "
+            "reference-time fingerprints cannot establish that binding.",
+        ] if bound is None else []) + [
             "Only sampled-token probabilities on short prompts are compared; "
             "this is not full-distribution, long-context or model-accuracy acceptance.",
         ],

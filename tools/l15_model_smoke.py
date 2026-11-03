@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from tools.l15_runtime import audit_source, preflight, run_job, test_env, write_json
+from tools.checkpoint_files import audit as audit_checkpoint, fingerprint
 
 
 def tiny_config(family):
@@ -97,6 +98,13 @@ def validate_mode(info, mode):
 
 
 def worker(args):
+    checkpoint = None
+    if args.family == "checkpoint":
+        if args.checkpoint_manifest is None:
+            raise ValueError("checkpoint worker requires controller byte manifest")
+        checkpoint = json.loads(args.checkpoint_manifest.read_text())
+        if not audit_checkpoint(args.model, checkpoint)["passed"]:
+            raise ValueError("checkpoint changed before model loading")
     import sglang as sgl
 
     config = json.loads((args.model / "config.json").read_text())
@@ -131,10 +139,13 @@ def worker(args):
             generations.append(result)
         info = engine.get_server_info()
         validate_mode(info, args.mode)
+    if checkpoint is not None and not audit_checkpoint(args.model, checkpoint)["passed"]:
+        raise ValueError("checkpoint changed during model execution")
     write_json(args.out, {
         "artifact": "l15-model-worker", "passed": True, "family": args.family,
         "mode": args.mode, "model": str(args.model),
         "weight_evidence": "real-checkpoint" if args.family == "checkpoint" else "dummy",
+        "checkpoint_files_sha256": checkpoint,
         "generations": generations, "server_info": info,
     })
 
@@ -161,20 +172,27 @@ def run(args):
         else:
             tiny_config(family)
     runtime = preflight(args.up_tree.resolve(), root, args.binding_manifest.resolve())
+    checkpoint_inputs = fingerprint(args.checkpoint.resolve()) if "checkpoint" in families else None
     jobs = []
     for family in families:
         if family == "checkpoint":
             model = args.checkpoint.resolve()
+            checkpoint = checkpoint_inputs
+            runtime.setdefault("checkpoints", {})[str(model)] = checkpoint
+            manifest = work / "checkpoint-files.json"
+            write_json(manifest, checkpoint)
         else:
             model = work / ("tiny-" + family)
             write_json(model / "config.json", tiny_config(family))
+            checkpoint = None
         for mode in modes:
             report = work / f"{family}-{mode}.json"
             report.unlink(missing_ok=True)
             job = run_job(
                 [sys.executable, "-m", "tools.l15_model_smoke", "--worker",
                  "--model", str(model), "--family", family, "--mode", mode,
-                 "--out", str(report)],
+                 "--out", str(report)]
+                + (["--checkpoint-manifest", str(manifest)] if checkpoint is not None else []),
                 cwd=root, env=test_env(args.up_tree.resolve(), root),
                 timeout=args.timeout, log=work / f"{family}-{mode}.log",
             )
@@ -189,7 +207,15 @@ def run(args):
                 and evidence.get("passed") is True
                 and evidence.get("mode") == mode
                 and evidence.get("family") == family
+                and evidence.get("model") == str(model)
+                and evidence.get("weight_evidence") == (
+                    "real-checkpoint" if checkpoint is not None else "dummy")
             )
+            if checkpoint is not None:
+                binding = audit_checkpoint(model, checkpoint)
+                job["checkpoint_integrity_after"] = binding
+                job["passed"] = (job["passed"] and binding["passed"]
+                                 and evidence.get("checkpoint_files_sha256") == checkpoint)
             integrity = audit_source(args.up_tree.resolve(), runtime["upstream"]["commit"])
             job["source_integrity_after"] = integrity
             job["passed"] = job["passed"] and integrity["passed"]
@@ -201,8 +227,10 @@ def run(args):
                 "families": families, "modes": modes, "jobs": jobs,
             })
             print(f"model smoke: {family}/{mode} {'PASS' if job['passed'] else 'FAIL'}", flush=True)
-            if not integrity["passed"]:
-                return False  # do not launch further models on mutated source
+            if not integrity["passed"] or (
+                checkpoint is not None and not job["checkpoint_integrity_after"]["passed"]
+            ):
+                return False  # preserve failure and stop using changed inputs
     return all(job["passed"] for job in jobs)
 
 
@@ -220,6 +248,7 @@ def main():
     parser.add_argument("--model", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--family", help=argparse.SUPPRESS)
     parser.add_argument("--mode", choices=("eager", "graph"), help=argparse.SUPPRESS)
+    parser.add_argument("--checkpoint-manifest", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.worker:
         worker(args)

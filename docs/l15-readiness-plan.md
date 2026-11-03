@@ -363,6 +363,36 @@ fingerprint 不能倒推证明此前 HCU 使用的权重完全一致。
 后续须补同轮 checkpoint 字节绑定、更全面的输入/长度/分布和模型族覆盖，
 才能提升为完整精度门禁。
 
+### 将 checkpoint 文件指纹绑定到实际模型执行
+
+`tools.checkpoint_files` 以流式 SHA256 读取 safetensors 与配置/tokenizer
+资产，不依赖 mtime 缓存；校验索引中的每个分片存在且路径合法。
+哈希时同时检查文件身份和最终清单，已经读完的文件在后续哈希中被改动也拒绝。
+控制器在任何 worker 启动前固定原始指纹，并把清单交给真实 checkpoint
+worker；worker 在 Engine 加载前、关闭后分别重新读取字节，控制器结束每个
+worker 后再次核对。缺少 worker 指纹、内容不一致、分片缺失均不能通过，
+检查失败保留该 job 和已完成结果，文件变化后停止继续启动模型。
+
+CPU 参考运行前要求新报告的 controller/worker 清单一致，
+再把当前权重字节与 HCU 执行时清单核对，结束后再次检查。
+一致的报告标记 `checkpoint_binding=matched-hcu-execution`；
+历史未绑定报告继续标记 `legacy-unbound`，保留其证据局限。
+字节绑定本身不把短输入探针提升为完整精度验收。
+
+nmz21 隐藏 GPU 的绑定/参考/执行失败契约 **32 passed**
+（`iteration11-checkpoint-binding-cpu.log`），覆盖缺失/越界分片、哈希期间
+已读文件被修改、加载前与执行期间权重变化、旧 worker 缺少指纹、
+控制器停止后续启动及参考端 controller/worker 不一致。
+L0 GREEN（31 既有 warning）。
+GPU 1/2 分别重新运行真实 Qwen2/Qwen3，每模型 eager/graph **2/2 passed**，
+每次 worker 结束后的源码完整性均为 **0 changed、0 added sources**。
+对应 `iteration11-{qwen2,qwen3}-bound.json` 和
+`iteration11-{qwen2,qwen3}-reference.json`；每模型 8 个资产文件匹配，
+两份参考报告均为 **matched-hcu-execution**。
+每模型 64 个生成位置的最大 logprob 差分别为 **0.053874 / 0.096956**，
+最大 greedy regret 为 **0 / 0.024235**；这次证据补齐同轮文件绑定，
+仍保留短输入/所选 token 概率的覆盖边界。
+
 ## 原四步实施与验证记录
 
 1. **严格执行与结果判定**：校验真实单卡 HIP、源码来源、版本绑定；

@@ -76,6 +76,20 @@ python tools/l15_family_matrix.py run \
 5. v0.5.22 部分候选路径在本地后续快照已重命名，必须以 manifest 指纹绑定的目标树 collect 为准；
 6. 该矩阵仍不覆盖权重加载、scheduler、HTTP serving 和真实模型生成。
 
+2026-11-03 扩展：新增 BF16 Triton MoE 的 up/SiLU/down/weighted-combine、
+社区动态 INT8/FP8 Linear，以及 GDN 非方形状态池、envelope stride、
+禁写和 ReplaySSM ring 验证。以上链路与 FP8/INT8 GEMM 都捕获真实 graph，
+连续三轮变输入对拍。FP8 Linear 保留实际平台默认 dispatch；不伪报
+CUTLASS 支持。独立 GEMM 用例验证 adapter 的 Triton 实现。
+Conv1D emu 项与 sparse emu 一样明确标为 CPU 契约，不计 GPU 覆盖。
+
+新目录组合在 nmz28 单卡 GPU 0 的严格矩阵实测为 **27/27 PASS**，
+原始报告 `results/l15-readiness/phase2-all.json`。其中 25 个 GPU case，
+另 2 个是显式 CPU 契约。社区路由入口接入后，计算链与 GDN 桥回归
+另跑 **13 passed**。这次补链实际抓到并修复 GDN bridge 的多余状态转置；
+内核实际按 `[slot, head, V, K]` 访问，保留原 pool view 才能同时保持数值
+和 envelope slot stride。仍保留上述 FP8/INT8 专家量化等缺口。
+
 ## DoD
 
 矩阵完成的必要条件：

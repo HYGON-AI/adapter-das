@@ -67,10 +67,23 @@ def test_deepep_ll_routes_only_w4a16(monkeypatch):
         hidden_states="expert-major",
         masked_m="counts",
         expected_m=17,
+        topk_ids="topk-ids",
+        topk_weights="topk-weights",
+    )
+    combine_input = ModuleType("sglang.srt.layers.moe.token_dispatcher.deepep")
+    combine_input.DeepEPLLCombineInput = (
+        lambda **kwargs: SimpleNamespace(**kwargs)
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "sglang.srt.layers.moe.token_dispatcher.deepep",
+        combine_input,
     )
     assert DeepEPMoE().run_moe_core.__self__ is not None
     result = DeepEPMoE.run_moe_core(layer, dispatch)
-    assert result == "adapter-w4a16"
+    assert result.hidden_states == "adapter-w4a16"
+    assert result.topk_ids == "topk-ids"
+    assert result.topk_weights == "topk-weights"
     assert calls == [
         (
             "expert-major",

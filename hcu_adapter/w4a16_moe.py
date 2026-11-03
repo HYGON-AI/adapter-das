@@ -169,7 +169,7 @@ def install_deepep_w4a16():
             and _is_deepep_w4a16_layer(self)
         ):
             try:
-                return deepgemm_w4a16_deepep_ll(
+                output = deepgemm_w4a16_deepep_ll(
                     dispatch_output.hidden_states,
                     self.w13_weight,
                     self.w2_weight,
@@ -177,6 +177,15 @@ def install_deepep_w4a16():
                     self.w2_weight_scale,
                     dispatch_output.masked_m,
                     dispatch_output.expected_m,
+                )
+                from sglang.srt.layers.moe.token_dispatcher.deepep import (
+                    DeepEPLLCombineInput,
+                )
+
+                return DeepEPLLCombineInput(
+                    hidden_states=output,
+                    topk_ids=dispatch_output.topk_ids,
+                    topk_weights=dispatch_output.topk_weights,
                 )
             except Exception:
                 LOG.warning(

@@ -393,6 +393,74 @@ GPU 1/2 分别重新运行真实 Qwen2/Qwen3，每模型 eager/graph **2/2 passe
 最大 greedy regret 为 **0 / 0.024235**；这次证据补齐同轮文件绑定，
 仍保留短输入/所选 token 概率的覆盖边界。
 
+### 固定多长度输入与 top-20 + tail 精度策略
+
+真实 checkpoint 的 `--profile accuracy` 使用三批两请求：
+中英文短问答、精确 512/2048 token 文档、复用同一 512 token 输入并改变
+2048 token 文档中的访问码。worker 记录实际输入 ID 和 case 标签，
+请求原社区 API 返回每个生成位置的 top-20 logprob；
+context_length=4096、max_total_tokens=16384，仍为单卡 BF16/Triton、
+mem_fraction_static=0.25，eager/graph 各执行全部六个请求。
+
+CPU FP32 eager 参考对相同 prompt+输出序列 teacher-force，比较所选 token
+logprob、greedy regret、同一组 20 个 token 的 logprob，以及这 20 类加
+其余词表概率质量构成的分布。额外检查参考 top-20 被遗漏的概率质量，
+防止任取 20 个低概率 token 却得到零差异。指标允许近似平局的名次重排。
+这是一种明确的分布合并，不称作完整词表 KL/JSD。
+固定策略 `bf16-cpu-fp32-top20-v1` 的门槛为：
+所选 token 与 top-20 的最大 logprob 差各 0.15、最大 greedy regret 0.15、
+合并分布 JSD 0.002、tail 质量差 0.03、参考头部遗漏质量 0.02；
+逐位置比较后取最大值，NaN/Inf 或缺失项直接拒绝。
+只有 case、源码检查、eager/graph、同轮权重绑定和所有数值条件均完整，
+才输出 `l15-checkpoint-accuracy` 的 `passed`；普通 smoke 仍为探索报告。
+
+```bash
+HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES=1 CUDA_VISIBLE_DEVICES=1 \
+  python3 -m tools.l15_model_smoke \
+  --up-tree /home/lipenghui/lph-adapter/sglang-0.5.22-pristine-iter7 \
+  --families checkpoint --checkpoint /model/qwen3/Qwen3-0.6B \
+  --profile accuracy --modes eager,graph \
+  --out results/l15-readiness/accuracy-generation.json
+HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES= CUDA_VISIBLE_DEVICES= \
+  python3 -m tools.l15_checkpoint_reference \
+  --smoke-report results/l15-readiness/accuracy-generation.json \
+  --out results/l15-readiness/accuracy.json
+```
+
+首轮 `iteration12-{qwen2,qwen3}-accuracy-generation*` 失败保留：
+Transformers 5.12 的聊天模板默认返回字典，导致请求传入字符串 key。
+现在显式 `return_dict=False`，并在创建 Engine 前验证 token 列表和 case。
+模拟该真实返回协议的回归已补入；最终 CPU 组合 **43 passed**
+（`iteration13-accuracy-cpu.log`），两个真实 tokenizer 的独立预检也通过
+（`iteration13-real-tokenizer-cases.log`）：短输入长度 Qwen2=31/30、
+Qwen3=24/23，其他两批均为 512/2048。
+
+nmz21 GPU 1/2 的 `iteration13-{qwen2,qwen3}-accuracy-generation.json`
+均完成 eager/graph **2/2 生成通过**，每模式三批两请求各 8 token；
+社区源码和 checkpoint 字节检查均通过。
+独立 CPU FP32 参考各比较 **96 个生成位置**，两份
+`iteration13-{qwen2,qwen3}-accuracy.json` 的最终 verdict 均为 **FAIL**，
+命令退出 1，未放宽 V1 阈值：
+
+- Qwen2：所选 logprob 差 0.070135、greedy regret 0.008249；
+  top-20 logprob 差 **0.546768** 超限；合并 JSD 0.001373、
+  tail 质量差 0.009165、参考头部遗漏质量 0.000553。
+- Qwen3：所选 logprob 差 0.041764、greedy regret 0；
+  top-20 logprob 差 **0.732415** 超限；合并 JSD 0.001123、
+  tail 质量差 0.009017、参考头部遗漏质量 0.000101。
+
+V1 是保留失败的初始诊断策略，BF16 舍入基线尚待校准。
+进一步在相同短问答和 token 序列上，将独立 CPU eager 模型从 FP32
+转换为 BF16 再计算，原始诊断为
+`iteration14-dtype-reference-probe.{json,log}`。
+CPU BF16→FP32 在 HCU 所报头部 token 上的最大差：
+Qwen2 英文/中文 **0.643486 / 0.815510**，
+Qwen3 **0.791748 / 0.530690**；HCU→CPU BF16 的最大差仍为
+约 0.50～0.75。这说明参考精度改变本身也会产生同量级尾部 logprob 差，
+当前证据不足以把 V1 的失败直接归为 HCU 实现错误。
+下一步需扩展独立舍入基线、逐层/逐位置归因，再确定适用 BF16 的精度策略；
+当前报告继续保持失败，不能称作多模型精度验收通过。
+
 ## 原四步实施与验证记录
 
 1. **严格执行与结果判定**：校验真实单卡 HIP、源码来源、版本绑定；

@@ -55,6 +55,11 @@ worker 加载/执行前后绑定实际 checkpoint 字节，参考执行也必须
 历史 smoke 的缺失绑定不能靠参考时 fingerprint 倒推补齐，须明确标记
 legacy-unbound。精度门禁还须补输入/长度/分布和模型族覆盖，不能把 top1 或有限 logprob
 单独当成完整模型精度。
+固定 `--profile accuracy` 另覆盖双语、512/2048 token、复用/变输入，
+以 CPU FP32 的所选概率与 top-20+tail 合并分布按版本化策略验收；
+必须匹配 HCU 权重字节并执行完整 eager/graph，不能把合并分布称为
+全词表散度，也不能外推为其他模型/长度通过。聊天模板明确请求 list，
+并在 Engine 前校验 token IDs，避免 Transformers 返回映射时误传字符串 key。
 完整目标与证据见 `docs/l15-readiness-plan.md`。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测

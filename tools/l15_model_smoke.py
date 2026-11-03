@@ -108,6 +108,16 @@ def worker(args):
     import sglang as sgl
 
     config = json.loads((args.model / "config.json").read_text())
+    profile = getattr(args, "profile", "smoke")
+    accuracy_cases = None
+    if profile == "accuracy":
+        if args.family != "checkpoint":
+            raise ValueError("accuracy profile requires a real checkpoint")
+        from transformers import AutoTokenizer
+        from tools.checkpoint_accuracy import cases, validate_cases
+
+        accuracy_cases = cases(AutoTokenizer.from_pretrained(str(args.model), local_files_only=True))
+        validate_cases(accuracy_cases)
     options = dict(
         model_path=str(args.model), dtype="bfloat16", random_seed=42,
         tp_size=1, attention_backend="triton", max_total_tokens=512,
@@ -116,16 +126,22 @@ def worker(args):
     )
     if args.family != "checkpoint":
         options.update(load_format="dummy", skip_tokenizer_init=True)
+    if accuracy_cases is not None:
+        options.update(context_length=4096, max_total_tokens=16384)
     with sgl.Engine(**options) as engine:
         generations = []
         # Two batches test fresh inputs and cache reuse through the real
         # tokenizer/scheduler/prefill/decode path, rather than a model mock.
-        for wave in range(2):
+        for wave in range(3 if accuracy_cases is not None else 2):
             generation_args = dict(
                 sampling_params=dict(temperature=0, max_new_tokens=8, ignore_eos=True),
                 return_logprob=True, logprob_start_len=0,
             )
-            if args.family == "checkpoint":
+            if accuracy_cases is not None:
+                generation_args["input_ids"] = [
+                    list(case["input_ids"]) for case in accuracy_cases[wave]]
+                generation_args["top_logprobs_num"] = 20
+            elif args.family == "checkpoint":
                 generation_args["prompt"] = (
                     ["The capital of France is", "2 + 2 ="] if wave == 0 else
                     ["The capital of China is", "3 + 3 ="]
@@ -146,6 +162,7 @@ def worker(args):
         "mode": args.mode, "model": str(args.model),
         "weight_evidence": "real-checkpoint" if args.family == "checkpoint" else "dummy",
         "checkpoint_files_sha256": checkpoint,
+        "generation_profile": profile, "accuracy_cases": accuracy_cases,
         "generations": generations, "server_info": info,
     })
 
@@ -157,6 +174,9 @@ def run(args):
     work.mkdir(parents=True, exist_ok=True)
     families = args.families.split(",")
     modes = args.modes.split(",")
+    profile = getattr(args, "profile", "smoke")
+    if profile == "accuracy" and families != ["checkpoint"]:
+        raise ValueError("accuracy profile requires only the real checkpoint family")
     if not modes or len(set(modes)) != len(modes) or set(modes) - {"eager", "graph"}:
         raise ValueError("select distinct eager/graph modes")
     if not families or len(set(families)) != len(families):
@@ -191,7 +211,7 @@ def run(args):
             job = run_job(
                 [sys.executable, "-m", "tools.l15_model_smoke", "--worker",
                  "--model", str(model), "--family", family, "--mode", mode,
-                 "--out", str(report)]
+                 "--out", str(report), "--profile", profile]
                 + (["--checkpoint-manifest", str(manifest)] if checkpoint is not None else []),
                 cwd=root, env=test_env(args.up_tree.resolve(), root),
                 timeout=args.timeout, log=work / f"{family}-{mode}.log",
@@ -210,6 +230,7 @@ def run(args):
                 and evidence.get("model") == str(model)
                 and evidence.get("weight_evidence") == (
                     "real-checkpoint" if checkpoint is not None else "dummy")
+                and evidence.get("generation_profile", "smoke") == profile
             )
             if checkpoint is not None:
                 binding = audit_checkpoint(model, checkpoint)
@@ -225,6 +246,7 @@ def run(args):
                 "passed": len(jobs) == len(families) * len(modes) and all(j["passed"] for j in jobs),
                 "complete": len(jobs) == len(families) * len(modes),
                 "families": families, "modes": modes, "jobs": jobs,
+                "generation_profile": profile,
             })
             print(f"model smoke: {family}/{mode} {'PASS' if job['passed'] else 'FAIL'}", flush=True)
             if not integrity["passed"] or (
@@ -239,6 +261,7 @@ def main():
     parser.add_argument("--up-tree", type=Path)
     parser.add_argument("--families", default="dense,moe,mla,mamba,hybrid,checkpoint")
     parser.add_argument("--modes", default="eager,graph")
+    parser.add_argument("--profile", choices=("smoke", "accuracy"), default="smoke")
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--binding-manifest", type=Path,
                         default=Path("tests/manifests/l15_v0522.json"))

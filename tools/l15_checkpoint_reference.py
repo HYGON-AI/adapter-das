@@ -1,8 +1,8 @@
-"""Exploratory CPU FP32 reference for a successful real-checkpoint smoke.
+"""CPU FP32 reference for real-checkpoint generation evidence.
 
 Run with HCU_ADAPTER_HOST=none and all GPUs hidden. This reports sampled-token
-logprob differences and greedy regret; it is not a model-accuracy acceptance
-gate. In particular, historical smoke reports do not fingerprint weight bytes.
+logprob differences and greedy regret. Smoke inputs remain exploratory;
+the bound accuracy profile also gates fixed cases on top20+tail probabilities.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from tools.checkpoint_files import fingerprint
 
 
 def requests(document):
+    profile = document.get("generation_profile", "smoke")
     if (document.get("artifact") != "l15-model-smoke"
             or document.get("passed") is not True
             or document.get("complete") is not True
@@ -26,6 +27,7 @@ def requests(document):
             or len(document.get("modes", [])) != 2
             or set(document.get("modes", [])) != {"eager", "graph"}
             or len(document.get("jobs", [])) != 2
+            or profile not in {"smoke", "accuracy"}
             or document.get("runtime", {}).get("source_integrity", {}).get("passed") is not True):
         raise ValueError("requires successful pristine-source eager/graph checkpoint evidence")
     rows, models, modes = [], set(), set()
@@ -39,22 +41,33 @@ def requests(document):
                 or evidence.get("weight_evidence") != "real-checkpoint"
                 or evidence.get("family") != "checkpoint"
                 or evidence.get("mode") != mode
+                or evidence.get("generation_profile", "smoke") != profile
                 or mode not in {"eager", "graph"} or mode in modes):
             raise ValueError("invalid or duplicate checkpoint worker")
         modes.add(mode)
         models.add(str(Path(evidence["model"]).resolve()))
         validate_mode(evidence.get("server_info", {}), mode)
         waves = evidence.get("generations", [])
-        if len(waves) != 2:
+        cases = evidence.get("accuracy_cases")
+        if profile == "accuracy":
+            from tools.checkpoint_accuracy import validate_cases
+
+            validate_cases(cases)
+            if job.get("source_integrity_after", {}).get("passed") is not True:
+                raise ValueError("accuracy requires source integrity after every worker")
+        if len(waves) != (3 if profile == "accuracy" else 2):
             raise ValueError("requires both input waves")
         for wave, batch in enumerate(waves):
             # Vocabulary bounds are checked again against the loaded reference.
             validate_generation(batch, 2**63)
             for request, item in enumerate(batch):
                 info = item["meta_info"]
-                prompt = [entry[1] for entry in info.get("input_token_logprobs", [])]
+                prompt = (cases[wave][request]["input_ids"] if profile == "accuracy" else
+                          [entry[1] for entry in info.get("input_token_logprobs", [])])
                 if (not prompt or len(prompt) != info.get("prompt_tokens")
-                        or info.get("cached_tokens") != 0
+                        or type(info.get("cached_tokens")) is not int
+                        or not 0 <= info["cached_tokens"] <= len(prompt)
+                        or (profile == "smoke" and info["cached_tokens"] != 0)
                         or any(type(token) is not int or token < 0 for token in prompt)):
                     raise ValueError("requires complete uncached prompt token IDs")
                 rows.append({
@@ -62,6 +75,18 @@ def requests(document):
                     "prompt_ids": prompt, "output_ids": item["output_ids"],
                     "observed_logprobs": [v[0] for v in info["output_token_logprobs"]],
                 })
+                if profile == "accuracy":
+                    top = info.get("output_top_logprobs", [])
+                    if len(top) != len(item["output_ids"]):
+                        raise ValueError("missing generated top20 probabilities")
+                    for token, logprob, head in zip(
+                        item["output_ids"], rows[-1]["observed_logprobs"], top
+                    ):
+                        values = {v[1]: v[0] for v in head}
+                        if token not in values or abs(values[token] - logprob) > 1e-5:
+                            raise ValueError("sampled token and top20 probabilities disagree")
+                    rows[-1].update(case=cases[wave][request]["label"],
+                                    observed_top_logprobs=top)
     if len(models) != 1:
         raise ValueError("workers must use the same checkpoint")
     return Path(models.pop()), rows
@@ -125,6 +150,11 @@ def run(args):
     document = json.loads(raw)
     model_path, rows = requests(document)
     bound = execution_binding(document, model_path)
+    accuracy = document.get("generation_profile") == "accuracy"
+    if accuracy and bound is None:
+        raise ValueError("accuracy requires checkpoint bytes bound to HCU execution")
+    if model_path == args.out.resolve() or model_path in args.out.resolve().parents:
+        raise ValueError("reference output must be outside the checkpoint directory")
     config = json.loads((model_path / "config.json").read_text())
     if config.get("quantization_config"):
         raise ValueError("this FP32 probe does not validate quantized checkpoints")
@@ -138,19 +168,40 @@ def run(args):
     if any(p.device.type != "cpu" or p.dtype != torch.float32 for p in model.parameters()):
         raise ValueError("reference weights must be CPU FP32")
     with torch.inference_mode():
+        cache = {}
         for row in rows:
             prompt, output = row["prompt_ids"], row["output_ids"]
             ids = torch.tensor([prompt + output], dtype=torch.long)
             if ids.min() < 0 or ids.max() >= model.config.vocab_size:
                 raise ValueError("token outside reference vocabulary")
-            logits = model(input_ids=ids, use_cache=False).logits[0, len(prompt) - 1:-1]
-            row.update(compare(logits.float().log_softmax(-1), output,
+            key = tuple(prompt + output)
+            if key not in cache:
+                # Both validated Dense reference models support this official
+                # argument. Keep the general probe path for other architectures.
+                import inspect
+                if "logits_to_keep" in inspect.signature(model.forward).parameters:
+                    logits = model(input_ids=ids, use_cache=False,
+                                   logits_to_keep=len(output) + 1).logits[0, :-1]
+                else:
+                    logits = model(input_ids=ids, use_cache=False).logits[0, len(prompt) - 1:-1]
+                cache[key] = logits.float().log_softmax(-1)
+            probabilities = cache[key]
+            row.update(compare(probabilities, output,
                                row["observed_logprobs"]))
+            if accuracy:
+                from tools.checkpoint_accuracy import compare_top20
+
+                row.update(compare_top20(probabilities, row["observed_top_logprobs"]))
     if fingerprint(model_path) != before or args.smoke_report.read_bytes() != raw:
         raise ValueError("checkpoint or smoke evidence changed during reference execution")
+    decision = {}
+    if accuracy:
+        from tools.checkpoint_accuracy import verdict
+
+        decision = verdict(rows)
     write_json(args.out, {
-        "artifact": "l15-checkpoint-reference-probe",
-        "acceptance": "exploratory-short-prompts",
+        "artifact": "l15-checkpoint-accuracy" if accuracy else "l15-checkpoint-reference-probe",
+        "acceptance": "fixed-input-top20-tail-distribution" if accuracy else "exploratory-short-prompts",
         "smoke_report": str(args.smoke_report.resolve()),
         "smoke_sha256": hashlib.sha256(raw).hexdigest(),
         "model": str(model_path), "reference_files_sha256": before,
@@ -160,15 +211,22 @@ def run(args):
         "limitations": ([
             "Historical smoke did not bind weight bytes to HCU execution; "
             "reference-time fingerprints cannot establish that binding.",
-        ] if bound is None else []) + [
+        ] if bound is None else []) + ([
+            "The fixed bilingual/512/2048/reuse cases compare 20 token labels plus "
+            "the remaining mass, not a full-vocabulary divergence or arbitrary model support.",
+        ] if accuracy else [
             "Only sampled-token probabilities on short prompts are compared; "
             "this is not full-distribution, long-context or model-accuracy acceptance.",
-        ],
-        "rows": rows,
+        ]),
+        "rows": rows, **decision,
     })
     print(f"CPU reference: {sum(len(r['output_ids']) for r in rows)} positions, "
           f"max logprob error={max(r['max_logprob_error'] for r in rows):.6f}, "
           f"max greedy regret={max(r['max_greedy_regret'] for r in rows):.6f}")
+    if accuracy:
+        print(f"fixed-case accuracy: {'PASS' if decision['passed'] else 'FAIL'} "
+              f"({decision['policy']})")
+    return decision.get("passed", True)
 
 
 def main():
@@ -179,8 +237,8 @@ def main():
     args = parser.parse_args()
     if args.threads < 1:
         parser.error("--threads must be positive")
-    run(args)
+    return 0 if run(args) else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

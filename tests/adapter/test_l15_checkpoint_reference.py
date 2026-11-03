@@ -129,3 +129,39 @@ def test_reference_binding_requires_controller_and_worker_agreement():
     report["jobs"][1]["evidence"]["checkpoint_files_sha256"]["model.safetensors"] = "changed"
     with pytest.raises(ValueError, match="inconsistent HCU"):
         execution_binding(report, model)
+
+
+def test_accuracy_requests_use_explicit_ids_for_cached_prompts_and_require_top20():
+    from tools.checkpoint_accuracy import cases
+
+    class Tokenizer:
+        chat_template = None
+
+        def encode(self, text, **kwargs):
+            return [ord(char) for char in text]
+
+    report = _report()
+    report["generation_profile"] = "accuracy"
+    vectors = cases(Tokenizer())
+    for job in report["jobs"]:
+        job["source_integrity_after"] = {"passed": True}
+        evidence = job["evidence"]
+        evidence.update(generation_profile="accuracy", accuracy_cases=vectors)
+        original = evidence["generations"][0]
+        evidence["generations"] = [copy.deepcopy(original) for _ in range(3)]
+        for wave, batch in enumerate(evidence["generations"]):
+            for request, item in enumerate(batch):
+                meta = item["meta_info"]
+                meta["prompt_tokens"] = len(vectors[wave][request]["input_ids"])
+                meta["cached_tokens"] = 500 if wave == 2 else 0
+                meta["input_token_logprobs"] = []
+                meta["output_top_logprobs"] = [
+                    [[-.1, 1, None]] + [[-10., token, None] for token in range(2, 21)]
+                    for _ in range(8)]
+    _, rows = requests(report)
+    assert len(rows) == 12
+    assert rows[2]["prompt_ids"] == rows[4]["prompt_ids"]
+    assert [len(r["prompt_ids"]) for r in rows[2:4]] == [512, 2048]
+    report["jobs"][0]["evidence"]["generations"][0][0]["meta_info"]["output_top_logprobs"] = []
+    with pytest.raises(ValueError, match="missing generated"):
+        requests(report)

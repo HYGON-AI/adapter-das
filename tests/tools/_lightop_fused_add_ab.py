@@ -39,8 +39,14 @@ def ref_math(x0, r0, w, eps, gemma):
 
 
 def run_triton(x, r, w, eps, gemma):
+    # force the triton branch for this call WITHOUT disarming the vendor
+    # tier for the rest of the matrix (restore in finally)
+    saved = (ln._FUSED_ADD_IMPL, ln._LIGHTOP_FUSED_ADD)
     ln._FUSED_ADD_IMPL, ln._LIGHTOP_FUSED_ADD = "triton", None
-    ln._do_fused_add(x, r, w, eps, gemma)
+    try:
+        ln._do_fused_add(x, r, w, eps, gemma)
+    finally:
+        ln._FUSED_ADD_IMPL, ln._LIGHTOP_FUSED_ADD = saved
 
 
 def run_lightop(x, r, w, eps, gemma):

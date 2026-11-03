@@ -461,6 +461,43 @@ Qwen3 **0.791748 / 0.530690**；HCU→CPU BF16 的最大差仍为
 下一步需扩展独立舍入基线、逐层/逐位置归因，再确定适用 BF16 的精度策略；
 当前报告继续保持失败，不能称作多模型精度验收通过。
 
+### 真实 Qwen3.5 混合架构 checkpoint
+
+验证工具新增复合配置支持：从 `text_config` 取得实际文本词表，校验
+正整数且不把外层/视觉元数据当成文本词表；包含视觉配置的条件生成
+checkpoint 使用 Transformers 官方 `AutoModelForImageTextToText`。
+原 CausalLM 仍通过原公开 AutoModel 入口加载，参考端同时拒绝外层或
+文本配置中的未支持量化。报告记录实际模型类与文本 model_type。
+CPU 配置/词表/模型执行/精度诊断组合 **51 passed**
+（`iteration15-composite-cpu.log`），L0 GREEN（31 既有 warning）。
+
+nmz21 物理 GPU 3（预检空闲显存比例 0.969343），
+`sglang_liph_adapter`，真实 `/model/Qwen/Qwen3.5-2B-Base`，
+社区 pristine-iter7 commit
+`baa9befa381511cd4d56f83980951e5a45fffc6d`，
+eager/graph **2/2 passed**。模型包含 24 层（18 线性注意力、6 完整注意力），
+本轮验证该条件生成 checkpoint 的纯文本路径。
+每模式两批两请求各 8 token，报告 `iteration15-qwen35-bound.json`；
+两次结束后的源码完整性均 **0 changed、0 added sources**，
+10 个 checkpoint 资产指纹一致。
+`iteration15-qwen35-reference.json` 的 CPU FP32 eager
+`Qwen3_5ForConditionalGeneration` 采用独立 Torch fallback，
+权重为 **matched-hcu-execution**。64 个生成位置的最大 logprob 差
+**0.063152**，最大 greedy regret **0**，参考 top1 匹配 **64/64**。
+这补齐真实混合架构的加载/生成和短输入对拍，不为图像、NEXTN、量化、
+多卡或该模型的完整多长度精度背书。
+
+Cookbook 来源固定为 commit
+`40adc4d30ec2640e3391cfd78759bd3598e95f71`，
+`docs/model-deployment/sglang/qwen3.5.md` 的
+“Qwen3.5-27B IFB BW1100 2x SGLang 0.5.18” 家族配方；
+该配方没有本轮 2B-Base 的同名条目，明确采用较小 checkpoint 验证家族链路。
+实际为社区 0.5.22、Engine、TP1、BF16、Triton 普通/线性注意力、
+page_size=1、KV dtype=auto、mamba cache=extra_buffer、
+context_length=128、max_total_tokens=512、mem_fraction_static=0.25，
+分别 eager/graph；与原配方的 TP2/fa3/page64/FP8 KV/NEXTN 存在差异，
+不套用其定制环境或声明原部署配方逐项通过。
+
 ## 原四步实施与验证记录
 
 1. **严格执行与结果判定**：校验真实单卡 HIP、源码来源、版本绑定；

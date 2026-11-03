@@ -60,6 +60,10 @@ legacy-unbound。精度门禁还须补输入/长度/分布和模型族覆盖，�
 必须匹配 HCU 权重字节并执行完整 eager/graph，不能把合并分布称为
 全词表散度，也不能外推为其他模型/长度通过。聊天模板明确请求 list，
 并在 Engine 前校验 token IDs，避免 Transformers 返回映射时误传字符串 key。
+复合 checkpoint 的文本词表从 text_config 获取，不能读外层/视觉词表；
+独立参考通过公开条件生成 AutoModel 入口加载并记录实际类。Qwen3.5 的
+纯文本验证不外推为图像/NEXTN/量化或多卡通过，家族 cookbook 配方与
+较小 checkpoint 的参数差异必须单独记录。
 完整目标与证据见 `docs/l15-readiness-plan.md`。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测

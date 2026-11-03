@@ -11,6 +11,7 @@ import sys
 
 from tools.l15_runtime import audit_source, preflight, run_job, test_env, write_json
 from tools.checkpoint_files import audit as audit_checkpoint, fingerprint
+from tools.checkpoint_model import text_configuration, vocabulary_size
 
 
 def tiny_config(family):
@@ -108,6 +109,7 @@ def worker(args):
     import sglang as sgl
 
     config = json.loads((args.model / "config.json").read_text())
+    vocab_size = vocabulary_size(config)
     profile = getattr(args, "profile", "smoke")
     accuracy_cases = None
     if profile == "accuracy":
@@ -151,7 +153,7 @@ def worker(args):
                     [1, 7 + wave, 12, 9], [1, 18, 17 + wave, 6, 5],
                 ]
             result = engine.generate(**generation_args)
-            validate_generation(result, config["vocab_size"])
+            validate_generation(result, vocab_size)
             generations.append(result)
         info = engine.get_server_info()
         validate_mode(info, args.mode)
@@ -163,6 +165,8 @@ def worker(args):
         "weight_evidence": "real-checkpoint" if args.family == "checkpoint" else "dummy",
         "checkpoint_files_sha256": checkpoint,
         "generation_profile": profile, "accuracy_cases": accuracy_cases,
+        "model_type": config.get("model_type"),
+        "text_model_type": text_configuration(config).get("model_type"),
         "generations": generations, "server_info": info,
     })
 

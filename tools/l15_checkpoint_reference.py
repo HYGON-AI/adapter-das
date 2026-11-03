@@ -16,6 +16,7 @@ import sys
 from tools.l15_model_smoke import validate_generation, validate_mode
 from tools.l15_runtime import write_json
 from tools.checkpoint_files import fingerprint
+from tools.checkpoint_model import reference_loader, text_configuration, vocabulary_size
 
 
 def requests(document):
@@ -138,7 +139,6 @@ def run(args):
         raise ValueError("start a fresh process with HCU_ADAPTER_HOST=none and GPUs hidden")
     import torch
     import transformers
-    from transformers import AutoModelForCausalLM
 
     if torch.cuda.is_available() or any(
         name == "sglang" or name.startswith(("sglang.", "hcu_adapter.bridges."))
@@ -156,12 +156,13 @@ def run(args):
     if model_path == args.out.resolve() or model_path in args.out.resolve().parents:
         raise ValueError("reference output must be outside the checkpoint directory")
     config = json.loads((model_path / "config.json").read_text())
-    if config.get("quantization_config"):
+    vocab_size = vocabulary_size(config)
+    if config.get("quantization_config") or text_configuration(config).get("quantization_config"):
         raise ValueError("this FP32 probe does not validate quantized checkpoints")
     before = fingerprint(model_path)
     if bound is not None and before != bound:
         raise ValueError("reference checkpoint bytes differ from HCU execution")
-    model = AutoModelForCausalLM.from_pretrained(
+    model = reference_loader(config, transformers).from_pretrained(
         str(model_path), dtype=torch.float32, attn_implementation="eager",
         local_files_only=True,
     ).eval()
@@ -172,7 +173,7 @@ def run(args):
         for row in rows:
             prompt, output = row["prompt_ids"], row["output_ids"]
             ids = torch.tensor([prompt + output], dtype=torch.long)
-            if ids.min() < 0 or ids.max() >= model.config.vocab_size:
+            if ids.min() < 0 or ids.max() >= vocab_size:
                 raise ValueError("token outside reference vocabulary")
             key = tuple(prompt + output)
             if key not in cache:
@@ -207,7 +208,9 @@ def run(args):
         "model": str(model_path), "reference_files_sha256": before,
         "checkpoint_binding": "matched-hcu-execution" if bound is not None else "legacy-unbound",
         "reference": {"torch": torch.__version__, "transformers": transformers.__version__,
-                      "device": "cpu", "dtype": "float32", "attention": "eager"},
+                      "device": "cpu", "dtype": "float32", "attention": "eager",
+                      "model_class": type(model).__name__,
+                      "text_model_type": text_configuration(config).get("model_type")},
         "limitations": ([
             "Historical smoke did not bind weight bytes to HCU execution; "
             "reference-time fingerprints cannot establish that binding.",

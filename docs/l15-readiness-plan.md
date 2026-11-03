@@ -1184,3 +1184,28 @@ HTTP 200 且请求返回码为 0。巴黎/埃菲尔铁塔请求生成连贯文�
 `results/l15-readiness/iteration51-dsv41-int4.json`，原始服务日志和请求
 结果见同名目录。下一步先在 nmz21 做离线 EP4 dispatcher 复现，再修改
 adapter 运行时路由；修改前必须增加离线回归，且不写回社区源码。
+
+### CT W4A8 DeepEP low-latency W4A16 路由（2026-11-04）
+
+为处理上一个闭环暴露的 EP4 边界，adapter 新增了
+`DeepEPMoE.run_moe_core` 的窄路由：当 dispatch 输出同时包含
+`masked_m`/`expected_m`，且层权重确认为 CT W4A8→W4A16 的 uint8
+expert 权重时，adapter 在 expert-major
+`[local_expert, capacity, hidden]` 布局上执行两次 masked W4A16 grouped
+GEMM 和 SiLU gate，再把相同布局交回 DeepEP combine。普通 TP/EP1
+WNA16、BF16、FP8/W4AFP8、normal dispatch 和其他量化路径都保留上游
+实现；异常不会静默改走另一数学路径。
+
+本功能提交为 `a7db6fc`，CPU 路由/契约回归为 **9 passed**。nmz28
+容器中的社区源码目录仍为
+`baa9befa381511cd4d56f83980951e5a45fffc6d`，未发生文件改写；显式以
+社区 0.5.22 pristine Python 路径加载后，调用安装函数可观察到
+`DeepEPMoE.run_moe_core._hcu_w4a16_deepep=True`。这只证明 seam 安装和
+布局契约，尚未替代真实 EP4 权重加载、DeepEP 通信、masked GEMM 数值和
+生成验证。
+
+nmz28 当前 8 张卡仍由既有服务占用，显存约 94%，因此本轮没有启动新的
+GPU 作业。下一步是在 nmz28 释放后，用真实
+`DeepSeek-V4.1-Flash-Channel-INT4-w4a8` 做 TP4/EP4 启动、graph/eager
+生成和与 EP1 的数值/语义对拍；若该 masked W4A16 ABI 与实际 DeepEP
+buffer 形状不一致，先补离线形状/数值回归再修 adapter。

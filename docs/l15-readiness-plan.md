@@ -1137,7 +1137,7 @@ L1.5 family matrix：Dense 3、MLA 5、MoE 7、量化 12、Mamba 5，
   故意修改签名、函数体、删除符号/nodeid/needle 的回归均能拒绝。
 - 证据：`results/l15-readiness/phase4-workflow-audit.json`、
   同名 `-stages/upstream-diff.json`、`final-tool-tests.log`、`final-l0.log`。
-本次交付手动升级工作流，未配置定时巡检，也未验证新社区版本。
+  本次交付手动升级工作流，未配置定时巡检，也未验证新社区版本。
 
 ### DeepSeek-V4.1-Flash-Channel-INT4 真实启动闭环（2026-11-04）
 

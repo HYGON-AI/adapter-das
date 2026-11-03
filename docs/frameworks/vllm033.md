@@ -55,3 +55,9 @@ HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES=-1 CUDA_VISIBLE_DEVICES=-1 \
 Graph、prefix、适用 MTP/TP、模型精度与预热性能。遵守 skill 的四个质量
 维度与 vendor 快关流程；旧版结果不转授。当前文档记录源码准入设计，
 不宣称 v0.33 整体可部署。
+
+2026-11-03 安装态补充：当前 MR wheel 在独立 Core+Adapter 环境中完成真实
+metadata、官方 general-plugin loader 与 config spawn/unpickle 共 17 项检查；
+耗时约 397 秒。此前 240 秒总时限的中断结果保留，不计为通过。required
+启动策略与 runtime ABI 共 30 项安装态检查通过；CPU 替身显式隔离无关
+前置条件，runtime ABI 的真实官方 loader/无效库负控继续执行。

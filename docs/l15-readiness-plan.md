@@ -834,6 +834,27 @@ nmz21 隐藏 GPU 的工具回归 **114 passed**，报告
 
 ## 第四步验证（2026-11-03）
 
+### INT8 Linear 公开路径的缺失符号修复
+
+显式 `w8a8_int8` 的首次真实 30B 执行继续暴露
+`W8A8Int8LinearMethod.apply -> NameError: int8_scaled_mm`，原始失败保留在
+`results/l15-readiness/iteration26-qwen3-moe-int8.json` 及 jobs 日志。
+此前仅给 CT scheme 补 GEMM global，未覆盖显式量化的另一个消费者。
+`hcu_adapter.int8_linear` 复用现有 `sgl_kernel.gemm_int8.int8_scaled_mm`，
+先验证两个消费者的方法和 globals 契约，再绑定各自模块符号。
+原方法及已缓存别名保持原样；没有新增数学实现或源码写回。
+catalog/UI/runtime registry 同步登记为 candidate，不据此作性能晋级。
+
+nmz21 隐藏 GPU 的桥接/矩阵工具回归 **35 passed**，L0 **GREEN（31 warn）**，
+见 `iteration31-int8-linear-cpu.log` 和 `iteration31-int8-linear-l0.log`。
+设备回归与真实模型复测需以各自结果判断，不能由 CPU 绑定回归替代。
+
+nmz21 GPU4 的既有 INT8 GEMM 与新增真实 W8A8 Linear 调用链共 **20 passed**，
+后者包含 6 个参数化节点及三轮变输入 graph；见
+`iteration31-int8-linear-gpu.log`。严格 MoE 家族另获 **7/7 case PASS**，
+包括新 INT8 MoE，报告 `iteration30-moe-family.json` 的执行后社区源码
+完整性通过。以上仍不代表真实 30B 模型或完整精度验收通过。
+
 - `ci/upstream_diff.py` 对不可变 Git 快照比较已声明的符号、签名/函数体、
   白名单补丁 needle 的位置/次数、上游测试 nodeid 与版本绑定文件。
   新路径复制同一个 needle 也要求审查。

@@ -94,7 +94,7 @@ nmz7 GPU5 的量化家族严格门 **8/8 case PASS**，包括这 9 个节点，
 `results/l15-readiness/iteration21-quantization-family.json`。
 这不是重跑全部五家族，也不替代真实量化模型的独立数值验收。
 
-新增 `moe-int8-expert-chain`，矩阵现在为 29 case：真实官方
+新增 `moe-int8-expert-chain`：真实官方
 `W8A8Int8MoEMethod` 的权重创建、加载后处理、Triton runner、
 top1/top2 路由及两段 GEMM/SiLU/combine，在 1/7/33 token 下验证。
 量化整数先以独立 FP64 契约校验，仅在 FP32 reciprocal 的舍入误差界内
@@ -103,6 +103,15 @@ top1/top2 路由及两段 GEMM/SiLU/combine，在 1/7/33 token 下验证。
 并进行三轮变输入 graph replay。nmz21 GPU3 的组件回归 **3 passed**，
 见 `results/l15-readiness/iteration30-int8-moe-chain.log`；
 这不是全部 29 case 的整轮证据。
+
+严格 MoE 家族增量验证 **7/7 case PASS**（零 skip/xfail，执行后社区源码
+完整性通过），见 `iteration30-moe-family.json`。显式 W8A8 Linear 另增加
+`quant-w8a8-linear`，矩阵现在为 30 case；公开权重创建、加载后转置、
+per-token 量化与 scaled GEMM 覆盖 1/17/33 token、bias 两态及三轮变输入
+graph，共 6 个参数化节点。输入设为可精确量化的二进制格点，隔离前述
+半整数不确定性；独立 FP32 GEMM/尺度/bias 对拍保持原输出阈值。
+nmz21 GPU4 的原始 INT8 GEMM 与该新链路合计 **20 passed**，
+见 `iteration31-int8-linear-gpu.log`；完整 30 case 尚待整轮验证。
 
 新目录组合在 nmz28 单卡 GPU 0 的严格矩阵实测为 **27/27 PASS**，
 原始报告 `results/l15-readiness/phase2-all.json`。其中 25 个 GPU case，

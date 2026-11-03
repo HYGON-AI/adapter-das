@@ -93,6 +93,9 @@ INT8 MoE 合成对拍须保留原地 runner 的输入副本；量化先用 FP64 
 尺度契约，FP32 reciprocal 的误差界内半整数可取相邻整数，其余须精确取整。
 再用已验证整数/尺度做独立 GEMM 参考，不把浮点除法在半整数的差异误判为
 graph 错误；最终输出阈值保持原样，routing 在 down-GEMM 存 BF16 前相乘。
+显式 `w8a8_int8` 和自动 CT 的 Linear 都需绑定既有 `int8_scaled_mm`；
+只修 CT 模块不能覆盖前者。`int8_linear` 在验证两个原方法的全局符号契约后
+补 module global，保留方法和已有别名，不新增 GEMM 或改社区源码。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测
    "能跑不崩"。案例：rope GPT-J cache 恒为半分 [cos|sin] 布局（fbc540c）。

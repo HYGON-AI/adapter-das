@@ -1,6 +1,6 @@
 # 算子档位矩阵（自动生成，勿手改）
 
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-10-31）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
+> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-03）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
@@ -228,6 +228,16 @@ W4A16 fused MoE experts (moe_wna16 AWQ/GPTQ-int4 line)
 | deepgemm | candidate R-05 bridge 2026-10-19: DTK deepgemm |
 
 路由变量：`HCU_W4A16_MOE_IMPL`
+
+## int8_linear_gemm
+
+SGLang CT and explicit W8A8 INT8 linear scaled GEMM
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Existing sgl_kernel.gemm_int8 ABI; b |
+
+路由变量：（auto）
 
 ## per_token_quant
 

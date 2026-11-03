@@ -167,12 +167,7 @@ TEXT_PATCH_ALLOWLIST = {
     # per the tree's own lora JIT convention) — DSV4-Flash decode graph
     # capture, nmz16 gfx938 2026-10-20. See hcu_adapter/jit_dpskmeta.py.
     ("platform_detect", "#include <cub/block/block_scan.cuh>"),
-    # python-tree text patches (needle == register detail, governance §3):
-    # capture-mode dual-stream MoE HIP gate (deepseek_v2.py, eebddcb; the
-    # file patch applies before this register call, so a missing allowlist
-    # entry only costs the banner -- fixed retroactively here) and the
-    # DSV4F DeepEP bf16 experts dequant hook (fp8.py, method-top guard).
-    ("platform_detect", "capture-mode dual-stream MoE gated off on real HIP"),
+    # Remaining python-tree text patches (needle == register detail, §3).
     # dsv4 wqkv_a fuse branch (deepseek_v4.py load_weights) catches fp8
     # .weight_scale_inv + GGUF .qweight but not the compressed-tensors INT8
     # per-channel .weight_scale: DAS w4a8 attn scales dropped, wqkv_a

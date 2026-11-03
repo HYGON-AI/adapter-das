@@ -36,7 +36,7 @@
 nmz28 的环境结论；不清理或占用其他用户任务。
 
 当前前置差距：`jit_*`、`dsv4_*`、`spec_h2d_pin`、
-`moe_dualstream_gate` 等存在源码磁盘写回，须以实际调用点逐项审计，
+等存在源码磁盘写回，须以实际调用点逐项审计，
 上述目标尚未完成。对象广播 `dist_bc` 已迁移为运行时只读 numpy buffer
 兼容，保留已导入函数别名，不再写回 `common.py`。nmz28 隐藏 GPU 的
 回归为 **6 passed**：包括以 Git 原始社区广播函数执行两 rank spawn/Gloo，
@@ -76,6 +76,22 @@ nmz7 审计当前共享社区树：**10,594 tracked files，30 changed files，
 日志为 `iteration2-nmz7-source-tests.log`、`iteration2-source-extra.log`；
 真实模型 CLI 对当前脏树在任何 GPU worker 启动前拒绝，并保存 30 文件差异
 （`iteration2-source-rejection.json`）；L0 GREEN（31 warn）。
+
+### DeepSeek 双流 graph 保护迁移
+
+`moe_dualstream_gate` 不再写回 `deepseek_v2.py`。仅为原始 `forward`
+提供私有的分支选择 predicate，保留原函数对象、签名和已有别名。其他函数
+仍可见真实 capture 状态，不修改 `alt_stream` 等共享实例属性；原社区
+`forward_normal` 自己接收 `skip_shared_experts`、返回类型和输入元数据。
+DeepEP、mega-MoE、已有专门 graph 路径、空 batch、eager/breakable
+分支不变。仅在真实 `torch.version.hip` 下安装，安装顺序移到算子桥之后，
+避免为提前改文件而提前导入模型。对应磁盘补丁白名单已移除。
+
+nmz7 隐藏 GPU 的控制流/广播/安装结构回归 **24 passed**，包含直接执行
+社区 HEAD 原始 `DeepseekV2MoE.forward`（非手抄协议）以及早先绑定的方法
+别名、公开 install、参数透传和全局 capture 状态不变。证据为
+`results/l15-readiness/iteration3-moe-runtime.log`。这些是控制流证据，
+不冒称完整 DeepSeek checkpoint、数值或 graph 端到端已重新通过。
 
 ## 原四步实施与验证记录
 

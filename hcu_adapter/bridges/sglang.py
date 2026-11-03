@@ -168,21 +168,6 @@ def install() -> None:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: dsa topk v2 fusion not installed", exc_info=True
             )
-        # DSV2/V4 capture-mode dual-stream MoE gate: the captured cross-stream
-        # (alt_stream shared expert) graph replays as deterministic garbage on
-        # DTK/ROCm gfx938 while eager stays perfect. Capture-only branch, so the
-        # gate costs nothing outside graphs. Gate tests torch.version.hip (the
-        # platform seam flips sglang's _is_hip to False). DSV4-Flash nmz16
-        # 2026-10-21; full fingerprint account in docs/models.md.
-        try:
-            from hcu_adapter import moe_dualstream_gate
-
-            moe_dualstream_gate.install()
-        except Exception:
-            logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: dual-stream MoE capture gate not installed",
-                exc_info=True,
-            )
         # DSV4-Flash DeepEP bf16 experts: under --moe-a2a-backend deepep the
         # expert compute must go through the DTK deepgemm fork, whose fp8
         # grouped GEMMs are per-channel-scale-only (R-04) while DSV4F experts
@@ -3160,3 +3145,16 @@ def install() -> None:
                     "HCU adapter: spec-loc safe routing not installed",
                     exc_info=True,
                 )
+
+        # Install the model-method binding only after operator/vendor bridges
+        # are ready. This imports the community class and retains existing
+        # aliases of forward; no early model scan or disk patch is needed.
+        try:
+            from hcu_adapter import moe_dualstream_gate
+
+            moe_dualstream_gate.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: dual-stream MoE capture gate not installed",
+                exc_info=True,
+            )

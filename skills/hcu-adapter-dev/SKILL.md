@@ -18,6 +18,9 @@ description: hcu-sglang-adapter 仓库开发规约：算子垫片/影子库新�
 迁移函数绑定需测试已缓存别名和 spawn 子进程；仅换 module 属性可能遗漏
 早先的 `from ... import ...`。`dist_bc` 已以保留函数对象和私有 numpy
 facade 的运行时桥替代磁盘补丁；不可重新引入 common.py 写回。
+`moe_dualstream_gate` 同样已迁移为保留函数对象的运行时分支适配；
+仅作用于 MoE forward 的私有 capture predicate，不能改全局 capture 状态
+或临时改实例的 alt_stream；保留 skip_shared_experts 与 DeepEP 等分支。
 完整目标与证据见 `docs/l15-readiness-plan.md`。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测

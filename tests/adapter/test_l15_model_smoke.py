@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tools.l15_model_smoke import tiny_config, validate_generation, validate_mode
+from tools.l15_model_smoke import tiny_config, validate_generation, validate_lm_head_option, validate_mode
 from tools.l15_runtime import run_job
 from tools import l15_model_smoke as smoke
 from tools.checkpoint_files import audit, fingerprint
@@ -62,6 +62,15 @@ def test_graph_flag_without_capture_is_not_graph_evidence():
                                       "memory_usage": {"graph": {"decode": 0}}}]}):
         with pytest.raises(ValueError):
             validate_mode(info, "graph")
+
+
+def test_output_precision_must_match_actual_server_configuration():
+    validate_lm_head_option({}, False)  # legacy default evidence
+    validate_lm_head_option({"enable_fp32_lm_head": True}, True)
+    with pytest.raises(ValueError, match="LM-head"):
+        validate_lm_head_option({"enable_fp32_lm_head": False}, True)
+    with pytest.raises(ValueError, match="LM-head"):
+        validate_lm_head_option({"enable_fp32_lm_head": True}, False)
 
 
 def _checkpoint(tmp_path):
@@ -158,19 +167,22 @@ def test_worker_binds_bytes_before_loading_and_after_execution(tmp_path, monkeyp
         assert bool(created) == (change == "during")
 
 
-@pytest.mark.parametrize("fault", ["clean", "worker-unbound", "after"])
-def test_controller_cannot_accept_unbound_or_changed_checkpoint(tmp_path, monkeypatch, fault):
+@pytest.mark.parametrize("fp32_head", [False, True])
+@pytest.mark.parametrize("fault", ["clean", "worker-unbound", "after", "head-ignored"])
+def test_controller_cannot_accept_unbound_or_changed_checkpoint(tmp_path, monkeypatch, fault, fp32_head):
     model = _checkpoint(tmp_path)
     monkeypatch.setattr(smoke, "preflight",
                         lambda *args: {"upstream": {"commit": "community"}})
     monkeypatch.setattr(smoke, "audit_source", lambda *args: {"passed": True})
 
     def job(argv, **kwargs):
+        assert ("--enable-fp32-lm-head" in argv) is fp32_head
         manifest = Path(argv[argv.index("--checkpoint-manifest") + 1])
         evidence = {
             "artifact": "l15-model-worker", "passed": True, "family": "checkpoint",
             "mode": argv[argv.index("--mode") + 1], "model": str(model),
             "weight_evidence": "real-checkpoint",
+            "enable_fp32_lm_head": fp32_head if fault != "head-ignored" else False,
         }
         if fault != "worker-unbound":
             evidence["checkpoint_files_sha256"] = json.loads(manifest.read_text())
@@ -183,10 +195,13 @@ def test_controller_cannot_accept_unbound_or_changed_checkpoint(tmp_path, monkey
     args = SimpleNamespace(
         up_tree=tmp_path, checkpoint=model, families="checkpoint", modes="eager,graph",
         binding_manifest=tmp_path / "bindings.json", out=tmp_path / "report.json", timeout=10,
+        enable_fp32_lm_head=fp32_head,
     )
-    assert smoke.run(args) == (fault == "clean")
+    expected = fault == "clean" or (fault == "head-ignored" and not fp32_head)
+    assert smoke.run(args) == expected
     report = json.loads(args.out.read_text())
-    assert report["passed"] == (fault == "clean")
+    assert report["passed"] == expected
+    assert report["enable_fp32_lm_head"] is fp32_head
     if fault == "after":
         assert not report["complete"] and len(report["jobs"]) == 1
         assert report["jobs"][0]["checkpoint_integrity_after"]["passed"] is False

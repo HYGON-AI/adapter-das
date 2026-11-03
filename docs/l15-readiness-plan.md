@@ -558,6 +558,39 @@ setup/teardown 异常及超时均不通过；运行前删除旧逐 case 报告�
 - 报告：`results/l15-readiness/phase2-all.json`；
   最终链路日志：`results/l15-readiness/phase2-final-chains.log`。
 
+### 官方 FP32 输出层单变量诊断（2026-11-03）
+
+`tools.l15_model_smoke --enable-fp32-lm-head` 显式转发社区公开 Engine
+选项，默认不传入该选项。controller、worker、实际 server info 与 CPU
+参考报告绑定同一配置，拒绝忽略选项或混用旧 worker 证据。此功能用于归因，
+不改变 adapter 默认行为或 `bf16-cpu-fp32-top20-v1` 的任一阈值。
+
+nmz21 同一容器、同一社区 commit，Qwen2/Qwen3 分别沿用物理 GPU 1/2；
+启动前显存空闲比例均为 0.969343。两套模型 eager/graph 共 **4/4**
+启动及生成通过，controller/worker/server 均确认选项开启；各 **96 个位置**
+完成独立 CPU FP32 参考。相较 iteration13，权重字节、每行输入及生成
+token 序列均相同。源码完整性检查通过，未改写社区源码。
+
+- Qwen2：最大所选 logprob 误差 0.066419，greedy regret 0.008249，
+  top20 最大误差由 0.546768 降至 **0.512245**；
+  top20+tail JSD 0.001217，tail mass 误差 0.009126，
+  missed mass 0.000553。
+- Qwen3：最大所选 logprob 误差 0.033474，greedy regret 0，
+  top20 最大误差由 0.732415 降至 **0.642015**；
+  top20+tail JSD 0.000850，tail mass 误差 0.007696，
+  missed mass 0.000139。
+
+两者仍仅因 top20 最大 logprob 误差超过 **0.15** 而 **FAIL**，对应
+参考进程正常以状态 1 退出；不能解释为模型启动失败，也不能声称精度通过。
+该实验表明只改变输出层选项不足以消除偏差，尚不能断言是 HCU 特有问题。
+后续仍需逐层或同精度配置定位。
+
+证据位于 `results/l15-readiness/iteration16-{qwen2,qwen3}-fp32-head-`
+前缀的 `generation.json/log` 和 `accuracy.json/log`；既有失败保留。
+隐藏 GPU 的四模块 CPU 回归 **59 passed**，日志
+`iteration16-final-cpu.log`；L0 GREEN（31 既有 warning）。
+本次未重新执行全量 adapter/vendor 套件。
+
 ## 模型最小闭环入口
 
 ```bash

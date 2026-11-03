@@ -98,6 +98,11 @@ def validate_mode(info, mode):
             raise ValueError("eager smoke unexpectedly captured decode graphs")
 
 
+def validate_lm_head_option(info, requested):
+    if info.get("enable_fp32_lm_head", False) is not requested:
+        raise ValueError("runtime FP32 LM-head option differs from requested configuration")
+
+
 def worker(args):
     checkpoint = None
     if args.family == "checkpoint":
@@ -111,6 +116,7 @@ def worker(args):
     config = json.loads((args.model / "config.json").read_text())
     vocab_size = vocabulary_size(config)
     profile = getattr(args, "profile", "smoke")
+    fp32_head = getattr(args, "enable_fp32_lm_head", False)
     accuracy_cases = None
     if profile == "accuracy":
         if args.family != "checkpoint":
@@ -130,6 +136,8 @@ def worker(args):
         options.update(load_format="dummy", skip_tokenizer_init=True)
     if accuracy_cases is not None:
         options.update(context_length=4096, max_total_tokens=16384)
+    if fp32_head:
+        options["enable_fp32_lm_head"] = True
     with sgl.Engine(**options) as engine:
         generations = []
         # Two batches test fresh inputs and cache reuse through the real
@@ -157,6 +165,7 @@ def worker(args):
             generations.append(result)
         info = engine.get_server_info()
         validate_mode(info, args.mode)
+        validate_lm_head_option(info, fp32_head)
     if checkpoint is not None and not audit_checkpoint(args.model, checkpoint)["passed"]:
         raise ValueError("checkpoint changed during model execution")
     write_json(args.out, {
@@ -165,6 +174,7 @@ def worker(args):
         "weight_evidence": "real-checkpoint" if args.family == "checkpoint" else "dummy",
         "checkpoint_files_sha256": checkpoint,
         "generation_profile": profile, "accuracy_cases": accuracy_cases,
+        "enable_fp32_lm_head": fp32_head,
         "model_type": config.get("model_type"),
         "text_model_type": text_configuration(config).get("model_type"),
         "generations": generations, "server_info": info,
@@ -179,6 +189,7 @@ def run(args):
     families = args.families.split(",")
     modes = args.modes.split(",")
     profile = getattr(args, "profile", "smoke")
+    fp32_head = getattr(args, "enable_fp32_lm_head", False)
     if profile == "accuracy" and families != ["checkpoint"]:
         raise ValueError("accuracy profile requires only the real checkpoint family")
     if not modes or len(set(modes)) != len(modes) or set(modes) - {"eager", "graph"}:
@@ -216,7 +227,8 @@ def run(args):
                 [sys.executable, "-m", "tools.l15_model_smoke", "--worker",
                  "--model", str(model), "--family", family, "--mode", mode,
                  "--out", str(report), "--profile", profile]
-                + (["--checkpoint-manifest", str(manifest)] if checkpoint is not None else []),
+                + (["--checkpoint-manifest", str(manifest)] if checkpoint is not None else [])
+                + (["--enable-fp32-lm-head"] if fp32_head else []),
                 cwd=root, env=test_env(args.up_tree.resolve(), root),
                 timeout=args.timeout, log=work / f"{family}-{mode}.log",
             )
@@ -235,6 +247,7 @@ def run(args):
                 and evidence.get("weight_evidence") == (
                     "real-checkpoint" if checkpoint is not None else "dummy")
                 and evidence.get("generation_profile", "smoke") == profile
+                and evidence.get("enable_fp32_lm_head", False) is fp32_head
             )
             if checkpoint is not None:
                 binding = audit_checkpoint(model, checkpoint)
@@ -251,6 +264,7 @@ def run(args):
                 "complete": len(jobs) == len(families) * len(modes),
                 "families": families, "modes": modes, "jobs": jobs,
                 "generation_profile": profile,
+                "enable_fp32_lm_head": fp32_head,
             })
             print(f"model smoke: {family}/{mode} {'PASS' if job['passed'] else 'FAIL'}", flush=True)
             if not integrity["passed"] or (
@@ -266,6 +280,8 @@ def main():
     parser.add_argument("--families", default="dense,moe,mla,mamba,hybrid,checkpoint")
     parser.add_argument("--modes", default="eager,graph")
     parser.add_argument("--profile", choices=("smoke", "accuracy"), default="smoke")
+    parser.add_argument("--enable-fp32-lm-head", action="store_true",
+                        help="use the official FP32 output-layer option for precision attribution")
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--binding-manifest", type=Path,
                         default=Path("tests/manifests/l15_v0522.json"))

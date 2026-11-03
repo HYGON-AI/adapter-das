@@ -131,6 +131,20 @@ def test_reference_binding_requires_controller_and_worker_agreement():
         execution_binding(report, model)
 
 
+def test_reference_cannot_mix_output_precision_configurations():
+    report = _report()
+    report["enable_fp32_lm_head"] = True
+    with pytest.raises(ValueError, match="worker"):
+        requests(report)
+    for job in report["jobs"]:
+        job["evidence"]["enable_fp32_lm_head"] = True
+    with pytest.raises(ValueError, match="LM-head"):
+        requests(report)
+    for job in report["jobs"]:
+        job["evidence"]["server_info"]["enable_fp32_lm_head"] = True
+    assert len(requests(report)[1]) == 8
+
+
 def test_accuracy_requests_use_explicit_ids_for_cached_prompts_and_require_top20():
     from tools.checkpoint_accuracy import cases
 

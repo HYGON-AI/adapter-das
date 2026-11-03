@@ -67,6 +67,9 @@ checkpoint 哈希结束还须重新读取资产字节确认一致；同 tick 的
 纯文本验证不外推为图像/NEXTN/量化或多卡通过，家族 cookbook 配方与
 较小 checkpoint 的参数差异必须单独记录。
 完整目标与证据见 `docs/l15-readiness-plan.md`。
+输出层归因可显式使用 smoke 的 `--enable-fp32-lm-head`，它只转发社区
+公开选项；controller、worker、实际 server info 和 CPU 参考报告必须一致。
+默认保持社区默认配置，不能因局部指标改善而启用为 adapter 默认或改精度阈值。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测
    "能跑不崩"。案例：rope GPT-J cache 恒为半分 [cos|sin] 布局（fbc540c）。

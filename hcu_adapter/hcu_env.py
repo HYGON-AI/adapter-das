@@ -291,12 +291,11 @@ REGISTRY = {
     },
     "HCU_SPEC_H2D_PIN": {
         "env": "HCU_SPEC_H2D_PIN", "default": "1",
-        "about": "spec-decode prepare_for_decode KV-lens H2D pinned ring："
-                 "torch 对 pageable 内存的 non_blocking 是无效参数仍同步拷贝，"
-                 "且流序排在上一步 forward 之后（WAR 链）= 每个投机步 host "
-                 "干等整条流水线（py-spy 12/12 钉死 eagle_utils 两行 .to）。"
-                 "持久 pinned 8 深环使其成为真异步 DMA enqueue，int 元数据"
-                 "零数值面。文本桥写 eagle_utils seam；=0 关闭安装。",
+        "about": "spec-decode KV-lens 使用 Torch 管理的 pinned CPU 分配"
+                 "和异步 H2D，避免 pageable 复制阻塞 scheduler。"
+                 "原函数私有运行时分配接口保留已有别名，不写回 eagle_utils；"
+                 "不以固定 ring 深度推测 DMA 完成。pin 不可用时告警并"
+                 "回退社区 pageable 行为；=0 关闭安装。",
     },
     "HCU_MOE_ALIGN_FUSED": {
         "env": "HCU_MOE_ALIGN_FUSED", "default": "2048",

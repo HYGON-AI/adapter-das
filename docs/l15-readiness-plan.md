@@ -35,6 +35,11 @@
 每次任务启动前重新检查空闲状态，结果单独记录节点和设备，不沿用
 nmz28 的环境结论；不清理或占用其他用户任务。
 
+2026-11-03 用户进一步授权 nmz21 的同名容器。经 nmz7 免密跳转确认
+代码目录相同，8 张 BW1100 均约 97% 空闲显存，本轮仅暴露物理 GPU 0。
+清理该新容器镜像残留的 SGLang 0.5.18 DTK 定制包与 kernel 包，
+核对 SGLang 从社区源码、`sgl_kernel` 从 adapter 导入；不更改其他节点环境。
+
 当前前置差距：`jit_*`、`dsv4_*`
 等存在源码磁盘写回，须以实际调用点逐项审计，
 上述目标尚未完成。对象广播 `dist_bc` 已迁移为运行时只读 numpy buffer
@@ -123,6 +128,12 @@ GPU 4–7 空闲显存均不足 3%，已停止进一步 GPU 分配。
 日志为 `iteration4-spec-final-cpu.log`、`iteration4-ops-cpu.log`、
 `iteration4-spec-real-h2d.log`、`iteration4-spec-h2d-gpu.log`。
 
+获 nmz21 授权后，GPU 0 上完整 speculative 专项 **22 passed**，
+补齐旧 helper 的多流异步拷贝参数项，包含直接执行 Git 原始函数、
+真实 H2D、pin 回退、只读源文件、已有别名、spawn 子进程与漂移拒绝。
+报告为 `iteration4-nmz21-spec-final.log`；此前“等待空闲卡”的缺项
+现已补齐。此专项不等于完整 speculative 模型或全量 adapter 套件。
+
 独立干净社区树 `sglang-0.5.22-pristine-iter4` 的 MLA dummy graph worker
 通过，真实启动日志确认运行时桥已安装。总控因剩余 **27 个源码文件**
 改写仍判失败（25 个 JIT 文件、`fp8.py`、`deepseek_v4.py`）；
@@ -143,7 +154,7 @@ GPU 4–7 空闲显存均不足 3%，已停止进一步 GPU 分配。
    固定基线与待适配版本分开记录，串接回归与模型冒烟。
 
 每步验证后单独提交；测试失败保留原始证据，不放宽断言制造绿色。
-GPU 测试在用户授权的 nmz7/nmz28 的 `sglang_liph_adapter` 容器运行。
+GPU 测试在用户授权的 nmz7/nmz21/nmz28 的 `sglang_liph_adapter` 容器运行。
 本轮代码目录为 `/public/home/lipenghui/lph-adapter/adapter-das`；
 社区源码为同级 `sglang-0.5.22`。
 

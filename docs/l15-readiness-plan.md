@@ -40,3 +40,59 @@ setup/teardown 异常及超时均不通过；运行前删除旧逐 case 报告�
 - 同容器隐藏 GPU 后，矩阵与清单回归 **67 passed**；L0 **GREEN（31 warn）**。
 - 原始报告：`results/l15-readiness/phase1-dense.json`（节点本地生成，不入版本库）。
 - 这是严格执行机制和 Dense 的证据；其余家族与模型启动尚待后续步骤验证。
+
+## 第二步验证（2026-11-03）
+
+- 提交 `5cb6c11`：五家族严格矩阵 **27/27 PASS**（25 GPU case + 2 CPU 契约）。
+- 社区 MoE routing 接入后，计算链与 GDN 桥另跑 **13 passed**。
+- 实际发现并修复 GDN bridge 多余转置；非方形状态、envelope stride、
+  禁写、ring 和三轮 graph replay 均通过独立 FP32 对拍。
+- 报告：`results/l15-readiness/phase2-all.json`；
+  最终链路日志：`results/l15-readiness/phase2-final-chains.log`。
+
+## 模型最小闭环入口
+
+```bash
+HIP_VISIBLE_DEVICES=0 CUDA_VISIBLE_DEVICES=0 HCU_ADAPTER_HOST=none \
+  python3 -m tools.l15_model_smoke \
+    --up-tree /path/to/sglang \
+    --checkpoint /path/to/local-checkpoint
+```
+
+默认顺序执行 Dense、MoE、MLA、Mamba2、GDN hybrid 的两层 dummy 模型，
+以及显式本地 safetensors checkpoint。每个模型分别启动 eager 和 graph，
+经真实 Engine/scheduler 执行两批变输入，每批两个请求，每请求生成 8 token；
+检查词表范围和有限 token logprob。graph 必须从 scheduler 读回真实 decode
+graph 分配量，日志另保留 batch 1/2 的捕获过程；当前上游启动路径没有填写
+role-switch 使用的 capture-bs 列表，不能以空列表误判未捕获。
+结果保留 resolved server info、原始输出及每次启动日志。
+该验证检查执行闭环，不把 dummy 的随机输出当语义金标，也不冒称 HTTP、
+多卡 TP/EP、所有模型或所有量化格式已经可用。
+
+每次启动使用独立 Linux 进程组。正常退出或超时后仅清理本次任务所属进程组，
+避免失败的 scheduler 占住卡影响下一项。`--families` 可选择子集；
+`--binding-manifest` 需与审查后的目标版本绑定一致。
+
+## 第三步验证（2026-11-03）
+
+- nmz28 单卡 GPU 0：Dense、MoE、MLA、Mamba2、GDN hybrid 五类两层
+  dummy 模型，以及真实 `Qwen2-0.5B-Instruct` checkpoint，分别完成 eager
+  与 graph 启动/生成，共 **12/12 PASS**。真实权重来自容器
+  `/model/qwen2/Qwen2-0.5B-Instruct`，包含 safetensors 与 tokenizer。
+- 每项两批、每批两请求、每请求 8 token；最终规则复核词表范围、有限
+  logprob 与 token 对齐、eager 无 graph 分配及 graph 实际分配。六项 graph
+  的 decode 分配均大于零；这不是只检查启动参数。
+- 模型探测暴露旧 MLA 默认 `rope=0` 的覆盖缺口：新增受上游支持的
+  `256+32`、`512+64` KV 布局，prefill/decode/真实 graph 三种模式，
+  **6/6 参数化节点通过**。当前矩阵为 28 case；证据为第二步完整
+  27 case 加本次新增 case 的增量验证，未声称重新完整跑过 28 case。
+- MoE tiny 配方采用上游 fused RoPE 支持的 head64；MLA tiny 配方采用
+  `512+64`，不再使用上游 grouped decode 不支持的任意小尺寸。
+  这些是验证配方修正，未修改社区实现或放宽数值断言。
+- 报告位于 `results/l15-readiness/`：`phase3-dense.json`、
+  `phase3-dense-graph.json`、`phase3-models.json`、
+  `phase3-models-retry.json`、`phase3-mla-final.json`，
+  新 MLA 契约为 `phase3-mla-contracts.json`。旧失败保留在原报告，
+  最终验证按 family/mode 选择成功执行，并用最终规则重新核验原始输出。
+- 工具与失败判定回归 **91 passed**；包含真实 Linux 子进程及嵌套超时
+  清理、空原因 XPASS 拒绝。未重新执行全量 adapter/vendor 套件。

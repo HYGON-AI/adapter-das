@@ -47,7 +47,7 @@ def pytest_runtest_logreport(report: Any) -> None:
         {"nodeid": nodeid, "outcome": "not_collected", "phases": {}},
     )
     phase = {"outcome": report.outcome}
-    if getattr(report, "wasxfail", None):
+    if hasattr(report, "wasxfail"):
         phase["wasxfail"] = _bounded(report.wasxfail)
     if report.failed:
         phase["fingerprint"] = _bounded(report.longrepr)
@@ -65,9 +65,9 @@ def pytest_runtest_logreport(report: Any) -> None:
     elif report.when == "setup" and report.failed:
         record["outcome"] = "error"
     elif report.when == "call":
-        if report.skipped and getattr(report, "wasxfail", None):
+        if report.skipped and hasattr(report, "wasxfail"):
             record["outcome"] = "xfail"
-        elif report.passed and getattr(report, "wasxfail", None):
+        elif report.passed and hasattr(report, "wasxfail"):
             record["outcome"] = "xpass"
         else:
             record["outcome"] = report.outcome

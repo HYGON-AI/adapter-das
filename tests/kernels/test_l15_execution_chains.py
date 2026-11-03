@@ -214,3 +214,52 @@ def test_gdn_state_ring_and_graph(runtime, disable_update):
         assert torch.count_nonzero(rawv[[0, 2]]).item() == 0
         torch.testing.assert_close(pool[:, 0], untouched_layer, rtol=0, atol=0)
         previous = expected
+
+
+@pytest.mark.parametrize("rank,rope", [(256, 32), (512, 64)])
+@pytest.mark.parametrize("mode", ["prefill", "decode", "graph"])
+def test_mla_nonzero_rope_contract(runtime, rank, rope, mode):
+    """The upstream tiny default uses rope=0 and misses real MLA KV geometry."""
+    import unittest
+
+    if not torch.cuda.is_available():
+        pytest.skip("requires one HCU")
+    from sglang.srt.model_executor.forward_batch_info import ForwardMode
+    from sglang.srt.model_executor.forward_context import ForwardContext, forward_context
+    from sglang.test.kits.attention_unittest.attention_methods.mla_attention import (
+        MLAAttentionCase, build_mla_attention_fixture, expected_mla_fixture_output,
+        run_mla_attention_case, run_mla_fixture_eager,
+    )
+
+    case = MLAAttentionCase(
+        name=f"l15_nonzero_rope_{rank}_{rope}_{mode}", backend="triton",
+        forward_mode=ForwardMode.EXTEND if mode == "prefill" else ForwardMode.DECODE,
+        num_heads=4, page_size=16, prefix_lens=(7, 15, 16),
+        extend_lens=(2, 3, 1) if mode == "prefill" else (),
+    )
+    options = dict(kv_lora_rank=rank, qk_rope_head_dim=rope, dtype=torch.bfloat16)
+    if mode != "graph":
+        run_mla_attention_case(unittest.TestCase(), case, **options)
+        return
+    fixture = build_mla_attention_fixture(unittest.TestCase(), case, **options)
+    with torch.no_grad(), forward_context(ForwardContext(attn_backend=fixture.backend)):
+        run_mla_fixture_eager(fixture)  # initialize static metadata outside capture
+
+        def run():
+            return fixture.actual_module(fixture.input_hidden, fixture.forward_batch)
+
+        for _ in range(2):
+            run()
+        torch.cuda.synchronize()
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            output = run()
+        previous = expected_mla_fixture_output(fixture)
+        for wave in range(1, 4):
+            fixture.input_hidden.copy_(torch.randn_like(fixture.input_hidden) * wave)
+            expected = expected_mla_fixture_output(fixture)
+            assert not torch.allclose(previous, expected, atol=0.03, rtol=0.03)
+            graph.replay()
+            torch.cuda.synchronize()
+            torch.testing.assert_close(output, expected, atol=0.03, rtol=0.03)
+            previous = expected

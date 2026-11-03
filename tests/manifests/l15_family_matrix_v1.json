@@ -24,6 +24,7 @@
       "id": "mla",
       "intent": "MLA construction, compressed KV prefill/decode, fragmented layout and graph-metadata replay",
       "cases": [
+        {"id": "mla-nonzero-rope", "kind": "adapter-pytest", "nodeid": "tests/kernels/test_l15_execution_chains.py::test_mla_nonzero_rope_contract"},
         {"id": "mla-prefill-decode", "kind": "upstream-pytest", "nodeid": "test/registered/attention/unittests/mla/test_triton.py::TestTritonMLAAttentionBackendCorrectness::test_tiny_deepseek_mla_attention_cases"},
         {"id": "mla-layout", "kind": "upstream-pytest", "nodeid": "test/registered/attention/unittests/mla/test_triton.py::TestTritonMLAAttentionBackendCorrectness::test_layout_robustness_cases"},
         {"id": "mla-graph-contract", "kind": "upstream-pytest", "nodeid": "test/registered/attention/unittests/mla/test_triton.py::TestTritonMLAAttentionBackendCorrectness::test_runner_mode_cuda_graph_decode_cases"},

@@ -6,9 +6,65 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
+import time
+
+
+def run_job(argv, *, cwd, env, timeout, log):
+    """Bound a Linux test job and all descendants in its own process group."""
+    if os.name != "posix":
+        raise RuntimeError("HCU test jobs require a POSIX execution host")
+    started = time.monotonic()
+    log = Path(log)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("w", encoding="utf-8") as stream:
+        process = subprocess.Popen(
+            argv, cwd=cwd, env=env, stdout=stream, stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        timed_out = False
+        terminating = False
+        previous_term = signal.getsignal(signal.SIGTERM)
+
+        def terminate(signum, frame):
+            # Let an outer upgrade timeout unwind this controller's finally
+            # block, including workers in their own process groups.
+            nonlocal terminating
+            terminating = True
+            raise SystemExit(128 + signum)
+
+        signal.signal(signal.SIGTERM, terminate)
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+        finally:
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            try:
+                if not terminating and process.poll() is None:
+                    try:
+                        os.killpg(process.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        pass
+                # A crashed launcher may leave scheduler children alive even
+                # when its own wait completed. Only this job owns this group.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+            finally:
+                signal.signal(signal.SIGTERM, previous_term)
+    return {"argv": list(argv), "returncode": 124 if timed_out else process.returncode,
+            "timed_out": timed_out, "seconds": time.monotonic() - started,
+            "log": str(log)}
 
 
 def write_json(path, value):
@@ -115,10 +171,10 @@ def check_outcomes(document, expected):
         phases = item.get("phases", {})
         if item.get("outcome") != "passed" or phases.get("call", {}).get("outcome") != "passed":
             return False
-        if any(p.get("outcome") != "passed" or p.get("wasxfail")
+        if any(p.get("outcome") != "passed" or "wasxfail" in p
                for p in phases.values()):
             return False
-        if any(p.get("outcome") != "passed" or p.get("wasxfail")
+        if any(p.get("outcome") != "passed" or "wasxfail" in p
                for p in item.get("subtests", [])):
             return False
     return True

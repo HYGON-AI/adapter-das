@@ -74,7 +74,8 @@ python tools/l15_family_matrix.py run \
 3. INT8 MoE 两段 GEMM 的端到端合成合同；
 4. INT4/W4A8 在 HCU 上主要是 correctness-first W4A16 降级，不能宣称原生 CUTLASS 行为；
 5. v0.5.22 部分候选路径在本地后续快照已重命名，必须以 manifest 指纹绑定的目标树 collect 为准；
-6. 该矩阵仍不覆盖权重加载、scheduler、HTTP serving 和真实模型生成。
+6. 该组件矩阵仍不覆盖权重加载、scheduler、HTTP serving 和真实模型生成；
+   独立 Engine 冒烟的覆盖与实测见 [l15-readiness-plan.md](l15-readiness-plan.md)。
 
 2026-11-03 扩展：新增 BF16 Triton MoE 的 up/SiLU/down/weighted-combine、
 社区动态 INT8/FP8 Linear，以及 GDN 非方形状态池、envelope stride、
@@ -89,6 +90,13 @@ Conv1D emu 项与 sparse emu 一样明确标为 CPU 契约，不计 GPU 覆盖�
 另跑 **13 passed**。这次补链实际抓到并修复 GDN bridge 的多余状态转置；
 内核实际按 `[slot, head, V, K]` 访问，保留原 pool view 才能同时保持数值
 和 envelope slot stride。仍保留上述 FP8/INT8 专家量化等缺口。
+
+第三步再新增非零 RoPE MLA case，当前清单共 28 case。新增 case 的
+`256+32`、`512+64` KV 布局各测 prefill/decode/真实 graph，共 6 个
+参数化节点在同节点全部通过；graph 连续三轮变输入独立对拍。
+原 27 case 的整轮报告与新增 case 的增量报告分别保留，没有将两次执行
+描述成一次完整 28 case 运行。模型级 Mamba graph 也已通过，但不替代
+上述组件级 Mamba 独立变输入数值对拍缺口。
 
 ## DoD
 

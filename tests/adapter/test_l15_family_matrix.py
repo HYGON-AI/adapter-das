@@ -162,7 +162,10 @@ def test_strict_gate_requires_actual_selected_call(change):
     assert not check_outcomes(report, "tests/test_x.py::test_x")
 
 
-def test_real_pytest_skip_is_not_a_green_case(tmp_path):
+@pytest.mark.parametrize("mark,outcome", [
+    ("skip(reason='no HCU')", "skipped"), ("xfail(reason='')", "xpass"),
+])
+def test_real_pytest_skip_is_not_a_green_case(tmp_path, mark, outcome):
     import os
     import subprocess
     import sys
@@ -170,7 +173,7 @@ def test_real_pytest_skip_is_not_a_green_case(tmp_path):
 
     (tmp_path / "test_required.py").write_text(
         "import pytest\n"
-        "@pytest.mark.skip(reason='no HCU')\n"
+        f"@pytest.mark.{mark}\n"
         "def test_gpu(): pass\n",
         encoding="utf-8",
     )
@@ -184,7 +187,7 @@ def test_real_pytest_skip_is_not_a_green_case(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["tests"][0]["outcome"] == "skipped"
+    assert report["tests"][0]["outcome"] == outcome
     assert not check_outcomes(report, "test_required.py::test_gpu")
 
 

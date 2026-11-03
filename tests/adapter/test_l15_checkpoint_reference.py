@@ -173,7 +173,10 @@ def test_reference_cannot_mix_explicit_and_automatic_quantization_evidence():
     assert len(requests(report)[1]) == 8
 
 
-def test_explicit_online_quantization_cannot_bypass_unquantized_reference_guard(tmp_path, monkeypatch):
+def test_explicit_online_quantization_cannot_bypass_unquantized_reference_guard(tmp_path, monkeypatch, request):
+    from _cpu_process import rerun_if_host_loaded
+    if rerun_if_host_loaded(request):
+        return
     from tools import l15_checkpoint_reference as reference
     from hcu_adapter import hcu_env
 

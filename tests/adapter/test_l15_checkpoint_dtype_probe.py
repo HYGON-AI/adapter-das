@@ -93,7 +93,10 @@ def test_diagnostic_cannot_replace_original_evidence(tmp_path):
 
 
 @pytest.mark.parametrize("fault", ["clean", "unbound", "changed", "explicit-quantization"])
-def test_run_records_diagnostic_without_gate_and_checks_final_bytes(tmp_path, monkeypatch, fault):
+def test_run_records_diagnostic_without_gate_and_checks_final_bytes(tmp_path, monkeypatch, fault, request):
+    from _cpu_process import rerun_if_host_loaded
+    if rerun_if_host_loaded(request):
+        return
     model_path = tmp_path / "model"
     model_path.mkdir()
     (model_path / "config.json").write_text('{"vocab_size":32,"model_type":"test"}')

@@ -177,25 +177,6 @@ TEXT_PATCH_ALLOWLIST = {
         "platform_detect",
         "dsv4 wqkv_a fuse: accept CT int8 per-channel .weight_scale shards",
     ),
-    (
-        "platform_detect",
-        "SGLANG_HCU_EP_BF16=1: fp4 routed experts dequantized to "
-        "bf16 at load (DTK deepgemm fork fp8 grouped GEMMs are "
-        "per-channel-scale-only per R-04); pair with "
-        "--deepep-dispatcher-output-dtype bf16.",
-    ),
-    # DSV4.1-Flash SGLANG_DSV4_FP4_DEQUANT route: cast_e2m1fn_to_e4m3fn
-    # requantizes the mxfp4 experts into [128,128] fp8 blocks, but the
-    # plain-else dequant arm leaves weight_block_size at the checkpoint
-    # [32,32], so the triton/aiter W8A8 block path asserts on scale rows
-    # (gfx938 nmz26 2026-10-21, V4.1-Flash dp8ep8+dspark a2a=none). Op is
-    # platform_detect to share the fp8.py target with the bf16 sibling
-    # above (one target, one op). See
-    # hcu_adapter/dsv4_fp4_dequant_blockshape.py.
-    (
-        "platform_detect",
-        "weight_block_size=[128,128] after FP4->FP8 expert dequant",
-    ),
     # same file, Phase-1/2 hand scans: mask-form shuffles undeclared on DTK;
     # width=32 HIP forms keep the exact CUDA 32-lane warp segmentation.
     ("platform_detect", "uint32_t y = __shfl_up_sync(0xffffffff, v, o);"),

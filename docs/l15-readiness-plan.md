@@ -152,6 +152,44 @@ nmz21 清理镜像残留后，另建干净社区树
 该结果证明当前容器中的真实权重启动/生成链路，不代表语义金标、
 完整 speculative 模型或源码零改写验收通过。
 
+### FP4 专家加载与 block 配置迁移
+
+`dsv4_ep_bf16`、`dsv4_fp4_dequant_blockshape` 不再写回 `fp8.py`，
+兼容入口统一指向 `fp4_expert_load`。宿主桥在算子/vendor 安装之后
+绑定原社区 `Fp8MoEMethod.process_weights_after_loading_block_quant`，
+保留函数对象、签名、已有方法别名及原加载函数体。普通 FP4→FP8
+转换仅使用该次调用的私有 cast 接口，不替换模块全局 cast。
+真实 cast 产生 128×128 block 后，在原方法继续执行前对齐配置。
+
+同时修复旧补丁的配置缺口：过去只改 `method.weight_block_size`，
+后续 requant 与部分 runner 仍读取 `quant_config.weight_block_size=32×32`。
+现在为当前方法复制 config 并设为 128×128，其他层共享的原 config
+保持不变。非转换路径不改配置。`SGLANG_HCU_EP_BF16=1` 继续使用
+社区 FP4 cast，再将两个专家矩阵按 block scale 转成 BF16；先算完两份
+再替换参数、清理 scale，保留 DeepEP BF16 的显式选择语义。
+该已有变量现纳入 env 注册表/手册；没有新增默认 BF16 转换。
+
+nmz21 隐藏 GPU 的加载/广播/MoE/spec/结构组合 **72 passed，
+10 skipped，1 deselected**，其中 8 个 skip 为 GPU 参数项，
+另 2 个为非 HIP 专用与子进程未配置 SGLang 来源。原始社区加载函数、
+FP4 cast 与专家 dequant helper 均从 Git HEAD 提取执行；
+只读源文件、已有别名、关键字调用、spawn、配置隔离和漂移拒绝均有回归。
+GPU 0 空闲检查后，转换专项 **4 passed**，包含社区原始函数和离线协议
+的 FP8/BF16 两条路径；多专家、多 block、非单位 scale 与独立的
+逐 32 元素 FP4 解码参照精确一致。日志为
+`iteration5-fp4-final-cpu.log`、`iteration5-fp4-runtime-gpu.log`。
+首轮夹具缺少上游 `convert_mxfp8_to_block` 初始化导致的失败保留在
+`iteration5-fp4-runtime-cpu.log`，修正夹具后重新执行上述组合。
+
+独立干净树 `sglang-0.5.22-pristine-iter5`，社区 commit
+`baa9befa381511cd4d56f83980951e5a45fffc6d`，nmz21 GPU 0：
+真实 Qwen2-0.5B checkpoint graph worker 启动/两批生成通过，
+但总控因 **26 个文件**改写仍判失败。`fp8.py` 现保持原样；
+剩余是 25 个 JIT 文件及 `deepseek_v4.py`。
+报告为 `iteration5-pristine-before.json`、`iteration5-checkpoint.json`。
+此证据不等于真实 DSV4 checkpoint、DeepEP 多卡执行或全部精度验收。
+L0 GREEN（31 项既有 warning），未执行全量 adapter/vendor 套件。
+
 ## 原四步实施与验证记录
 
 1. **严格执行与结果判定**：校验真实单卡 HIP、源码来源、版本绑定；

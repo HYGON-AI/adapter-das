@@ -24,6 +24,11 @@ facade 的运行时桥替代磁盘补丁；不可重新引入 common.py 写回�
 `spec_h2d_pin` 通过原函数私有 Torch facade 分配 pinned KV-lens，
 保留函数对象与已有别名，不写回 eagle_utils.py。不能以固定 ring 深度
 推测 DMA 已结束；使用 Torch 管理的 pinned 分配并验证多流异步复制。
+`fp4_expert_load` 保留社区权重加载函数与已有别名，以私有 cast 接口
+对齐 FP4→FP8 的 128×128 block 配置，并支持显式 DeepEP BF16 反量化；
+不写回 fp8.py。block 元数据必须同时用于当前加载和后续 runner，
+不能只改 method.weight_block_size 而让 quant_config 仍为 32×32，
+也不能修改其他层共享的 checkpoint config。
 完整目标与证据见 `docs/l15-readiness-plan.md`。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测

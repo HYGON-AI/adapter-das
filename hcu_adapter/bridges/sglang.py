@@ -168,23 +168,6 @@ def install() -> None:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: dsa topk v2 fusion not installed", exc_info=True
             )
-        # DSV4-Flash DeepEP bf16 experts: under --moe-a2a-backend deepep the
-        # expert compute must go through the DTK deepgemm fork, whose fp8
-        # grouped GEMMs are per-channel-scale-only (R-04) while DSV4F experts
-        # are 128x128 block-scaled. SGLANG_HCU_EP_BF16=1 dequantizes the fp4->
-        # fp8 experts one step further to bf16 so the runner's weight-dtype
-        # branch takes the validated bf16 masked/contiguous arms; pair with
-        # --deepep-dispatcher-output-dtype bf16. TP-only servers (env unset)
-        # are untouched.
-        try:
-            from hcu_adapter import dsv4_ep_bf16
-
-            dsv4_ep_bf16.install()
-        except Exception:
-            logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: dsv4_ep_bf16 (DeepEP bf16 experts) not installed",
-                exc_info=True,
-            )
         # tvm-ffi fp8 dtype aliasing for the DSV4 JIT MoE activation kernels
         # (silu_and_mul_{masked,contig}_post_quant): the kernels declare the
         # fp8 output as uint8; CUDA torch fp8 tensors present as uint8 through
@@ -366,18 +349,6 @@ def install() -> None:
         except Exception:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: jit fp8-quant patch not installed", exc_info=True
-            )
-        # DSV4 fp4->fp8 expert dequant: cast_e2m1fn_to_e4m3fn keeps the (1,32)
-        # scale grid while weight_block_size stays [32,32] -- align the MoE's
-        # advertised block shape so the W8A8 block path doesn't assert.
-        try:
-            from hcu_adapter import dsv4_fp4_dequant_blockshape
-
-            dsv4_fp4_dequant_blockshape.install()
-        except Exception:
-            logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: fp4-dequant block-shape patch not installed",
-                exc_info=True,
             )
         # R-09(2/3): aiter per-token fp8 quant vendor tier -- rowwise wrapper
         # NameError fix (HIP has no sgl_per_token_quant_fp8), group plain arm
@@ -3128,6 +3099,17 @@ def install() -> None:
                     "HCU adapter: spec-loc safe routing not installed",
                     exc_info=True,
                 )
+
+        # Import quantization only after operator/vendor setup. The original
+        # loader receives a private cast interface; community files stay intact.
+        try:
+            from hcu_adapter import fp4_expert_load
+
+            fp4_expert_load.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: FP4 expert runtime loader not installed", exc_info=True,
+            )
 
         # Import speculative scheduling only after operator/vendor setup.
         # Private metadata allocation preserves community source and aliases.

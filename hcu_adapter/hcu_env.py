@@ -442,6 +442,13 @@ REGISTRY = {
                  "graph capture 期间自动静默防 D2H 崩溃）",
     },
     # disaggregation / EP transfer
+    "SGLANG_HCU_EP_BF16": {
+        "env": "SGLANG_HCU_EP_BF16", "default": "0",
+        "about": "显式 =1 时，将 FP4 routed experts 经社区 FP8 cast 及"
+                 "128x128 block 反量化转成 BF16，供 DeepEP BF16 dispatcher；"
+                 "配合 --deepep-dispatcher-output-dtype bf16。默认不转换；"
+                 "运行时接口适配，不写回社区 fp8.py。",
+    },
     "HCU_DEEPEP_BRIDGE": {
         "env": "HCU_DEEPEP_BRIDGE", "default": "1",
         "about": "deep_ep API 桥：sglang v0.5.21 low_latency_dispatch(use_fp8)"

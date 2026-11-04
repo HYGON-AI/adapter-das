@@ -365,7 +365,10 @@ REGISTRY = {
     },
     "HCU_FA_IMPL": {
         "env": "HCU_FA_IMPL", "default": "auto",
-        "about": "fa3 注意力面档位：auto=emu（宽窗；缺 vendor 轮自动全 emu）"
+        "about": "fa3 注意力面档位：auto=triton 面（**2026-11-05 转正**："
+                 "行使模型 L1.5 dense eager+graph 双绿过门；此前 10-19 "
+                 "serving A/B 已 11k×3 绿+LONGCTX 9×+锚点一致；vendor wheel "
+                 "paged 词汤缺口保持出局，=vendor 显式 opt-in）"
                  "|triton=分页 decode/宽窗 + ragged varlen 预填充走自研 "
                  "triton 核（paged_attn_triton.py / fa_varlen_triton.py，"
                  "契约超界面回 emu）|vendor=decode/verify 短窗走 DTK "
@@ -524,6 +527,15 @@ REGISTRY = {
                  "update 4.3×；**2026-10-18 转正为 hip 默认**——污染态 9-10/20 翻转观测作废（KFD 坏态数据），干净复验 conv-only 臂 0/20+Tokyo+长文对）；emu=torch 步进（=emu 退路）；stock=官方内核"
                  "（update cos 0.26 / fn 初态臂死，gate 红常驻）。旧键 "
                  "HCU_CONV1D_{UPDATE,FN}_EMU=1 等价本键 =emu",
+    },
+    "HCU_HADAMARD_IMPL": {
+        "env": "HCU_HADAMARD_IMPL", "default": "triton",
+        "about": "DSA indexer rotate_activation 的 Hadamard 变换内核选择："
+                 "triton=radix-2 蝶形（reshape/permute/split/join，无 "
+                 "warp-shuffle 原语；fp32 计算，2^k 契约；对拍 emu numpy "
+                 "oracle n=2/4 精确、n>=8 加法序噪声 <=1e-6 rel，替代 "
+                 "64MB Sylvester 矩阵乘）；emu=torch 矩阵参考（=emu 退路/"
+                 "A-B 对照）。",
     },
     "HCU_KPOOL_WRITE_EMU": {
         "env": "HCU_KPOOL_WRITE_EMU", "default": "0",

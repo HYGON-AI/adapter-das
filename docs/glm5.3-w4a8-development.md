@@ -112,3 +112,11 @@ DeepEP 采用镜像对应提交 `a755fa7e14631af7e8a6a0d6ead217101d3bfdda` 的 `
 decode v5 已越过 INT8 契约并完成一组 graph 捕获，随后 MTP 初始化导入 `FlashMLABackend` 时因 shadow 缺少 `hcu_create_flashmla_kv_indices` 退出。镜像没有注册对应 `torch.ops.sgl_kernel` 算子，LightOp 也未提供此出口；底座已有同语义的 `create_flashmla_kv_indices_triton`。新增薄接口复用该实现，保留原参数名、显式 stride、可选 start、page64、有效位置写入及尾部不变的语义，空批次/零宽输出直接返回；没有新写索引算法或更换 attention kernel。catalog、runtime registry、UI 快照和档位矩阵同步登记为 candidate。
 
 节点 23 经实际公开 API 检查 6 组输入：连续/带 stride 源与输出、有/无起点、长度 0/1/63/64/65/128/257/4097，以及空批次/零宽输出。所有有效页索引与整数参考精确一致，未写尾部和输出保护列保持原值；4 个非空组合各完成两次更换源表、请求索引和起点后的 graph replay，仍逐元素一致。记录为任务产物 `candidate-pd/flashmla-indices-check-v1.json` 和同名日志。未新增单测，完整 MTP 与 P/D 请求仍待复验。
+
+## 2026-11-05 原生 HCU top-1 MTP 随机采样选择
+
+v6 的 32 个 scheduler 均已就绪，decode 完成 target-verify、draft-decode、draft-extend graph 捕获及 16 个 attention-DP rank 的启动 warmup。首条固定 33-token、temperature1/top-p0.95 的真实 P/D 请求完成 prefill，随后 decode 进入依赖 FlashInfer 头文件的 JIT 采样并退出；此前 warmup 不能代表此随机采样路径已通过。
+
+指定底座已有 `sample_mtp_target_ids`：HCU top-1 MTP 保留温度、top-k/top-p/min-p、请求 seed/positions，先采样 target IDs，再进行树匹配。CUDA 平台 facade 令 `eagle_utils._is_hip=False`，已有 sampled IDs 没有被后续 `_verify_uses_greedy` 条件采用。`eagle_hcu_sampling.py` 通过正式 HookRegistry 在真实 HCU、原生能力及签名均符合契约时，补齐 top-1 非 rejection 的选择条件。它先保留原 predicate 结果，非 top-1 和 rejection 请求继续使用原结果；没有新增采样算法或改写 `eagle_sample`、logits、概率及随机数。
+
+实际 bootstrap 和 Hook 应用检查完成 9 个 selector 组合，覆盖 top-k1/2/未配置、greedy 和 rejection。已缓存的 helper 别名随 Hook 传播，公开 `eagle_sample` 函数对象及 code 未改，模块平台常量未改。结果为任务产物 `candidate-pd/eagle-policy-check-v1.json`；这只是实际接线/选择检查，真实请求复验和完整 profile 仍待完成。未新增单测，SGLang 跟踪源码未改。

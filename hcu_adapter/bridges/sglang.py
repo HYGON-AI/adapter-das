@@ -3013,6 +3013,15 @@ def install() -> None:
         # Import speculative scheduling only after operator/vendor setup.
         # Private metadata allocation preserves community source and aliases.
         try:
+            from hcu_adapter import eagle_hcu_sampling
+
+            eagle_hcu_sampling.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: native HCU MTP sampling policy not installed", exc_info=True,
+            )
+
+        try:
             from hcu_adapter import spec_h2d_pin
 
             spec_h2d_pin.install()

@@ -39,3 +39,5 @@
 节点 21 的独立 RoPE 检查在 tvm-ffi 预热时停住：父进程持有构建 flock，子进程即使移除 `PYTHONPATH`，仍通过 editable 安装找到 `sitecustomize`，重新进入 adapter 并等待同一锁。实际进程链和内核等待点为父进程等待构建子进程、子进程 `locks_lock_inode_wait`，未进入 RoPE 数学检查。
 
 构建子进程环境现同时移除 `PYTHONPATH`，并显式设置公开及传播的 host 为 `none`；预热窗口中显式传入的子进程 env 也按此处理。父进程环境保持原样。重跑后冷缓存成功生成 `libtorch_c_dlpack_addon_torch211-rocm.so`，主诊断继续运行；证据是 `rope-jit-check-v1-deadlock.log`、`rope-jit-check-v2.log`。不改动镜像中的 Torch/DTK 算子库，模型生成验证仍待完成。
+
+镜像的 `/usr/local/bin/ninja` 是 Python 入口，JIT 编译调用它时再次执行已安装的 `sitecustomize`。启动配方通过已安装 `ninja.BIN_DIR` 将同一 wheel 的原生二进制置于 PATH 前部，保留编译命令、工具版本和父服务的 adapter 配置。正在运行的模型继续等待其原有 JIT 完成，未为此重启。

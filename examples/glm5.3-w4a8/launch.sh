@@ -9,6 +9,9 @@ set -euo pipefail
 : "${MODEL_PATH:?Set the compressed-tensors checkpoint directory}"
 : "${WORK_DIR:?Set the writable task directory}"
 export PYTHONPATH="$ADAPTER_DIR:$SGLANG_DIR/python:$PLUGIN_DIR"
+# Use Ninja's bundled executable so build helpers do not re-enter Python bootstrap.
+glm_ninja_bin="$(HCU_ADAPTER_HOST=none python3 -c 'import ninja; print(ninja.BIN_DIR)')"
+export PATH="$glm_ninja_bin:$PATH"
 export HCU_ADAPTER_HOST=sglang HCU_W4A8_MOE=native HCU_SLIMQUANT=0
 export SGLANG_PLUGINS=hcu SGLANG_USE_AITER=0
 # Keep the initial packed-INT4 probe on the Triton W4A8 path.

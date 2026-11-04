@@ -128,3 +128,15 @@ v6 的 32 个 scheduler 均已就绪，decode 完成 target-verify、draft-decod
 实际 config/index/tokenizer 元数据在四台候选容器和两台可用原生参考容器一致，模型为 78 层、256 个路由专家；此前 DeepEP 组件探针的 384 专家是合成通信参数，不能当作真实模型专家数。PP 两侧 trace 各含 39 层 attention，GEMM 调用数差异继续结合实际路由检查，不能据此判定少跑模型层。
 
 原始数值响应显示 P 入口 HTTP 的 token/logprob 有时与 D 首 token 不同且含非有限值；直接拼接它们的两版探针失败记录保留，不用于数值通过判断。临时、隔离的末级 PP LogitsProcessor 观测对真实 33-token 请求记录到 final hidden states 和 raw logits 全零；这仅把异常限定到采样之前，首个清零边界仍待定位。CPU 拷贝会同步并改变时序，观测代码没有提交为正式修复。固定误差阈值未放宽，完整数值及缓存/chunk/并发/MTP 开关矩阵仍未通过。
+
+## 2026-11-05 embedding 汇总与 Aiter CAR code object
+
+固定 33-token 请求的 PP0 发送、PP1 接收张量在 8 个 TP rank 上逐字节一致，异常已在传输前出现。进一步观测发现，第 0 层归一化输入已经全零；在 embedding 边界增加同步快照后，加载的权重行和各 rank 本地 Triton 查表结果均与 checkpoint 精确一致，8 份本地输出的 CPU 求和也与完整 embedding 一致，但实际汇总输出在各 rank 间不同。同步观测改变了未写入缓冲区的旧内容，因此不能把观测后的非零结果视为修复。
+
+镜像 Aiter 为 `0.1.8+dtk2610.torch2110.2611031115.ga1a2bc`。独立进程重放实际 `[40, 6144]` BF16 embedding 分片，并增加 rank 常量、倍增和负半值三组控制。8 个 rank 的 4 组 RCCL/PyNccl 结果全部精确；原 Aiter CAR 的 32 组结果全部失败，显式以 NaN 填充的输出缓冲区全部保持原值。该二进制的 AMDGPU ELF ABI 为 4（COV6）。
+
+使用镜像内相同的 402 份源码/配置，通过原生 `AITER_JIT_DIR` 和 `AITER_CODE_OBJECT_VERSION=5` 构建隔离 CAR，未改动算子源码、Torch、DTK 或原安装文件。COV5 产物使上述 8-rank eager 检查和每后端两轮变输入 graph replay 全部精确通过。版本、哈希及验收范围写入 [ABI 记录](glm5.3-w4a8-vendor-abi.json)。这支持当前节点/镜像的 CAR code-object 兼容性归因，不外推到其他运行时或全部 Aiter 算子。
+
+构建入口为 `tools/build_aiter_car_cov5.py`：固定输入版本和字节摘要，使用公开 JIT 接口，只重建 CAR，校验 COV5 设备代码后原子发布。其他模块通过符号链接复用镜像文件；来源变化拒绝，失败的构建目录保留供检查。未增加数学实现、运行时 hook 或单测。临时观测不进入正式修复，组件检查不代替完整 P/D 精度验收。
+
+实际 CLI 在独立目录重建成功，其新产物也重新完成相同 8-rank eager/变输入 graph 检查，全部精确。移除观测后，prefill 16 个 rank 的实际映射均绑定已验证 COV5 CAR。完整 P/D 算术 cold/repeat 两次均答对并正常 stop；随后 32-token 水分子式请求输出无关代码、512 token 截断，检查按原规则停止，JSON 项未执行。结果为任务产物 `candidate-pd/smoke-v13/validation.json`；模型精度仍失败，继续固定前缀/rank 对照，不能把 CAR 局部修正视为全部根因已解决。

@@ -73,3 +73,19 @@ vendor 配置保持原样。启动日志记录实际模块路径，registry 记�
 `w4a8_contiguous_gemm`。移除该目录或在新进程设置
 `HCU_DISABLE_OPS=w4a8_contiguous_gemm` 可跳过接入；恢复原路径不代表
 当前节点的原 COV6 算子已经可用。
+
+同一镜像的 Aiter custom all-reduce 也需使用 COV5：原 COV6 模块在这些
+节点上没有写入输出。相同源码的独立 COV5 构建已通过 8-rank 实际 embedding
+分片的精确求和及变输入 graph 检查，完整模型精度尚未通过。
+
+```bash
+HCU_ADAPTER_HOST=none python3 "$ADAPTER_DIR/tools/build_aiter_car_cov5.py" \
+    --output-dir "$AITER_CAR_COV5_OUTPUT"
+export AITER_JIT_DIR="$AITER_CAR_COV5_OUTPUT/jit"
+```
+
+`AITER_CAR_COV5_OUTPUT` 必须是新目录。构建器锁定镜像 Aiter 的版本、
+402 份源码/配置摘要和原二进制，通过其公开 JIT/COV 参数只重建 CAR；
+其他模块引用同镜像安装文件。各节点必须使用相同的镜像资产。
+仅设置编译选项不会替换已有二进制，启动进程须使用上述 `AITER_JIT_DIR`。
+本方案不修改 vendor 或 SGLang 源码，也不增加运行时 wrapper。

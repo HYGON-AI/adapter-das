@@ -128,7 +128,74 @@
     }
   },
   "remaining": [
-    "Full P/D KV handoff, EAGLE MTP and target decode graph",
-    "Finite numerical/request matrix and candidate32-rank profile"
-  ]
+    "Uninstrumented P/D accuracy after compatible CAR deployment",
+    "Native-aligned numerical and cache/chunk/concurrency/MTP matrix",
+    "Final accepted32-rank profile; diagnostic32-rank archive already complete"
+  ],
+  "aiter_custom_all_reduce": {
+    "version": "0.1.8+dtk2610.torch2110.2611031115.ga1a2bc",
+    "source_files": 402,
+    "source_digest": "990a3f5480e42e2cee5e2c57b9b797aca4ed534712d34802c1b28220c0f4d62d",
+    "original_binary_sha256": "5fd195371e731dc52998617b75e335f05686efc226d2d66c18c3bbd7bcbc5cc5",
+    "original_code_object_version": 6,
+    "original_control": {
+      "ranks": 8,
+      "cases_per_rank": 4,
+      "shape": [
+        40,
+        6144
+      ],
+      "dtype": "bfloat16",
+      "rccl_all_exact": true,
+      "aiter_all_failed": true,
+      "poisoned_outputs_all_unwritten": true,
+      "report": "candidate-pd/embedding-allreduce-v1/validation.json"
+    },
+    "isolated_cov5": {
+      "binary_sha256": "60bf99742bbdb14d92a5b9522064d9af358d2ab25422e758a0ddbcbf0d4a0618",
+      "code_object_version": 5,
+      "architecture": "gfx936",
+      "source_math_changes": false,
+      "public_configuration": [
+        "AITER_JIT_DIR",
+        "AITER_CODE_OBJECT_VERSION",
+        "CK_CODE_OBJECT_VERSION"
+      ],
+      "source_identity_verified_nodes": [
+        21,
+        22,
+        23,
+        24
+      ],
+      "original_binary_unchanged": true,
+      "ranks": 8,
+      "eager_cases_per_rank": 4,
+      "changed_input_graph_replays_per_rank_per_backend": 2,
+      "all_exact": true,
+      "report": "candidate-pd/embedding-allreduce-cov5-v1/validation.json"
+    },
+    "builder": "tools/build_aiter_car_cov5.py",
+    "scope": "CAR component eager and changed-input graph only; uninstrumented full-model P/D accuracy remains pending",
+    "builder_reproduction": {
+      "exit": 0,
+      "binary_sha256": "83955b32cef44c3d451d5b9e2854a5701e18d5b6c878ca71ff8e2f59e91e418f",
+      "ranks": 8,
+      "eager_cases_per_rank": 4,
+      "changed_input_graph_replays_per_rank_per_backend": 2,
+      "all_exact": true,
+      "report": "candidate-pd/embedding-allreduce-cov5-tool-v1/validation.json"
+    },
+    "uninstrumented_pd_recheck": {
+      "prefill_version": "v13",
+      "decode_version": "v8",
+      "all16_prefill_ranks_mapped_cov5_car": true,
+      "sanity_cases_executed": 3,
+      "arithmetic_cold_and_repeat_correct_with_stop": true,
+      "formula_correct": false,
+      "formula_finish": "length512;unrelatedcode",
+      "json_case_executed": false,
+      "model_accuracy_passed": false,
+      "report": "candidate-pd/smoke-v13/validation.json"
+    }
+  }
 }

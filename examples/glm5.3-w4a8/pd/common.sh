@@ -12,8 +12,9 @@ export HCU_ADAPTER_HOST=sglang HCU_W4A8_MOE=native HCU_SLIMQUANT=0
 # The legacy use_fp8 wrapper hides that API and cannot represent INT8.
 export HCU_DEEPEP_BRIDGE=0
 export SGLANG_PLUGINS=hcu SGLANG_USE_AITER=0 SGLANG_ROCM_USE_AITER_MOE=0
-# Match the native BF16 RoPE arithmetic through the image's public LightOp API.
+# Select the plugin's qualified native RoPE and public W8A8 paths.
 export SGLANG_HCU_USE_LIGHTOP_ROPE=1
+export SGLANG_HCU_W8A8_USE_LIGHTOP=1
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 OMP_NUM_THREADS=1
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/var/cache/glm53-candidate/triton}"
 export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR:-/var/cache/glm53-candidate/torch_extensions}"

@@ -198,3 +198,5 @@ GLM 配方现显式设置 plugin 的 `SGLANG_HCU_USE_LIGHTOP_ROPE=1`，选择镜
 P18/D10 使用 adapter f29c5f7、plugin bebe2a1 的精确源码快照，四节点全部 930 个运行时跟踪资产及五个框架文件逐项一致。移除观测后完成六组固定输入、CT W4A8、P/D、MTP 5/1/6 和目标 decode Graph 的实际请求，原始捕获退出码为 0；两步输出 IDs 六组均匹配原生，但六组 prefill 和六组对齐 decode 仍未通过原有 RMSE≤0.1、最大绝对差≤0.5 的合同，比较退出码为 1。局部 RoPE 对齐不构成整体精度修复。
 
 例如 arithmetic-prefix0 的 P/D logprob RMSE 分别为 0.8123/0.4400，formula-prefix0 为 0.8751/1.6891，4k-prefix8 为 0.4410/0.4611。完整结果保留在[数值记录](glm5.3-w4a8-numerical.json)，159934 字节的本地原始归档已核对大小和 SHA256。服务仍正常存活，没有因比较失败重启；下一步继续用相同实际 Q-b 输入/权重，对照当前 ASM、公共 LightOp 与原生输出，检查已经观察到的微小投影差异。完整有限矩阵和最终验收 profile 尚待完成。
+
+Q-b 的两镜像对照确认公共 LightOp 输出均逐元素匹配原生，插件 ASM 快路径有四个元素不同；48 份共同量化整数、token scale 和公共输出全部一致。正式插件接口显式启用 `SGLANG_HCU_W8A8_USE_LIGHTOP=1` 后，16 组真实输入及两次更换输入的 Graph 均逐元素匹配原生，关闭开关后保持原候选结果。GLM 配方现同时启用公共 W8A8 与原生 BF16 RoPE，分发策略仍在 plugin；两项修正组合后的模型数值继续复测，不将组件通过当作完整模型通过。

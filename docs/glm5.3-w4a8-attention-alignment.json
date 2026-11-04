@@ -570,5 +570,24 @@
     },
     "scope_limit": "Only observed first-layer short-prefix inputs and one changed-input component graph, not full model acceptance. Fused KV-store and offsets not exercised.",
     "old_head_split_control": "Full64-head public LightOp matches all observed native outputs; splitting8heads produces23861different elements. Failed v3candidate plugin probe retained; not used for model service."
+  },
+  "q_b_public_w8a8_alignment": {
+    "shape_M_N_K": [
+      8,
+      16384,
+      2048
+    ],
+    "case_rank_pairs": 16,
+    "public_vs_native_all_exact_both_images": true,
+    "ASM_vs_original_candidate_all_exact": true,
+    "ASM_different_elements_vs_native": 4,
+    "ASM_worst_rank_nrmse": 8.160733159456868e-06,
+    "cross_image48_quant_scale_public_output_tensors_exact": true,
+    "actual_plugin_flag_on16_outputs_match_native": true,
+    "actual_plugin_flag_off16_outputs_match_original_candidate": true,
+    "changed_input_component_graphs_exact": 2,
+    "runtime_report": "attention-probe-v1/qb-w8a8-v1/candidate-runtime-v2.json",
+    "runtime_report_sha256": "2731929d50cbfc815e697657fcb92dd4a4c1ab793687b4c093c81adc5be2205b",
+    "scope": "Captured first-layer Q-b finitecomponent only. Six-case model replay with bothflags pending."
   }
 }

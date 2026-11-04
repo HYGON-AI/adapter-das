@@ -2985,17 +2985,6 @@ def install() -> None:
                     exc_info=True,
                 )
 
-        # DSV4 CT-int8 q/kv scales must use the existing fused loader arm.
-        # Extend its endswith arguments at runtime after operator/vendor setup.
-        try:
-            from hcu_adapter import dsv4_wqkv_scale_patch
-
-            dsv4_wqkv_scale_patch.install()
-        except Exception:
-            logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: DSV4 CT scale loader not installed", exc_info=True,
-            )
-
         # Import quantization only after operator/vendor setup. The original
         # loader receives a private cast interface; community files stay intact.
         try:

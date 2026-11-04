@@ -243,15 +243,6 @@ REGISTRY = {
                  "'Linear' 桶保留 stock W4AFP8 语义（当前会响亮撞 CUTLASS "
                  "W4A8 缺核，为将来 W4A8 HIP 内核备的路）；0=还原 stock",
     },
-    "HCU_DSV4_WQKV_SCALE": {
-        "env": "HCU_DSV4_WQKV_SCALE", "default": "1",
-        "about": "DSV4 wqkv_a CT-int8 scale 运行时兼容：原融合分支漏 "
-                 ".weight_scale，导致 per-channel scale 未加载。扩展两处 "
-                 "str.endswith 参数为 suffix 元组，保留社区原加载字节码、"
-                 "过滤与异步流程及已有别名，不读写或重编译 deepseek_v4.py。"
-                 "关融合不是绕法（mapper 后的组 targets 只认融合名）；"
-                 "=0 跳过安装。",
-    },
     # custom all-reduce
     "HCU_AITER_AR": {
         "env": "HCU_AITER_AR", "default": "0",

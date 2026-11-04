@@ -45,7 +45,7 @@
 | P8 | **fork serving 门 RED 对拍**（vendored `fla_hcu` 内核 standalone 6/6 绿，serving 中 Berlin 确定性翻转） | 窗口（adapter 内部） | 默认 emu，fork 留仓 opt-in（`HCU_KDA_PREFILL_IMPL=fork`）；HCU_DUMP_LAYERS + `replay_kda_l0.py` 参考链已备（容器 /root） | 下个 GPU 窗口做 serving dump 对拍；转绿 = prefill 17-28s→~3s | serving 门 Berlin id=19808 等 + standalone 门双绿 |
 | P9 | **DTK 大图发射（hipGraphLaunch ~435ms/步）** | 上游（DTK runtime） | 机制终版（2026-10-16 深夜 microbench 三连 + trace 复核）：launch API 是**纯宿主提交工作**（全同步后首调仍 6.8ms/千节点，GPU 实算仅 ~2ms）；**进程内全局串行**（2 线程分包 0.98×，piecewise 多线程死刑）；**跨进程独立**（两进程各 113/s=单进程原速）；**NUMA 不敏感**（scheduler 按 GPU 亲节点 taskset 绑核，e2e 零变化，`_launch_g53f_tp4_pinned.sh`）；env 全否决（见 env-vars.md）。服务 24k 节点/步 × 实参更重 ≈ 22µs/节点 = 540ms 提交墙；TP0 宿主额外职责致尾段 5.5ms 停顿量子，TP1-3 nccl 各等 2.5s/窗。附带发现：`torch.cuda.graph(g, stream=…)` 捕获路径本栈 segfault。**本地活路①（已落地，2026-10-17）：减图节点**——MQA logits emu vec 化（`HCU_MQA_LOGITS_IMPL=vec` 默认）图节点 23.9k→3.7k、launch API p50 540→21.6ms、单流 +52%（详见 models.md 2026-10-17 行）；**本地活路②（进行中）**：图剩余 3.7k 节点的下一刀（conv1d_update emu/mHC 链）。**新增 DTK 图 replay 崖证据（提报材料）**：图内大张量 fp32 物化与 (N,T,D) 转置物化单核 ~124ms（~0.8GB/s 定长，eager/小图同形状仅 µs 级；宿主窗口零 API 活动、每步 11 拍 151ms 设备侧等待——详析 prof_torch_vec/ V0-V2 三代对照）；根治仍在 DTK 提交/执行路径 | 按 operator-requests 向 DTK 提报（证据链：纯提交开销+串行性+跨进程独立+NUMA 不敏感+env 三连否决+stream 捕获 segfault+图 replay 大核崖） | 0.43s/步显著下降 + 四锚点不劣化 + 贪心确定性保持 |
 
-| P10 | **自研 channel-wise 量化 scheme**（生产主力量化路线；kernel 归 `sgl_kernel` 共享层，scheme/apply 层归 plugin） | plugin | sglang 侧经 HookRegistry REPLACE quant scheme、vLLM 侧对称 plugin；格式规范与 conformance 单测**单源**（governance §7.2/§5.1 阶段 2）；checkpoint 格式先核能否参数化对齐上游 compressed-tensors 族参数化形态，对得上即白拿上游加载/转换工具链 | 每宿主一 plugin + kernel 共享；格式契约第一天固化文档+契约单测 | scheme 单测 + 宿主中立 parity 契约测试 + 两侧 serving gate 各一个 channel-wise checkpoint |
+| P10 | **自研 channel-wise 量化能力**（专用权重加载、名称/scale 映射、scheme/apply 归 plugin；kernel 归 `sgl_kernel` 共享层） | plugin | sglang 侧经 HookRegistry REPLACE quant scheme、vLLM 侧对称 plugin；格式规范与 conformance 单测**单源**（governance §7.2/§5.1 阶段 2）；checkpoint 格式先核能否参数化对齐上游 compressed-tensors 族参数化形态，对得上即白拿上游加载/转换工具链 | 每宿主一 plugin + kernel 共享；格式契约第一天固化文档+契约单测 | scheme 单测 + 宿主中立 parity 契约测试 + 两侧 serving gate 各一个 channel-wise checkpoint |
 
 ## 2. 与既有文档的边界
 
@@ -62,3 +62,11 @@
   `tests/tools/`；**不在本文档写长篇过程**。
 - 新增项必须过 §0 判定规则至少一条，且带"现状账"（今天怎么活下来的、
   代价多少）——与 operator-requests 的最小合格线同构。
+
+## 2026-11-04 channel-wise 权重加载归属
+
+自研 channel-wise checkpoint 的格式解析、参数命名、scale 融合映射与量化 scheme 作为一套能力由 plugin 维护。通用平台检测、算子 ABI 与已定义算子的等价实现继续由 adapter 提供。
+
+DSv4 的 `wq_a`/`wkv` 到 `wqkv_a` 融合及 `.weight_scale_inv`/`.weight_scale` 参数映射已在 HYGON-AI/sglang-plugin-das 的 `hcu_sglang/models/deepseek/current_v4/execution/core.py` 实现，并通过 `deepseek_v4/hooks/causal_lm.py` 的 `load_weights` Hook 接入。adapter 撤下 `dsv4_wqkv_scale_patch` 及旧开关 `HCU_DSV4_WQKV_SCALE`；该类自研 checkpoint 需安装 plugin 并启用 `SGLANG_PLUGINS=hcu`。旧补丁对应的专用测试随退役实现移除，未新增单测。
+
+本次收敛不修改 plugin 的量化数学，不代表截图所述 FP8 checkpoint 或 DSv4 完整模型已重新验收；历史模型记录保留原验证版本语义。提交前运行 L0、修改 Python 语法与 diff 空白检查。

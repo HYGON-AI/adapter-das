@@ -21,6 +21,7 @@ export HCU_DISABLE_OPS=aiter_ar,aiter_fa # 多个（逗号/空格/分号分隔�
 
 | 名字 | 拦截物 | 拦截方式 |
 |---|---|---|
+| `vllm_sparse_indexer` | vLLM 0.33/gfx936 C4 public OOT | 启动时优先 stock；注册后改变须新进程，不能撤销 dispatcher 或清除失败 |
 | `aiter_ar` | AiterCustomAllreduce dispatch | 拒绝 → sglang 回退 NCCL（优雅降级） |
 | `aiter_fa` | aiter FA 入口（真包已有属性也拦） | 调用时响亮报错（换 `--attention-backend triton`） |
 

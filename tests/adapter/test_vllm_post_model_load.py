@@ -158,7 +158,10 @@ def make_runner(monkeypatch, cfg, version, events, fail_at=None):
         class Draft(spec.DraftModelSpeculator):
             def load_draft_model(self, target_model, target_attn_layer_names):
                 draft_load(target_model)
-                return NS()
+                # v0.33 traverses the draft module to restore its source head.
+                # Keep that official traversal in this CPU-only fixture.
+                from torch.nn import Module
+                return Module()
             def init_cudagraph_manager(self, *args): pass
             def capture(self): pass
             def propose(self, *args, **kwargs): pass

@@ -30,6 +30,7 @@ LOG = logging.getLogger("hcu.adapter")
 
 # canonical name -> (what gets blocked, opt-in env that re-enables it)
 SWITCHES = {
+    "vllm_sparse_indexer": ("vLLM C4 indexer public OOT compatibility; fresh-process stock fallback", "HCU_VLLM_SPARSE_INDEXER_IMPL"),
     "deep_ep": ("DeepInfer DeepEP compatibility surface", None),
     "worker.runtime": ("DeepInfer worker lifecycle adaptation", None),
     "deep_gemm": ("DeepInfer GEMM/MQA/mHC compatibility surface", None),

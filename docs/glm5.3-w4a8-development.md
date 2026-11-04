@@ -211,3 +211,13 @@ P19/D11 同时启用原生 BF16 RoPE 和公共 W8A8，四节点的 933 份运行
 通用修复将 residual 写回延后到第二遍，归一化使用重新计算的 FP32 和；Torch 回退也保留 FP32 和。修正后的 Triton 仅剩 6 个不同元素，最坏 NRMSE 为 5.33e-5；镜像内现有 LightOp 分发全部 32 份输出精确匹配原生。因此 GLM 配方显式选择已有 `HCU_FUSED_ADD_RMS_IMPL=lightop`，通用默认仍为 Triton。三种实现各完成 64 份实际输入重放、4 次普通/Gemma 更换输入 Graph 重放，所有 Graph 输出及 residual 均与各自 eager 精确一致；BF16/FP16/FP32、hidden 6144/8193 的 FP32 参考误差另行记录，不声称不同归约顺序逐位相同。[组件记录](glm5.3-w4a8-fused-rms-alignment.json)包含环境、原始报告哈希和复现脚本。
 
 这轮仅确认并修复算子边界；包含 RMSNorm 修正的六组模型复测、有限矩阵和最终验收 profile 尚待完成。
+
+
+## 2026-11-05 RMSNorm 修正后的完整六组复测
+
+P20/D12 使用 adapter 3199c22 与 plugin d31cc27 的冻结快照，显式选择 LightOp residual RMSNorm；其余量化、P/D、MTP 和 Graph 配置保持不变。四节点全部 938 份运行时/框架资产一致，旧进程均结束、32 卡各 2 MiB 后才启动新服务。六组原始捕获退出 0、比较退出 1：全部六组 prefill 和六组对齐 decode 仍失败，首两个 IDs 六组均匹配原生。
+
+例如算术 33-token 的 P/D RMSE 为 0.657014/0.321125，水分子式 32-token 为 0.769123/0.962325，4095-token 为 1.623346/1.912347。原有阈值不变，组件修复不构成整模型验收。208876 字节的原始归档包含四节点源码核对、启动信息、复现脚本和六组响应，已下载并验证 SHA256。服务保持运行，下一步用原生实际首层 Q/K/索引输入对拍 sparse attention 核心，不在缺少证据时继续切换配置。
+
+
+同输入 sparse prefill 控制已完成：将原生实测的 Q/K 两部分拼接为 576 维，以实际索引、scale=0.0625、d_v=512 调用两端公共 FlashMLA。两组、八个 CP rank 在 topk_length=None 和有效数量两种条件下，均逐元素重建原生实际输出；当前 COV5 二进制哈希与合格版本一致。该结果仅覆盖首层组件有效行，不外推为全部 attention/模型/Graph 通过。原始输出、报告和脚本的 13453710 字节归档已本地校验，见[attention 记录](glm5.3-w4a8-attention-alignment.json)。后续通过临时观察模块重新定位修正后调用链的首个差异，并先验证观察前后响应一致。

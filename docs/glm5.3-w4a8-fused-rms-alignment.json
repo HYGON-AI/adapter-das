@@ -65,5 +65,15 @@
     "native_replay": "candidate-pd/check-fused-rms-native-v2.py --label native; original native image and LightOp op provider",
     "note": "Archived v1 native direct sgl_kernel probe failed before any rows because the original compiled operator is absent; it is not evidence."
   },
-  "model_status": "P19/D11 before this RMSNorm correction captured six requests successfully but all6 prefill and all6 aligned decode distributions failed unchanged thresholds; full rerun pending."
+  "model_status": "Uninstrumented P20/D12 with RMSNorm correction completed six captures (exit0), but all6 prefill and all6 aligned decode distributions still fail unchanged thresholds (comparison exit1). First2 IDs match native all6. Operator equality is not full-model acceptance.",
+  "input_archives": {
+    "native": {
+      "archive": "candidate-pd/attention-native-pure-v8-20261105.tar.gz",
+      "sha256": "7e81cbda9ea6ef9f99d119570388a366c94b68a95cf494b734293266ba402279"
+    },
+    "candidate": {
+      "archive": "candidate-pd/attention-candidate-v17-dense0-20261105.tar.gz",
+      "sha256": "9fa3ab470235a037e8ef067a805319d3b940b629a6077560c907028f32ebafd6"
+    }
+  }
 }

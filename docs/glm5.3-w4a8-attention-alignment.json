@@ -589,5 +589,24 @@
     "runtime_report": "attention-probe-v1/qb-w8a8-v1/candidate-runtime-v2.json",
     "runtime_report_sha256": "2731929d50cbfc815e697657fcb92dd4a4c1ab793687b4c093c81adc5be2205b",
     "scope": "Captured first-layer Q-b finitecomponent only. Six-case model replay with bothflags pending."
+  },
+  "same_input_sparse_prefill_core_v1": {
+    "scope": "First-layer BF16 sparse-prefill core component only; no whole-model/decode acceptance.",
+    "fixture": "Actual native q_nope+q_rope, normalizedK+k_rope, selected indices; sm_scale0.0625,d_v512. Two archived prefixes × eight CP ranks; valid token rows only.",
+    "native_provider": "Original native image flash_mla.flash_mla_interface.flash_mla_sparse_fwd",
+    "candidate_provider": "Qualified DTK26.10 /work/vendor-overrides/flashmla-cov5 public interface; pinned binary SHA verified",
+    "native_actual_reconstruction": "All16 fixtures exact for topk_length=None and valid_count; all32 calls finite/exact on valid rows.",
+    "candidate_actual_reconstruction": "Same16 fixtures exact against actual native for both length variants; all32 calls finite/exact on valid rows.",
+    "script": "candidate-pd/check-attention-core-native-v1.py --label <native|candidate>",
+    "archive": {
+      "archive": "/work/candidate-pd/attention-probe-v1/attention-core-v1-20261105.tar.gz",
+      "bytes": 13453710,
+      "sha256": "cba427e66ac40deb75af031b155d827c7c1dae17d542e9f7c87713c95655b55c"
+    },
+    "report_sha256": {
+      "native": "fd5af4c149e9cca4a9f523b341361c72bb09d0f91c9c32098431a4e3cf38d905",
+      "candidate": "59cf5f95fcfb2fd1c30e398191a50bbb803d31c1f6eb8fd1c2872dfcdbe6f820"
+    },
+    "next": "Fresh full-path candidate observation after the qualified native-math fixes; only compare states if observed responses match uninstrumented P20 baseline."
   }
 }

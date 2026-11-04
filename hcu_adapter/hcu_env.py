@@ -355,7 +355,16 @@ REGISTRY = {
     "HCU_MQA_EMU": {
         "env": "HCU_MQA_EMU", "default": "0",
         "auto": _auto_mqa_emu,
-        "about": "MQA logits torch 模拟：gfx93* 自动开（aiter 核门挡 gfx942/950）",
+        "about": "MQA logits 桥总开关：gfx93* 自动开（aiter 核门挡 "
+                 "gfx942/950）；=0 回 stock aiter 内核（诊断对照）",
+    },
+    "HCU_MQA_EMU_IMPL": {
+        "env": "HCU_MQA_EMU_IMPL", "default": "triton",
+        "about": "HCU_MQA_EMU 桥的实现档：triton=vllm 面 paged（PS=1 "
+                 "132B 行池，scale 行尾交错，token-id 页表）+ragged 走"
+                 "自研 triton 核（mqa_logits_triton.py，e4m3fn 位级解码，"
+                 "fp32 累加；fnuz/异形池该面 per-call 回 emu，log-once 非"
+                 "静默）；emu=全 torch GEMM 参考（golden/A-B 对照）",
     },
     "HCU_FA3_EMU": {
         "env": "HCU_FA3_EMU", "default": "1",

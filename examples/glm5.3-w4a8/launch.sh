@@ -8,9 +8,11 @@ set -euo pipefail
 export PYTHONPATH="$ADAPTER_DIR:$SGLANG_DIR/python:$PLUGIN_DIR"
 export HCU_ADAPTER_HOST=sglang HCU_W4A8_MOE=native HCU_SLIMQUANT=0
 export SGLANG_PLUGINS=hcu SGLANG_USE_AITER=0
+export SGLANG_OPT_USE_TOPK_V2=0
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 OMP_NUM_THREADS=4
-export TRITON_CACHE_DIR="$WORK_DIR/cache/triton"
-export TORCH_EXTENSIONS_DIR="$WORK_DIR/cache/torch_extensions"
+# Compilation caches must stay local to each container across multiple nodes.
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/tmp/glm53-w4a8/triton}"
+export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR:-/tmp/glm53-w4a8/torch_extensions}"
 unset NCCL_TOPO_FILE
 cd "$WORK_DIR"
 exec python3 -u -m hcu_sglang \
@@ -23,4 +25,4 @@ exec python3 -u -m hcu_sglang \
     --chunked-prefill-size 2048 --max-running-requests 4 --mem-fraction-static 0.88 \
     --kv-cache-dtype fp8_e4m3 --page-size 64 \
     --dsa-prefill-backend flashmla_sparse --dsa-decode-backend flashmla_kv \
-    --dsa-topk-backend torch --enable-metrics --random-seed 42 "$@"
+    --enable-metrics --random-seed 42 "$@"

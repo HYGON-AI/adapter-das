@@ -827,5 +827,214 @@
         }
       ]
     }
+  },
+  "uninstrumented_native_math_P19_D11": {
+    "candidate": "adapter506d4737eeef4a093a1305644cbf142a99dc6b3a + plugind31cc271a3e5fbd80c0e5b32efa311f4203061c6; both native-math flags1; CPv2=1; target P/D,MTP5/1/6,graphs",
+    "capture_exit": 0,
+    "comparison_exit": 1,
+    "raw_archive": {
+      "archive": "/work/candidate-pd/numerical-p19-20261105.tar.gz",
+      "bytes": 111440,
+      "sha256": "a31d95a9d828eba30ed9bd096701785901d30359b2ff319590f88b8443916c1c",
+      "included_roots": [
+        "finite-v19-on-raw/numerical",
+        "numerical-v1/p19-vs-native-v3-comparison-v4.json",
+        "run-numerical-v19-client.sh",
+        "wait-numerical-v19.py",
+        "run-finite-checks.py",
+        "compare-numerical-v4.py",
+        "numerical-v19-client.log",
+        "numerical-v19-client.exit",
+        "numerical-v19-capture-complete.json",
+        "native-math-preflight-node21.json",
+        "native-math-preflight-node22.json",
+        "native-math-preflight-node23.json",
+        "native-math-preflight-node24.json",
+        "launch-native-math-node23.json",
+        "launch-native-math-node24.json",
+        "launch-native-math-node21.json",
+        "launch-native-math-node22.json"
+      ],
+      "capture_exit": 0,
+      "comparison_exit": 1,
+      "scope": "P19/D11 six fixed-prefix capture. All six P and aligned D fail unchanged numerical thresholds."
+    },
+    "runtime_manifest_sha256": "35be6edfdfe9f5f9eb20330e391d3b837999575fa003a398222e9a42c5f029d4",
+    "comparison": {
+      "scope": "Selected127/top20 finite numerical alignment only; not full-vocabulary or answer-quality acceptance",
+      "passed": false,
+      "contract_sha256": "6b8682c5f4bea2e8ea248d9fa0007f07459fbd3c62f61886b87c7f937d8531a2",
+      "tolerances_unchanged": {
+        "logprob_rmse_max": 0.1,
+        "logprob_abs_max": 0.5,
+        "top1_must_appear_in_other_top5": true,
+        "required_prefill_cases": 6
+      },
+      "aligned_decode_cases": 6,
+      "cases": [
+        {
+          "id": "arithmetic-prefix0",
+          "candidate_ids": [
+            99419,
+            353
+          ],
+          "native_ids": [
+            99419,
+            353
+          ],
+          "prefill": {
+            "passed": false,
+            "logprob_rmse": 0.8733259728206888,
+            "logprob_abs_max": 2.1886911392211914,
+            "candidate_top1": 99419,
+            "native_top1": 99419,
+            "mutual_top1_in_other_top5": true
+          },
+          "decode": {
+            "passed": false,
+            "logprob_rmse": 0.31543181705665324,
+            "logprob_abs_max": 0.8839435577392578,
+            "candidate_top1": 353,
+            "native_top1": 353,
+            "mutual_top1_in_other_top5": true
+          }
+        },
+        {
+          "id": "arithmetic-prefix8",
+          "candidate_ids": [
+            382,
+            10056
+          ],
+          "native_ids": [
+            382,
+            10056
+          ],
+          "prefill": {
+            "passed": false,
+            "logprob_rmse": 0.5202781352422505,
+            "logprob_abs_max": 1.284285545349121,
+            "candidate_top1": 382,
+            "native_top1": 382,
+            "mutual_top1_in_other_top5": true
+          },
+          "decode": {
+            "passed": false,
+            "logprob_rmse": 0.31369856824827336,
+            "logprob_abs_max": 1.3019962310791016,
+            "candidate_top1": 10056,
+            "native_top1": 10056,
+            "mutual_top1_in_other_top5": true
+          }
+        },
+        {
+          "id": "formula-prefix0",
+          "candidate_ids": [
+            785,
+            1196
+          ],
+          "native_ids": [
+            785,
+            1196
+          ],
+          "prefill": {
+            "passed": false,
+            "logprob_rmse": 1.5145995124866352,
+            "logprob_abs_max": 3.624788284301758,
+            "candidate_top1": 785,
+            "native_top1": 785,
+            "mutual_top1_in_other_top5": true
+          },
+          "decode": {
+            "passed": false,
+            "logprob_rmse": 2.134720164971533,
+            "logprob_abs_max": 4.278564453125,
+            "candidate_top1": 1196,
+            "native_top1": 1196,
+            "mutual_top1_in_other_top5": true
+          }
+        },
+        {
+          "id": "json-add-prefix0",
+          "candidate_ids": [
+            785,
+            1196
+          ],
+          "native_ids": [
+            785,
+            1196
+          ],
+          "prefill": {
+            "passed": false,
+            "logprob_rmse": 0.7001673660287048,
+            "logprob_abs_max": 1.986654281616211,
+            "candidate_top1": 785,
+            "native_top1": 785,
+            "mutual_top1_in_other_top5": true
+          },
+          "decode": {
+            "passed": false,
+            "logprob_rmse": 0.727568155031263,
+            "logprob_abs_max": 2.482179641723633,
+            "candidate_top1": 1196,
+            "native_top1": 1196,
+            "mutual_top1_in_other_top5": true
+          }
+        },
+        {
+          "id": "4k-prefix0",
+          "candidate_ids": [
+            785,
+            1196
+          ],
+          "native_ids": [
+            785,
+            1196
+          ],
+          "prefill": {
+            "passed": false,
+            "logprob_rmse": 1.1481069098831307,
+            "logprob_abs_max": 2.7415714263916016,
+            "candidate_top1": 785,
+            "native_top1": 785,
+            "mutual_top1_in_other_top5": true
+          },
+          "decode": {
+            "passed": false,
+            "logprob_rmse": 1.3161911048730173,
+            "logprob_abs_max": 2.624998092651367,
+            "candidate_top1": 1196,
+            "native_top1": 1196,
+            "mutual_top1_in_other_top5": true
+          }
+        },
+        {
+          "id": "4k-prefix8",
+          "candidate_ids": [
+            7424,
+            320
+          ],
+          "native_ids": [
+            7424,
+            320
+          ],
+          "prefill": {
+            "passed": false,
+            "logprob_rmse": 0.44097730926814566,
+            "logprob_abs_max": 1.2669086456298828,
+            "candidate_top1": 7424,
+            "native_top1": 7424,
+            "mutual_top1_in_other_top5": true
+          },
+          "decode": {
+            "passed": false,
+            "logprob_rmse": 0.469761081838021,
+            "logprob_abs_max": 1.8478889465332031,
+            "candidate_top1": 320,
+            "native_top1": 320,
+            "mutual_top1_in_other_top5": true
+          }
+        }
+      ]
+    }
   }
 }

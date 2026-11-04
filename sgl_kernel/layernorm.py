@@ -190,7 +190,6 @@ if HAS_TRITON:
             x = tl.load(x_row + cols, mask=mask, other=0.0).to(tl.float32)
             r = tl.load(res_row + cols, mask=mask, other=0.0).to(tl.float32)
             t = x + r
-            tl.store(res_row + cols, t.to(RES.dtype.element_ty), mask=mask)
             acc += t * t
         var = tl.sum(acc, axis=0) / N
         rstd = 1.0 / tl.sqrt(var + eps)
@@ -198,9 +197,14 @@ if HAS_TRITON:
         for off in range(0, N, BLOCK):
             cols = off + tl.arange(0, BLOCK)
             mask = cols < N
-            t = tl.load(res_row + cols, mask=mask, other=0.0).to(tl.float32)
+            # Keep the FP32 sum for both variance and normalization. Storing
+            # residual in the first pass would round it before this reload.
+            x = tl.load(x_row + cols, mask=mask, other=0.0).to(tl.float32)
+            r = tl.load(res_row + cols, mask=mask, other=0.0).to(tl.float32)
+            t = x + r
             w = tl.load(W + cols, mask=mask, other=0.0).to(tl.float32)
             y = t * rstd * (w + d2f)
+            tl.store(res_row + cols, t.to(RES.dtype.element_ty), mask=mask)
             tl.store(x_row + cols, y.to(X.dtype.element_ty), mask=mask)
 
 
@@ -218,10 +222,10 @@ def _rmsnorm_native(
 
 
 def _fused_add_rmsnorm_native(input, residual, weight, eps: float, gemma: bool):
-    residual.add_(input)
-    x = residual.float()
+    x = input.float() + residual.float()
     scale = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps)
     w = weight.float() + (1.0 if gemma else 0.0)
+    residual.copy_(x.to(residual.dtype))
     input.copy_((scale * w).to(input.dtype))
 
 

@@ -15,6 +15,8 @@ export SGLANG_PLUGINS=hcu SGLANG_USE_AITER=0 SGLANG_ROCM_USE_AITER_MOE=0
 # Select the plugin's qualified native RoPE and public W8A8 paths.
 export SGLANG_HCU_USE_LIGHTOP_ROPE=1
 export SGLANG_HCU_W8A8_USE_LIGHTOP=1
+# Match the native residual RMSNorm's FP32 sum and final BF16 rounding.
+export HCU_FUSED_ADD_RMS_IMPL=lightop
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 OMP_NUM_THREADS=1
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/var/cache/glm53-candidate/triton}"
 export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR:-/var/cache/glm53-candidate/torch_extensions}"

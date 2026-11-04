@@ -200,3 +200,14 @@ P18/D10 使用 adapter f29c5f7、plugin bebe2a1 的精确源码快照，四节�
 例如 arithmetic-prefix0 的 P/D logprob RMSE 分别为 0.8123/0.4400，formula-prefix0 为 0.8751/1.6891，4k-prefix8 为 0.4410/0.4611。完整结果保留在[数值记录](glm5.3-w4a8-numerical.json)，159934 字节的本地原始归档已核对大小和 SHA256。服务仍正常存活，没有因比较失败重启；下一步继续用相同实际 Q-b 输入/权重，对照当前 ASM、公共 LightOp 与原生输出，检查已经观察到的微小投影差异。完整有限矩阵和最终验收 profile 尚待完成。
 
 Q-b 的两镜像对照确认公共 LightOp 输出均逐元素匹配原生，插件 ASM 快路径有四个元素不同；48 份共同量化整数、token scale 和公共输出全部一致。正式插件接口显式启用 `SGLANG_HCU_W8A8_USE_LIGHTOP=1` 后，16 组真实输入及两次更换输入的 Graph 均逐元素匹配原生，关闭开关后保持原候选结果。GLM 配方现同时启用公共 W8A8 与原生 BF16 RoPE，分发策略仍在 plugin；两项修正组合后的模型数值继续复测，不将组件通过当作完整模型通过。
+
+
+## 2026-11-05 组合配方复测与残差 RMSNorm
+
+P19/D11 同时启用原生 BF16 RoPE 和公共 W8A8，四节点的 933 份运行时资产及五份框架文件逐项一致。六组原始请求捕获退出 0，数值比较退出 1：六组 prefill 和六组对齐 decode 仍全部未通过原阈值，首两个输出 IDs 六组均匹配原生。算术 33-token 的 P/D RMSE 为 0.873326/0.315432，水分子式 32-token 为 1.514600/2.134720。111440 字节的原始归档已下载并核对 SHA256；不能用 token IDs 一致代替分布精度通过。
+
+随后用两组、八个 CP rank 的真实 residual RMSNorm 输入对拍。原生实际入口为 `RMSNorm.forward_hip -> lightop.op.fused_add_rms_norm_opt`，能逐元素重建全部 32 份原生输出。adapter 原 Triton 内核第一遍用 FP32 残差和计算方差，同时写回 BF16 residual，第二遍却读回已舍入值作为归一化分子；它精确重建候选输出，但与同输入原生结果有 149008 个元素不同。
+
+通用修复将 residual 写回延后到第二遍，归一化使用重新计算的 FP32 和；Torch 回退也保留 FP32 和。修正后的 Triton 仅剩 6 个不同元素，最坏 NRMSE 为 5.33e-5；镜像内现有 LightOp 分发全部 32 份输出精确匹配原生。因此 GLM 配方显式选择已有 `HCU_FUSED_ADD_RMS_IMPL=lightop`，通用默认仍为 Triton。三种实现各完成 64 份实际输入重放、4 次普通/Gemma 更换输入 Graph 重放，所有 Graph 输出及 residual 均与各自 eager 精确一致；BF16/FP16/FP32、hidden 6144/8193 的 FP32 参考误差另行记录，不声称不同归约顺序逐位相同。[组件记录](glm5.3-w4a8-fused-rms-alignment.json)包含环境、原始报告哈希和复现脚本。
+
+这轮仅确认并修复算子边界；包含 RMSNorm 修正的六组模型复测、有限矩阵和最终验收 profile 尚待完成。

@@ -1255,5 +1255,227 @@
         }
       ]
     }
+  },
+  "uninstrumented_native_fused_topk_P22_D13": {
+    "candidate": "adapter388ab803babdfb222af14f848d89cbdffe88b5e4 + plugind31cc271a3e5fbd80c0e5b32efa311f4203061c6, FUSE_TOPK1/TOPKV2=0; bothnative-mathflags1,RMSlightop, CTW4/dynamicINT8, originalP/D/MTP5/1/6/graphs",
+    "capture_exit": 0,
+    "comparison_exit": 1,
+    "comparison_sha256": "8c34a3653bb51d60ab2dcfad5e528a8e0c111ac9cfd04812191e3dad575889f0",
+    "raw_archive": {
+      "archive": "/work/candidate-pd/numerical-p22-20261105.tar.gz",
+      "bytes": 209303,
+      "sha256": "37354bb04532278e505d152b4e08d15d7a72b487afda2c1445e5304e6d23418e",
+      "included_roots": [
+        "finite-v22-on-raw/numerical",
+        "numerical-v1/p22-vs-native-v3-comparison-v4.json",
+        "adapter-fused-topk-v1-source.json",
+        "plugin-native-math-v1-source.json",
+        "runtime-fused-topk-v22-expected-sha256.json",
+        "run-numerical-v22-client.sh",
+        "wait-numerical-v22.py",
+        "run-finite-checks.py",
+        "compare-numerical-v4.py",
+        "numerical-v22-client.log",
+        "numerical-v22-client.exit",
+        "numerical-v22-capture-complete.json",
+        "launch-fused-topk-v22.py",
+        "preflight-fused-topk-v22.py",
+        "fused-topk-preflight-node21.json",
+        "launch-fused-topk-node21.json",
+        "fused-topk-runtime-env-node21.json",
+        "run-node21-v22.sh",
+        "fused-topk-preflight-node22.json",
+        "launch-fused-topk-node22.json",
+        "fused-topk-runtime-env-node22.json",
+        "run-node22-v22.sh",
+        "fused-topk-preflight-node23.json",
+        "launch-fused-topk-node23.json",
+        "fused-topk-runtime-env-node23.json",
+        "run-node23-v13.sh",
+        "fused-topk-preflight-node24.json",
+        "launch-fused-topk-node24.json",
+        "fused-topk-runtime-env-node24.json",
+        "run-node24-v13.sh"
+      ],
+      "capture_exit": 0,
+      "comparison_exit": 1,
+      "scope": "Uninstrumented P22/D13 FUSE_TOPK1 native recipe, six fixed prefixes, all6P and6alignedD fail original tolerances, first2IDs native all6."
+    },
+    "comparison": {
+      "scope": "Selected127/top20 finite numerical alignment only; not full-vocabulary or answer-quality acceptance",
+      "passed": false,
+      "contract_sha256": "6b8682c5f4bea2e8ea248d9fa0007f07459fbd3c62f61886b87c7f937d8531a2",
+      "tolerances_unchanged": {
+        "logprob_rmse_max": 0.1,
+        "logprob_abs_max": 0.5,
+        "top1_must_appear_in_other_top5": true,
+        "required_prefill_cases": 6
+      },
+      "aligned_decode_cases": 6,
+      "cases": [
+        {
+          "id": "arithmetic-prefix0",
+          "candidate_ids": [
+            99419,
+            353
+          ],
+          "native_ids": [
+            99419,
+            353
+          ],
+          "prefill": {
+            "passed": false,
+            "logprob_rmse": 0.7077309075810172,
+            "logprob_abs_max": 2.0419578552246094,
+            "candidate_top1": 99419,
+            "native_top1": 99419,
+            "mutual_top1_in_other_top5": true
+          },
+          "decode": {
+            "passed": false,
+            "logprob_rmse": 0.4514171320307203,
+            "logprob_abs_max": 1.0489730834960938,
+            "candidate_top1": 353,
+            "native_top1": 353,
+            "mutual_top1_in_other_top5": true
+          }
+        },
+        {
+          "id": "arithmetic-prefix8",
+          "candidate_ids": [
+            382,
+            10056
+          ],
+          "native_ids": [
+            382,
+            10056
+          ],
+          "prefill": {
+            "passed": false,
+            "logprob_rmse": 0.8965153501896536,
+            "logprob_abs_max": 2.3299245834350586,
+            "candidate_top1": 382,
+            "native_top1": 382,
+            "mutual_top1_in_other_top5": true
+          },
+          "decode": {
+            "passed": false,
+            "logprob_rmse": 0.34586496093436025,
+            "logprob_abs_max": 1.0193214416503906,
+            "candidate_top1": 10056,
+            "native_top1": 10056,
+            "mutual_top1_in_other_top5": true
+          }
+        },
+        {
+          "id": "formula-prefix0",
+          "candidate_ids": [
+            785,
+            1196
+          ],
+          "native_ids": [
+            785,
+            1196
+          ],
+          "prefill": {
+            "passed": false,
+            "logprob_rmse": 0.8111822457680127,
+            "logprob_abs_max": 2.6331233978271484,
+            "candidate_top1": 785,
+            "native_top1": 785,
+            "mutual_top1_in_other_top5": true
+          },
+          "decode": {
+            "passed": false,
+            "logprob_rmse": 1.2526653795838745,
+            "logprob_abs_max": 3.222576141357422,
+            "candidate_top1": 1196,
+            "native_top1": 1196,
+            "mutual_top1_in_other_top5": true
+          }
+        },
+        {
+          "id": "json-add-prefix0",
+          "candidate_ids": [
+            785,
+            1196
+          ],
+          "native_ids": [
+            785,
+            1196
+          ],
+          "prefill": {
+            "passed": false,
+            "logprob_rmse": 0.9013882218337956,
+            "logprob_abs_max": 2.8293943405151367,
+            "candidate_top1": 785,
+            "native_top1": 785,
+            "mutual_top1_in_other_top5": true
+          },
+          "decode": {
+            "passed": false,
+            "logprob_rmse": 0.4368544307537301,
+            "logprob_abs_max": 1.3625974655151367,
+            "candidate_top1": 1196,
+            "native_top1": 1196,
+            "mutual_top1_in_other_top5": true
+          }
+        },
+        {
+          "id": "4k-prefix0",
+          "candidate_ids": [
+            785,
+            1196
+          ],
+          "native_ids": [
+            785,
+            1196
+          ],
+          "prefill": {
+            "passed": false,
+            "logprob_rmse": 1.2028538100998183,
+            "logprob_abs_max": 2.8507251739501953,
+            "candidate_top1": 785,
+            "native_top1": 785,
+            "mutual_top1_in_other_top5": true
+          },
+          "decode": {
+            "passed": false,
+            "logprob_rmse": 2.1411702457320008,
+            "logprob_abs_max": 3.6718578338623047,
+            "candidate_top1": 1196,
+            "native_top1": 1196,
+            "mutual_top1_in_other_top5": true
+          }
+        },
+        {
+          "id": "4k-prefix8",
+          "candidate_ids": [
+            7424,
+            320
+          ],
+          "native_ids": [
+            7424,
+            320
+          ],
+          "prefill": {
+            "passed": false,
+            "logprob_rmse": 0.4946020828595063,
+            "logprob_abs_max": 1.3594369888305664,
+            "candidate_top1": 7424,
+            "native_top1": 7424,
+            "mutual_top1_in_other_top5": true
+          },
+          "decode": {
+            "passed": false,
+            "logprob_rmse": 0.6212952109825286,
+            "logprob_abs_max": 1.8055610656738281,
+            "candidate_top1": 320,
+            "native_top1": 320,
+            "mutual_top1_in_other_top5": true
+          }
+        }
+      ]
+    }
   }
 }

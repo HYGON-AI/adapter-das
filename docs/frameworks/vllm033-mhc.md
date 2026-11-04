@@ -83,5 +83,20 @@ LM-head 遍历来掩盖该前置条件。
 真实 V4 编译/Graph/HumanEval32、性能及其他架构验证。
 catalog 为 candidate，不标 validated/production，不提升 last-good。
 
+宿主回归补证：vLLM 专项335项通过。混合节点门禁必须用完整 SGLang
+依赖和 `HCU_ADAPTER_HOST=sglang`，不能在 vLLM 进程安装六参数 RMS 桥。
+正确宿主下 rope/RMS/GEMM/bridge Graph 可通过，但完整门禁仍未通过：
+SGLang 0.5.22 的 kpool 测试夹具缺 `index_page_size`，FP8 计算链在真实
+gfx936 被官方 `_scaled_mm` 能力检查拒绝；两者在未加 mHC 的基线上复现。
+INT8 17-token 计算链曾等待 GPU 超时，保留原始失败，不按跳过或通过计数。
+这些 SGLang 路径不调用本 vLLM mHC 桥，仍须独立修复及重跑完整门禁。
+
+实际 V4 Flash TP4 原始权重已完成加载，显式官方 MXFP4 emulation 与 CPU
+offload 后在首次 profile 被官方 sparse-attention indexer 的 gfx936 能力
+检查拒绝，尚未 ready，也没有模型精度结果。该检查不能通过伪装 gfx950
+或 CDNA 代际绕过；继续按官方 provider 接口寻找窄适配。官方 AMD V4 类
+没有声明 torch.compile 支持，CLI 编译参数也不能单独证明执行了编译。
+上述集成限制不改变本桥的 opt-in/candidate 状态或原始质量门槛。
+
 官方 gfx936 路径修复并过同门禁后，在同 MR 删除适配并恢复官方 dispatch；
 仅升级版本号或 import 成功不是退出证据。

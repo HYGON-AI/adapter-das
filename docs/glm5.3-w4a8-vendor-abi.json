@@ -1,5 +1,5 @@
 {
-  "scope": "Post-PDv2 component ABI diagnostics; full candidate model integration and32-rank profiling remain pending",
+  "scope": "Component ABI evidence and actual prefill v3 readiness; full candidate P/D generation and32-rank profiling remain pending",
   "deepep": {
     "source_commit": "a755fa7e14631af7e8a6a0d6ead217101d3bfdda",
     "rocshmem_build_script_pin": "b71ac40294bb10c5ffb11b94bed7d7d20529ab02",
@@ -76,11 +76,54 @@
       "build_exit": 0,
       "runtime_passed": false,
       "error": "hipGetLastError() failed: no kernel image is available for execution on the device"
+    },
+    "production_provider": {
+      "adapter_commit": "b9956a78a91c5cd2eaa4417eb508db19c2097b2a",
+      "builder": "tools/build_deepgemm_w4a8_cov5.py",
+      "bridge": "hcu_adapter/deepgemm_cov5.py",
+      "module": "/work/vendor-overrides/deepgemm-w4a8-cov5/hcu_deepgemm_w4a8_cov5.cpython-312-x86_64-linux-gnu.so",
+      "module_sha256": "bf9210b670a421fc9ef11781b930238ed24af2e56ae326f2eaead8ba0225f1f2",
+      "generated_hipc1002_source_sha256": "003e487e84382e48672e5765d2454c55259e182730f11deefb6e4681cd299283",
+      "mode": 1002,
+      "architecture": "gfx936",
+      "code_object_version": 5,
+      "original_public_api": "default MODE=None selects the provider while retaining function/code/signature and cached aliases; shared vendor configuration and masked op remain unchanged",
+      "startup_disable": "HCU_DISABLE_OPS=w4a8_contiguous_gemm",
+      "real_expert_validation": {
+        "report": "w4a8-contiguous-provider-mode1002-v1.json",
+        "valid_rows": 17,
+        "gemm_stages": [
+          "gate_up",
+          "down"
+        ],
+        "qdq_nrmse": [
+          0.0,
+          0.0
+        ],
+        "changed_input_graph_replays_per_gemm": 2,
+        "explicit_mode1006_rejected": true
+      },
+      "prefill_runtime": {
+        "nodes": [
+          21,
+          22
+        ],
+        "scheduler_ranks": 16,
+        "role_recipe": "PP2 TP8 CP8 EP8 normal",
+        "checkpoint_loaded": true,
+        "warmup_complete": true,
+        "server_info_http": 200,
+        "mapped_binary_sha256_verified_all_ranks": true,
+        "evidence": [
+          "candidate-pd/runtime-maps-node21-v3.json",
+          "candidate-pd/runtime-maps-node22-v3.json"
+        ]
+      },
+      "scope": "Real prefill warmup and component graph checks; no full P/D request or WASP1006 acceptance"
     }
   },
   "remaining": [
-    "Reviewable integration of the verified HIPC1002 COV5 implementation",
-    "Full P/D KV handoff, MTP and target graph",
+    "Full P/D KV handoff, EAGLE MTP and target decode graph",
     "Finite numerical/request matrix and candidate32-rank profile"
   ]
 }

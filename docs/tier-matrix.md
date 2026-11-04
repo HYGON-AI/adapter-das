@@ -252,6 +252,16 @@ w8a8 fused MoE experts (standard dispatch, triton runner entry; deepep runner un
 
 路由变量：`HCU_FUSED_MOE_IMPL`
 
+## flashmla_kv_indices
+
+FlashMLA static-pool page-table import compatibility
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Reuse SGLang's existing page64 kerne |
+
+路由变量：（auto）
+
 ## w4a8_contiguous_gemm
 
 DTK W4A8 HIPC code-object ABI compatibility

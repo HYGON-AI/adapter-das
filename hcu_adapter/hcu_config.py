@@ -468,6 +468,17 @@ BACKEND_CATALOG = {
                               "auto-fallback to triton"},
         },
     },
+    "flashmla_kv_indices": {
+        "var": None,
+        "summary": "FlashMLA static-pool page-table import compatibility",
+        "backends": {
+            "triton": {
+                "status": "candidate",
+                "note": "Reuse SGLang's existing page64 kernel with optional starts "
+                        "and explicit strides; no host tensor reads or new index math.",
+            },
+        },
+    },
     "w4a8_contiguous_gemm": {
         "var": None,
         "summary": "DTK W4A8 HIPC code-object ABI compatibility",

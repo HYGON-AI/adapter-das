@@ -106,3 +106,9 @@ DeepEP 采用镜像对应提交 `a755fa7e14631af7e8a6a0d6ead217101d3bfdda` 的 `
 候选 decode v4 仍在目标 graph 捕获时被 INT8/FP32-scale 校验拒绝。仅运行 bootstrap、不加载模型的检查确认，native 与 TBO 均已使用预期 plugin dispatcher，但其 `_DEEPEP_LL_DISPATCH_USES_QUANT_TYPE` 为 false：旧 adapter bridge 将原生 vendor API 包装为 `use_fp8` 签名，隐藏了 `quant_type`，该旧接口也不能表达 INT8。配方现显式设置已有 `HCU_DEEPEP_BRIDGE=0`，由指定底座及 plugin 的既有 ABI 分支接管；保留旧 bridge 供其原有宿主版本使用，没有再叠一层 wrapper。
 
 同时纠正路径记录：本底座的 CT + DeepEP + DeepGEMM 选择 `HCUW4A8Int8DeepEPMoEMethod`，复用其专家实现，但 CT 配置、checkpoint 名称和加载格式不变；其 normal 与 low-latency 均声明 INT8。plugin 修正 DeepGEMM 选择下的 W4A8 vendor 分支，撤回首次尝试中多余的 setter 配置补写。原消费者校验和目标 EAGLE/graph 设置保留，新的完整服务复验仍待完成。
+
+## 2026-11-04 FlashMLA 静态池索引接口复用
+
+decode v5 已越过 INT8 契约并完成一组 graph 捕获，随后 MTP 初始化导入 `FlashMLABackend` 时因 shadow 缺少 `hcu_create_flashmla_kv_indices` 退出。镜像没有注册对应 `torch.ops.sgl_kernel` 算子，LightOp 也未提供此出口；底座已有同语义的 `create_flashmla_kv_indices_triton`。新增薄接口复用该实现，保留原参数名、显式 stride、可选 start、page64、有效位置写入及尾部不变的语义，空批次/零宽输出直接返回；没有新写索引算法或更换 attention kernel。catalog、runtime registry、UI 快照和档位矩阵同步登记为 candidate。
+
+节点 23 经实际公开 API 检查 6 组输入：连续/带 stride 源与输出、有/无起点、长度 0/1/63/64/65/128/257/4097，以及空批次/零宽输出。所有有效页索引与整数参考精确一致，未写尾部和输出保护列保持原值；4 个非空组合各完成两次更换源表、请求索引和起点后的 graph replay，仍逐元素一致。记录为任务产物 `candidate-pd/flashmla-indices-check-v1.json` 和同名日志。未新增单测，完整 MTP 与 P/D 请求仍待复验。

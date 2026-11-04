@@ -15,6 +15,17 @@ vLLM 0.33 C4 sparse indexer through public OOT and official helpers
 
 路由变量：`HCU_VLLM_SPARSE_INDEXER_IMPL`
 
+## vllm_mhc
+
+vLLM 0.33 mHC compatibility; official Torch math via public OOT
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| torch | candidate Opt-in gfx936 official pre/post and  |
+| stock | candidate Default unchanged upstream; diagnost |
+
+路由变量：`HCU_VLLM_MHC_IMPL`
+
 ## vllm_fp8_linear
 
 vLLM official dense FP8 fallback via public linear registration
@@ -39,7 +50,7 @@ gated activation out = silu(x[:,:d]) * x[:,d:]
 
 ## rms_norm
 
-RMSNorm; fused_add_rmsnorm/gemma variants stay triton
+RMSNorm (plain); the fused-add family is its own op below
 
 | 档位 | 状态 / 备注 |
 |---|---|
@@ -48,6 +59,18 @@ RMSNorm; fused_add_rmsnorm/gemma variants stay triton
 | torch | production reference path |
 
 路由变量：`HCU_RMS_NORM_IMPL`
+
+## fused_add_rms_norm
+
+residual += input; input = rmsnorm(residual)*w, in-place
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | production default (auto) |
+| lightop | validated lightop.fused_add_rms_norm(x, residu |
+| torch | production reference path |
+
+路由变量：`HCU_FUSED_ADD_RMS_IMPL`
 
 ## allreduce
 

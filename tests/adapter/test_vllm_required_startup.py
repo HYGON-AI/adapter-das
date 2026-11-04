@@ -37,6 +37,11 @@ def startup(monkeypatch):
     from hcu_adapter.bridges import vllm_sparse_indexer
     monkeypatch.setattr(vllm_sparse_indexer, "install", lambda: False)
     monkeypatch.setattr(vllm_sparse_indexer, "require_healthy", lambda: None)
+    # Keep this CPU required-policy fixture independent of optional mHC
+    # startup policy and its real publication/cache/health tests.
+    from hcu_adapter.bridges import vllm_mhc
+    monkeypatch.setattr(vllm_mhc, "install", lambda: False)
+    monkeypatch.setattr(vllm_mhc, "require_healthy", lambda: None)
     monkeypatch.setattr(bridge, "_installed_adapter_version", lambda: "test")
     monkeypatch.setattr(bridge, "_RUNTIME_ACTIONS", bridge.ProcessLocalActions())
     checks = []

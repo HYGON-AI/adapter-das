@@ -245,8 +245,8 @@ def require_runtime_healthy() -> None:
     Reports remain available after failure for diagnosis.
     """
     _RUNTIME_ACTIONS.require_runtime_healthy()
+    from hcu_adapter.bridges.vllm_mhc import require_healthy
     from hcu_adapter.bridges.vllm_sparse_indexer import require_healthy
-
     require_healthy()
 
 
@@ -356,6 +356,8 @@ def _ensure_hcu_platform_selected() -> None:
 
 def hcu_runtime_plugin() -> None:
     """Apply the required vLLM runtime guards once in each HCU process."""
+    # A healthy fork must first activate/adopt its inherited mHC registration;
+    # the full read-only owner check runs after this process's runtime action.
     # Per-owner health may require activation. The canonical host guard must
     # still run before any owner starts, including in a forked child.
     _RUNTIME_ACTIONS.require_runtime_healthy()
@@ -374,6 +376,9 @@ def hcu_runtime_plugin() -> None:
         from hcu_adapter.bridges.vllm_fp8 import install as install_fp8_fallback
 
         install_fp8_fallback()
+        from hcu_adapter.bridges.vllm_mhc import install as install_mhc_fallback
+
+        install_mhc_fallback()
         from hcu_adapter.bridges.vllm_sparse_indexer import install as install_sparse_indexer
 
         install_sparse_indexer()

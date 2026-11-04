@@ -1,4 +1,4 @@
-"""Real v0.32 Worker/Wrapper/executor/runner APIs, CPU-only provider doubles.
+"""Real v0.32/v0.33 Worker/Wrapper/executor/runner APIs, CPU provider doubles.
 
 No copied method bodies, GPU initialization, checkpoints, or engine compilation.
 VLLM_TARGET_ROOT optionally pins installed method bytes to the target checkout.
@@ -158,9 +158,9 @@ def make_runner(monkeypatch, cfg, version, events, fail_at=None):
         class Draft(spec.DraftModelSpeculator):
             def load_draft_model(self, target_model, target_attn_layer_names):
                 draft_load(target_model)
-                # v0.33 traverses the draft module to restore its source head.
-                # Keep that official traversal in this CPU-only fixture.
-                from torch.nn import Module
+                # v0.33's real draft update traverses modules to restore the
+                # source LM head. Use an empty CPU module rather than skipping
+                # that official path or replacing its traversal helper.                from torch.nn import Module
                 return Module()
             def init_cudagraph_manager(self, *args): pass
             def capture(self): pass

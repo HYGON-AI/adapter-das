@@ -67,3 +67,13 @@ python3 -m zipfile -e "$FLASH_MLA_WHEEL" "$VENDOR_OVERRIDE_DIR"
 独立抽查真实第 3 层一个专家，DeepGEMM masked 的 gate/up 和 down 两次 INT8 GEMM 对 QDQ 参考的 NRMSE 分别为约 `5.9e-9`、`4.5e-5`。在完全相同的 BF16 输入和实际 gate/up 中间结果上，原生与候选的输入 INT8/scale、SiLU-mul 后 INT8/scale 四组张量在 17 个有效行内逐元素一致；先前 CPU 舍入参考的两次严格检查失败仍保留。这些局部证据不替代完整模型中间结果与 teacher-forced 精度对照。
 
 版本、trace 哈希和验收范围见 [单机候选 profile 记录](glm5.3-w4a8-candidate-single-profile.json)。目标四节点第一次启动停在 RCCL 初始化：镜像的 verbs/provider 不能打开当前 SHCA，且缺少所选网络插件；原生匹配的 verbs/provider 和网络插件通过隔离路径接入后，23/24 两节点实际 SGLang PyNccl 的 FP32、BF16、INT32 归约及两次更换输入的 graph replay 均精确通过，日志确认使用 4 个 SHCA 和 RDMA 插件。完整 DeepEP、Mooncake KV 传输、MTP、目标 graph、有限矩阵及候选 32-rank profile 继续验证。
+
+## 2026-11-04 Mooncake SHCA 与 GPU RDMA
+
+镜像的通用 Mooncake 包按标准 verbs 头文件构建，与当前节点的 SHCA u17 ABI 不匹配；仅替换运行时 verbs/provider 后，仍在 completion vectors 检查失败。采用镜像对应的 Mooncake 提交 `6eb1b21a06cad9e83569815847655ab1673c4e78`，按其 SHCA 变体设置 `USE_HYGON=ON`、`USE_SHCA=ON`、`USE_FAKE_HIP_RPC=ON`，使用与可用 verbs/provider 配套的 SDK 头文件重新编译。1741 个跟踪源码文件逐项 SHA256 与固定提交的本地副本一致，没有修改 C++ 源码。
+
+构建只下载并解包隔离的 JSONCPP/YAML 等依赖，没有全局安装驱动或更换 Torch/DTK。SDK 作为 system include，避免其旧枚举警告被目标自身的 `-Werror` 提升为错误。产物是 CPython 3.12 的本地 Linux wheel；没有宣称 manylinux 可移植性。任务容器中原通用包的 146 个文件先逐项校验备份，再卸载通用 distribution，并通过隔离前缀加载 SHCA wheel，保留上游对重复 distribution 和头文件 ABI 的检查。恢复时先移除隔离前缀的启动引用，再从对应节点备份恢复原文件。
+
+23/24 两节点通过公共 `mooncake.engine.TransferEngine` 验证 GPU→GPU RDMA：40 KiB 和 4 MiB 非均匀字节模式、128 字节偏移，接收内容及前后保护区均逐元素精确一致，两进程退出码均为 0。初始化日志确认 SHCA RDMA transport，未设置 `MC_FORCE_TCP`。控制消息使用独立 TCP socket；第一版使用共享盘控制文件，在不同 NFS 服务端之间未及时可见而超时，该失败记录保留，不能作为数据传输失败或通过的判据。
+
+固定版本、产物哈希和范围见 [通信验证记录](glm5.3-w4a8-network.json)。四节点 v2 已采用这组依赖继续启动；本节只证明两节点通信，尚不证明完整 DeepEP、KV 交接、MTP 或目标 graph 已通过。

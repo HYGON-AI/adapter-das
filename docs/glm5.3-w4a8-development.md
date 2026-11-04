@@ -100,3 +100,9 @@ DeepEP 采用镜像对应提交 `a755fa7e14631af7e8a6a0d6ead217101d3bfdda` 的 `
 四节点 v3 的 prefill（21/22，PP2、TP8、CP8、EP8、normal）完成真实 CT 权重加载和 warmup，主节点 `/server_info` 返回 200。逐个读取 16 个 scheduler 的进程映射并校验已映射文件，确认使用同一 HIPC COV5 provider、FlashMLA COV5、SHCA DeepEP、SHCA Mooncake、配套 verbs/provider 和 RCCL 网络插件；不能仅根据启动环境变量认定实际库已生效。组件哈希及范围补入 [ABI 记录](glm5.3-w4a8-vendor-abi.json)，原始映射为任务产物 `candidate-pd/runtime-maps-node21-v3.json`、`candidate-pd/runtime-maps-node22-v3.json`。
 
 同次 decode 在目标 graph 捕获时被原生 W4A8 消费者的 INT8/FP32-scale 校验拒绝，退出码为 137。分发配置修复归 companion plugin PR #11，不通过删除校验、关闭 graph 或降级 W4A16 处理。此阶段尚未完成一次候选 P/D 请求，也未交付候选 32-rank profile。
+
+## 2026-11-04 避免重复包装 DeepEP vendor API
+
+候选 decode v4 仍在目标 graph 捕获时被 INT8/FP32-scale 校验拒绝。仅运行 bootstrap、不加载模型的检查确认，native 与 TBO 均已使用预期 plugin dispatcher，但其 `_DEEPEP_LL_DISPATCH_USES_QUANT_TYPE` 为 false：旧 adapter bridge 将原生 vendor API 包装为 `use_fp8` 签名，隐藏了 `quant_type`，该旧接口也不能表达 INT8。配方现显式设置已有 `HCU_DEEPEP_BRIDGE=0`，由指定底座及 plugin 的既有 ABI 分支接管；保留旧 bridge 供其原有宿主版本使用，没有再叠一层 wrapper。
+
+同时纠正路径记录：本底座的 CT + DeepEP + DeepGEMM 选择 `HCUW4A8Int8DeepEPMoEMethod`，复用其专家实现，但 CT 配置、checkpoint 名称和加载格式不变；其 normal 与 low-latency 均声明 INT8。plugin 修正 DeepGEMM 选择下的 W4A8 vendor 分支，撤回首次尝试中多余的 setter 配置补写。原消费者校验和目标 EAGLE/graph 设置保留，新的完整服务复验仍待完成。

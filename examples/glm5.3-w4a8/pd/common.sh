@@ -8,6 +8,9 @@ set -euo pipefail
 : "${MODEL_PATH:?Set CT W4A8 model root}"
 export PYTHONPATH="$ADAPTER_DIR:$SGLANG_DIR/python:$PLUGIN_DIR${PYTHONPATH:+:$PYTHONPATH}"
 export HCU_ADAPTER_HOST=sglang HCU_W4A8_MOE=native HCU_SLIMQUANT=0
+# The base and plugin already handle DeepEP's vendor quant_type API.
+# The legacy use_fp8 wrapper hides that API and cannot represent INT8.
+export HCU_DEEPEP_BRIDGE=0
 export SGLANG_PLUGINS=hcu SGLANG_USE_AITER=0 SGLANG_ROCM_USE_AITER_MOE=0
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 OMP_NUM_THREADS=1
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/var/cache/glm53-candidate/triton}"

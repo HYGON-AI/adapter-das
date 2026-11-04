@@ -49,6 +49,12 @@ SHCA/DTK 环境的通用安装方案。
 `--dsa-topk-backend torch`。Ninja 使用镜像已有 wheel 内的原生二进制，
 Triton/Torch 编译缓存默认在各容器本地。
 
+指定底座及 plugin 已能识别 DeepEP 的 vendor `quant_type` API；配方设置
+`HCU_DEEPEP_BRIDGE=0`，关闭面向旧 SGLang 的 `use_fp8` wrapper，
+避免其隐藏原生签名并将 W4A8 INT8 误判为 FP8。CT 配置、checkpoint
+名称和格式继续保留，合格的 channel W4A8 DeepEP 专家复用底座的
+`HCUW4A8Int8DeepEPMoEMethod`，不通过改变模型的量化标签选择路径。
+
 当前 gfx936 节点的连续 W4A8 HIPC 需要 COV5。使用固定 DeepGEMM
 提交 `b061ec70272a001fca622ea814d3ee163e24bb05` 的源码，在同一镜像中执行：
 

@@ -192,3 +192,9 @@ P16 使用提交 23685d8 的正式 CP v2 配方，移除观察模块与额外插
 受控 CPU 复算以 checkpoint 的 theta=8000000、rotary_dim=64 生成缓存；BF16 cache 和 BF16 乘加逐步舍入能精确重建两组、八个 rank 的原生 RoPE Q/K 输出。该缓存是受控生成值，并非运行时直接捕获值；下一步检查真实分发和镜像内公共算子，不能据此直接宣称最终精度根因已修复。[边界证据](glm5.3-w4a8-attention-alignment.json)记录范围与原始产物入口。当前仍未通过六组数值合同，本轮没有改变生产量化、GEMM、激活或阈值。
 
 GLM 配方现显式设置 plugin 的 `SGLANG_HCU_USE_LIGHTOP_ROPE=1`，选择镜像内公共 LightOp BF16 RoPE，并保留框架 FP32 cache。分发策略与 typed cache 接线位于 plugin，不在 adapter 增加模型专属算法。正式插件发现、构造和分发已验证：两组八 rank 的 32 项 Q/K 及两组更换输入后的 Graph 重放均逐元素匹配原生，FP32 cache 对象未变，关闭开关后保留原分支。LightOp 使用完整 head 分发；复用旧 sgl_kernel 的 8-head 分块会产生差异，失败探针记录保留。完整模型数值仍待复测。
+
+## 2026-11-05 原生 RoPE 配方的完整六组复测
+
+P18/D10 使用 adapter f29c5f7、plugin bebe2a1 的精确源码快照，四节点全部 930 个运行时跟踪资产及五个框架文件逐项一致。移除观测后完成六组固定输入、CT W4A8、P/D、MTP 5/1/6 和目标 decode Graph 的实际请求，原始捕获退出码为 0；两步输出 IDs 六组均匹配原生，但六组 prefill 和六组对齐 decode 仍未通过原有 RMSE≤0.1、最大绝对差≤0.5 的合同，比较退出码为 1。局部 RoPE 对齐不构成整体精度修复。
+
+例如 arithmetic-prefix0 的 P/D logprob RMSE 分别为 0.8123/0.4400，formula-prefix0 为 0.8751/1.6891，4k-prefix8 为 0.4410/0.4611。完整结果保留在[数值记录](glm5.3-w4a8-numerical.json)，159934 字节的本地原始归档已核对大小和 SHA256。服务仍正常存活，没有因比较失败重启；下一步继续用相同实际 Q-b 输入/权重，对照当前 ASM、公共 LightOp 与原生输出，检查已经观察到的微小投影差异。完整有限矩阵和最终验收 profile 尚待完成。

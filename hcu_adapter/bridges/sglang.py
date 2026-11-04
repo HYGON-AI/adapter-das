@@ -2573,15 +2573,8 @@ def install() -> None:
                 "HCU adapter: moe_c w4a16 bridge not installed", exc_info=True
             )
 
-        # 10.8. CT W4A8 MoE scheme route (2026-10-26, nmz26 dsv41f
-        #      Channel-INT4-w4a8): DAS-converted checkpoints carry regex-only
-        #      config_groups, so target_scheme_map has no "Linear" bucket and
-        #      CompressedTensorsW4AFP8MoE.__init__ dies on KeyError('Linear')
-        #      at model build (weights never load). Route the int4-group face
-        #      to the upstream WNA16TritonMoE ROCm arm (act quant ignored --
-        #      upstream's own nvfp4 w4a4->w4a16 degradation pattern), or
-        #      heal-only pass-through for future stock-scheme work.
-        #      Knob: HCU_W4A8_MOE = w4a16 (default) | heal | 0.
+        # Preserve CT activation quantization by default. Legacy compatibility
+        # routes are explicit opt-ins; native does not hide missing kernels.
         try:
             from hcu_adapter import ct_w4a8_moe as _cw4a8
 

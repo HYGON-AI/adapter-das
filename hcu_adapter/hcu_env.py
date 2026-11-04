@@ -229,19 +229,11 @@ REGISTRY = {
                  "分组 int4/bf16 不动；=0 还原 stock",
     },
     "HCU_W4A8_MOE": {
-        "env": "HCU_W4A8_MOE", "default": "w4a16",
-        "about": "CT W4A8 MoE scheme 路由（ct_w4a8_moe.py）：DAS 转换的 "
-                 "w4a8 检查点（如 DeepSeek-V4.1-Flash-Channel-INT4-w4a8）"
-                 "config_groups 全 regex targets，target_scheme_map 无 "
-                 "'Linear' 桶，上游 CompressedTensorsW4AFP8MoE.__init__ 构"
-                 "造期 KeyError('Linear')（v0522 w4a8_fp8_moe.py:87，模型建"
-                 "不过，nmz26 2026-10-26）。w4a16（默认）=wrap config "
-                 "__init__ 把 int4 组 input_activations 置 None → 上游自然"
-                 "走 _is_hip 的 WNA16TritonMoE 臂（box16 已验证，10.6 channel"
-                 " 改写收口），激活 int8 量化被忽略（bf16，数值更保真；上游"
-                 " nvfp4 w4a4→w4a16 同款降级模式）；heal=只作用域内补 "
-                 "'Linear' 桶保留 stock W4AFP8 语义（当前会响亮撞 CUTLASS "
-                 "W4A8 缺核，为将来 W4A8 HIP 内核备的路）；0=还原 stock",
+        "env": "HCU_W4A8_MOE", "default": "native",
+        "about": "CT MoE routing: native preserves checkpoint activation quantization "
+                 "and delegates to the installed scheme. Missing W4A8 support must "
+                 "fail rather than silently run W4A16. Legacy w4a16 and heal routes "
+                 "require explicit selection; 0 disables this bridge.",
     },
     "HCU_DSV4_WQKV_SCALE": {
         "env": "HCU_DSV4_WQKV_SCALE", "default": "1",

@@ -1,0 +1,60 @@
+{
+  "scope": "Top-K order/dispatch component only; no full model accuracy acceptance.",
+  "cause": "Adapter model_env automatically sets SGLANG_DSA_FUSE_TOPK=0 for indexer configs under the old no-HIP assumption. Current plugin and installed LightOp already provide legacy fused Top-K.",
+  "observed": "Validated P21/D12 observation matches all4 P/D response pairs vs uninstrumented P20 in IDs and all3requested logprob fields; all33state/static files locally SHA-verified.",
+  "boundary": "All first-layer Q/K, norms, Q-b and RoPE inputs/outputs exact native. Selected index sets exact; native order ascending, candidate score-ordered. Sparse attention differs10 BF16 elements on arithmetic and12 on formula. O projection absorbs arithmetic difference; formula final attention output differs105 elements.",
+  "counterfactual": "Both image public FlashMLA providers on identical QKV: native indices reconstruct all16 actual native outputs; current indices reconstruct all16 P21 outputs. Only order changes. This does not establish that all model distribution error is caused by this boundary.",
+  "recipe": "Explicit SGLANG_DSA_FUSE_TOPK=1 overrides only this GLM recipe; retain sgl-kernel default backend and SGLANG_OPT_USE_TOPK_V2=0. No forced torch flag, manual index sort or generic legacy-default removal.",
+  "formal_plugin_qualification": {
+    "cases": 16,
+    "native_indices_all_exact": true,
+    "score_scope": "Synthetic scores on captured native row lengths. All lengths <=K, so native selects every causal index independently of scores. Not captured native MQA logits.",
+    "disabled_branch_preserves_sets": true,
+    "changed_input_graphs": [
+      {
+        "method": "RAGGED",
+        "shift": 3,
+        "graph_vs_eager": {
+          "exact": true,
+          "different": 0
+        }
+      },
+      {
+        "method": "RAGGED",
+        "shift": 7,
+        "graph_vs_eager": {
+          "exact": true,
+          "different": 0
+        }
+      },
+      {
+        "method": "PAGED",
+        "shift": 3,
+        "graph_vs_eager": {
+          "exact": true,
+          "different": 0
+        }
+      },
+      {
+        "method": "PAGED",
+        "shift": 7,
+        "graph_vs_eager": {
+          "exact": true,
+          "different": 0
+        }
+      }
+    ],
+    "graph_probe_note": "v1 created CPU metadata inside capture and failed in the probe; v2 preallocates it, completes4graphs. No vendor failure inferred."
+  },
+  "observer_archive": {
+    "archive": "/work/candidate-pd/attention-candidate-v21-20261105.tar.gz",
+    "bytes": 258156239,
+    "sha256": "6283f732a42f20c208a77671d8337bf3c442b2c44e4818905020dce9a2eacc55"
+  },
+  "qualification_archive": {
+    "archive": "/work/candidate-pd/fused-topk-runtime-v2-20261105.tar.gz",
+    "bytes": 3078,
+    "sha256": "20e6d3163d5eedb6f6aeba8e992dbdfaf4c9d253c18f8f36579c0be5296784ad"
+  },
+  "full_model_status": "Previous P20/D12 all6P+6alignedD distributions still fail unchanged thresholds. Fused Top-K corrected full replay pending."
+}

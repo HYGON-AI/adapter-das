@@ -221,3 +221,12 @@ P20/D12 使用 adapter 3199c22 与 plugin d31cc27 的冻结快照，显式选择
 
 
 同输入 sparse prefill 控制已完成：将原生实测的 Q/K 两部分拼接为 576 维，以实际索引、scale=0.0625、d_v=512 调用两端公共 FlashMLA。两组、八个 CP rank 在 topk_length=None 和有效数量两种条件下，均逐元素重建原生实际输出；当前 COV5 二进制哈希与合格版本一致。该结果仅覆盖首层组件有效行，不外推为全部 attention/模型/Graph 通过。原始输出、报告和脚本的 13453710 字节归档已本地校验，见[attention 记录](glm5.3-w4a8-attention-alignment.json)。后续通过临时观察模块重新定位修正后调用链的首个差异，并先验证观察前后响应一致。
+
+
+## 2026-11-05 修正后实测边界与原生 Top-K
+
+P21 仅给原 P20 运行时增加临时观察，decode D12 进程保持不变。四份 P/D 响应的 IDs 和三类 logprob 与 P20 全部精确一致；32 份状态及一份静态权重已归档，本地逐文件 SHA256 一致。两组首层的 Q/K、Q-b 与 RoPE 已精确对齐，索引集合也一致，但原生索引为升序，候选按分数排序。attention 核心分别出现 10/12 个 BF16 元素差异；算术经 O 投影后精确一致，水分子式的 attention 出口仍有 105 个元素不同。
+
+固定同一 Q/K，仅互换索引顺序，两套镜像各自都精确重现全部 16 组原生和候选 attention 输出，说明此处细小差异由顺序引入，不能扩大为全部模型误差的归因。追溯发现 adapter 的旧 model-env 规则以“融合算子无 HIP 实现”为前提，自动设置 `SGLANG_DSA_FUSE_TOPK=0`；当前 plugin 与镜像已提供原生 LightOp 路径。
+
+GLM 配方因此显式设置 `SGLANG_DSA_FUSE_TOPK=1`，复用现有 plugin 分发，继续使用默认 sgl-kernel 和 TOPK_V2=0。正式插件入口在 16 组实际短行布局上精确匹配原生索引；分数是受控合成值，因这些窗口均短于 K，只验证原生“选择所有有效索引”的分支，不冒称捕获了原生 MQA logits。PAGED/RAGGED 各两次更换长度、offset/page-table 的 Graph 重放均与 eager 精确一致。初版探针在 capture 内创建 CPU 元数据失败，已改为预先分配后完成验证，不归因算子库。详见[Top-K 组件记录](glm5.3-w4a8-topk-alignment.json)。完整六组模型复测仍待执行，精度阈值不变。

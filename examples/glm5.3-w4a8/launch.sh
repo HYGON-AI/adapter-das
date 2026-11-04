@@ -8,6 +8,8 @@ set -euo pipefail
 export PYTHONPATH="$ADAPTER_DIR:$SGLANG_DIR/python:$PLUGIN_DIR"
 export HCU_ADAPTER_HOST=sglang HCU_W4A8_MOE=native HCU_SLIMQUANT=0
 export SGLANG_PLUGINS=hcu SGLANG_USE_AITER=0
+# Keep the initial packed-INT4 probe on the Triton W4A8 path.
+export SGLANG_ROCM_USE_AITER_MOE=0
 export SGLANG_OPT_USE_TOPK_V2=0
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 OMP_NUM_THREADS=4
 # Compilation caches must stay local to each container across multiple nodes.

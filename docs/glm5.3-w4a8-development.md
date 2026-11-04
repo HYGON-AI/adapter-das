@@ -157,3 +157,12 @@ v6 的 32 个 scheduler 均已就绪，decode 完成 target-verify、draft-decod
 六组 prefill 和五组可对齐的 decode 均失败。formula-prefix0 的首 token 为候选 17351、原生 785，互相 top5 检查也失败，证明分歧在 prefill 首 token 分布已经出现；其余五组前两 token 相同，但分布误差仍不通过。未放宽阈值，也未比较已经分叉后的 decode 前缀。
 
 本轮 COV5 的 P 入口 T0 已核对末级 PP 的序列化/重建源码，且 D 返回的重复 T0 top20 与 P 精确一致，127 个选定项均有限、完整。此前拒绝的 COV6 未初始化响应仍保留为失败证据，不套用到本轮有效捕获。[紧凑结果和请求哈希](glm5.3-w4a8-numerical.json)记录验收范围；全响应与比较脚本保留在同名任务产物中。下一步比较实际归一化等中间边界，定位首次数值偏离；目前没有把模型级问题归因于某个尚未对照的算子。
+
+
+## 2026-11-05 首个异常边界：短请求第 0 层 attention
+
+原生和候选各采集两组请求的 32 份实际 rank 中间状态，并按 CP 的有效 token 位置对齐。两端插桩后的输出 ID、127 个选定 logprob 和 top20 均与各自未插桩基线精确一致；CPU 同步观测仍不用于性能验收。原生实际走 CP v2，逻辑 32/33 token 在每个 rank 补齐至 8 行；候选走旧 CP，归一化边界保持全局 32/40 行。观察点设在实际 eager runner，覆盖绕过外层 CausalLM.forward 的 CP v2 model-body 调用。
+
+两组请求的第 0 层 input-layernorm 输入、gamma 和输出，在所有有效位置及 8 个 rank 上均精确一致。首个偏离出现在该层 attention 出口：算术 33-token 的各 rank 最大 NRMSE 为 0.001667，水分子式 32-token 为 0.965085；对应残差仍精确一致。32-token 请求的 8 个 rank 均仅前 4 行非零，后 28 行全零，且 rank 间输出不同。其前 4 行与原生对应 CP 局部行也没有对齐，不能仅凭形状就认定补一个 gather 足够。
+
+两组请求共享相同的前 10 个输入 token：原生这些位置的首层 attention 输出精确一致，候选对应位置 NRMSE 为 0.847931。异常已经出现在后续 dense MLP 和 routed MoE 之前，下一步只对照该 attention、投影与 CP 数据布局边界。[中间值证据](glm5.3-w4a8-first-attention.json)保留源响应一致性、逐 rank 行记录和原始文件哈希。临时 CP v2 对照仅切换 prefill 的既有开关以匹配原生实际路径，保留 CT W4/动态 INT8 和原 decode/MTP/graph 配置；其结果尚待验证，没有提前修改正式配方。

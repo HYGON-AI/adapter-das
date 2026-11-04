@@ -86,7 +86,7 @@ python3 -m zipfile -e "$FLASH_MLA_WHEEL" "$VENDOR_OVERRIDE_DIR"
 
 DeepEP 采用镜像对应提交 `a755fa7e14631af7e8a6a0d6ead217101d3bfdda` 的 `BUILD_SHCA=ON` 构建，匹配 u17 SDK、`U16_LID=OFF` 和 COV5。其 build.sh 显式 checkout RocSHMEM `b71ac40294bb10c5ffb11b94bed7d7d20529ab02`，不同于 gitlink 的 `1c22be1a9e83d6500db171b5902e3b0e3d649481`，按实际构建契约记录版本。465 个非版本元数据的跟踪文件与固定源码逐项一致；setup.py 按已声明逻辑重写 `deep_ep/version.py`，保留原始严格字节检查失败记录，不宣称全部文件未改变。
 
-隔离 SHCA wheel 保留原 DeepEP 安装。23/24 两节点共 16 rank、真实 hidden=6144/experts=384/topk=8，分别完成 3-token BF16 和 17-token INT8 low-latency dispatch/combine。所有路由都跨节点，检查每个有效 token、FP32 INT8 scale 和加权 combine，16/16 rank 逐元素精确通过。这不包含完整模型、MTP 或 graph 验收。产物与验证范围见 [后续 ABI 诊断记录](glm5.3-w4a8-vendor-abi.json)；后续需将连续 GEMM 的已验证实现作为可审查的 ABI 适配接入，再继续完整 P/D、有限矩阵和 32-rank profile。
+隔离 SHCA wheel 保留原 DeepEP 安装。23/24 两节点共 16 rank，以 hidden=6144/experts=384/topk=8 的合成通信参数分别完成 3-token BF16 和 17-token INT8 low-latency dispatch/combine。所有路由都跨节点，检查每个有效 token、FP32 INT8 scale 和加权 combine，16/16 rank 逐元素精确通过。这不包含完整模型、MTP 或 graph 验收。产物与验证范围见 [后续 ABI 诊断记录](glm5.3-w4a8-vendor-abi.json)；后续需将连续 GEMM 的已验证实现作为可审查的 ABI 适配接入，再继续完整 P/D、有限矩阵和 32-rank profile。
 
 ## 2026-11-04 可审查的 HIPC COV5 接入
 
@@ -120,3 +120,11 @@ v6 的 32 个 scheduler 均已就绪，decode 完成 target-verify、draft-decod
 指定底座已有 `sample_mtp_target_ids`：HCU top-1 MTP 保留温度、top-k/top-p/min-p、请求 seed/positions，先采样 target IDs，再进行树匹配。CUDA 平台 facade 令 `eagle_utils._is_hip=False`，已有 sampled IDs 没有被后续 `_verify_uses_greedy` 条件采用。`eagle_hcu_sampling.py` 通过正式 HookRegistry 在真实 HCU、原生能力及签名均符合契约时，补齐 top-1 非 rejection 的选择条件。它先保留原 predicate 结果，非 top-1 和 rejection 请求继续使用原结果；没有新增采样算法或改写 `eagle_sample`、logits、概率及随机数。
 
 实际 bootstrap 和 Hook 应用检查完成 9 个 selector 组合，覆盖 top-k1/2/未配置、greedy 和 rejection。已缓存的 helper 别名随 Hook 传播，公开 `eagle_sample` 函数对象及 code 未改，模块平台常量未改。结果为任务产物 `candidate-pd/eagle-policy-check-v1.json`；这只是实际接线/选择检查，真实请求复验和完整 profile 仍待完成。未新增单测，SGLang 跟踪源码未改。
+
+## 2026-11-05 候选完整 P/D 诊断 profile 与精度边界
+
+修正 HCU 采样分支和 attention TP/CP 校验同步后，四节点候选完成真实 P/D 请求及 EAGLE 统计，但固定短算术请求输出乱码/复读并在 512 token 截断，精度未通过。按既定优先级保留当前失败配置，抓取与原生完全相同的 4095 输入、64 输出固定请求，P/D 两侧均正常停止 profiler。32 份 trace 逐项 gzip/JSON 解析通过，每 rank 均有对应 W4A8 与 INT8 激活量化 kernel；本地 tar 中压缩文件的 SHA256/大小 32/32 一致。归档及逐 rank 哈希见[候选 P/D profile 记录](glm5.3-w4a8-candidate-pd-profile.json)。这证明完整请求执行和真实量化路径，不证明答案、完整算子归因或性能通过；decode sparse-attention/indexer 的 kernel 归因仍待对齐。
+
+实际 config/index/tokenizer 元数据在四台候选容器和两台可用原生参考容器一致，模型为 78 层、256 个路由专家；此前 DeepEP 组件探针的 384 专家是合成通信参数，不能当作真实模型专家数。PP 两侧 trace 各含 39 层 attention，GEMM 调用数差异继续结合实际路由检查，不能据此判定少跑模型层。
+
+原始数值响应显示 P 入口 HTTP 的 token/logprob 有时与 D 首 token 不同且含非有限值；直接拼接它们的两版探针失败记录保留，不用于数值通过判断。临时、隔离的末级 PP LogitsProcessor 观测对真实 33-token 请求记录到 final hidden states 和 raw logits 全零；这仅把异常限定到采样之前，首个清零边界仍待定位。CPU 拷贝会同步并改变时序，观测代码没有提交为正式修复。固定误差阈值未放宽，完整数值及缓存/chunk/并发/MTP 开关矩阵仍未通过。

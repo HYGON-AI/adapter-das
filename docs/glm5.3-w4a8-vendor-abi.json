@@ -29,7 +29,12 @@
         }
       ],
       "binary_sha256": "685b785df584b46cec0d33768dd26123a1d2c2783415733a1ba40036032936e1",
-      "scope": "LL transport only, no complete model/MTP/graph acceptance"
+      "scope": "Synthetic LL transport parameters; actual model has256 routed experts. No complete model/MTP/graph accuracy acceptance.",
+      "test_parameters": {
+        "hidden": 6144,
+        "experts": 384,
+        "topk": 8
+      }
     },
     "source_integrity": {
       "nonmetadata_files_exact": 465,

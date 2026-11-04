@@ -154,9 +154,8 @@ PYTHONPATH 的裸 import 在 sitecustomize 阶段即触发自递归；手工预�
 找到，仅移除 `PYTHONPATH` 仍会继承宿主并再次进入预热，子进程等待父进程
 持有的同一把锁。构建子进程必须同时设置 `HCU_ADAPTER_HOST=none` 和
 `_HCU_ADAPTER_ACTIVE_HOST=none`；直接 helper 和兜底 Popen 均使用复制后的
-隔离环境，父进程及其他环境键保持原值。bw46 的 Python 3.12 / DTK2610
-editable 冷启动已观察到一次构建落缓存；针对该根因的环境消费回归及
-bootstrap/common 组合测试共 46 项通过，整模型性能另行验证。
+隔离环境，父进程及其他环境键保持原值。环境消费回归见
+`tests/adapter/test_tvmffi_warmup.py`；此项构建隔离不改变服务后端选择。
 
 ## 4. 运行时库路径补丁
 

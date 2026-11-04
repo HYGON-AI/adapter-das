@@ -1,0 +1,200 @@
+{
+  "scope": "Selected127/top20 finite numerical alignment only; not full-vocabulary or answer-quality acceptance",
+  "passed": false,
+  "candidate": "Uninstrumented P13/D8; CT W4 + dynamic INT8; qualified Aiter CAR COV5",
+  "native": "Original installed native image SGLang0.5.18; numerical-v3 four-node recipe;3660 source/library files exact onall4 nodes before launch",
+  "contract_sha256": "6b8682c5f4bea2e8ea248d9fa0007f07459fbd3c62f61886b87c7f937d8531a2",
+  "sampling": {
+    "temperature": 0,
+    "max_new_tokens": 2,
+    "ignore_eos": true
+  },
+  "probe_token_count": 127,
+  "top_logprob_count": 20,
+  "tolerances_unchanged": {
+    "logprob_rmse_max": 0.1,
+    "logprob_abs_max": 0.5,
+    "top1_must_appear_in_other_top5": true,
+    "required_prefill_cases": 6
+  },
+  "aligned_decode_cases": 5,
+  "capture_protocol": "P T0 produced at final PP stage and reconstructed by PP frontend; duplicate D T0 top20 matches exactly. D T1 is compared only for identical first generated token IDs. All selected rows contain127 finite entries.",
+  "raw_artifacts": {
+    "candidate": "candidate-pd/finite-v13-on-raw/numerical/",
+    "native": "candidate-pd/finite-native-v3-on-raw/numerical/",
+    "comparison": "candidate-pd/numerical-v1/p13-vs-native-v3-comparison-v4.json",
+    "comparison_sha256": "71e2999f138ab537e2d5e51613439e9516e5704cc2814a01ce63d9df81a49178"
+  },
+  "cases": [
+    {
+      "id": "arithmetic-prefix0",
+      "candidate_ids": [
+        99419,
+        353
+      ],
+      "native_ids": [
+        99419,
+        353
+      ],
+      "input_tokens": 33,
+      "request_sha256": "ce5ec49791588e9326fd4c2254e5088ec93a8c482def3349ed1346f5c33ea368",
+      "prefill": {
+        "passed": false,
+        "logprob_rmse": 0.9043919845237873,
+        "logprob_abs_max": 2.281291961669922,
+        "candidate_top1": 99419,
+        "native_top1": 99419,
+        "mutual_top1_in_other_top5": true
+      },
+      "decode": {
+        "passed": false,
+        "logprob_rmse": 0.3692179674555099,
+        "logprob_abs_max": 1.377701759338379,
+        "candidate_top1": 353,
+        "native_top1": 353,
+        "mutual_top1_in_other_top5": true
+      }
+    },
+    {
+      "id": "arithmetic-prefix8",
+      "candidate_ids": [
+        382,
+        10056
+      ],
+      "native_ids": [
+        382,
+        10056
+      ],
+      "input_tokens": 41,
+      "request_sha256": "97ea209f43611585674bf083fca712a9e263b9dd3dcb51f87d5985a00653dc91",
+      "prefill": {
+        "passed": false,
+        "logprob_rmse": 0.6285660055630053,
+        "logprob_abs_max": 1.8712100982666016,
+        "candidate_top1": 382,
+        "native_top1": 382,
+        "mutual_top1_in_other_top5": true
+      },
+      "decode": {
+        "passed": false,
+        "logprob_rmse": 0.4280328879716021,
+        "logprob_abs_max": 1.1165962219238281,
+        "candidate_top1": 10056,
+        "native_top1": 10056,
+        "mutual_top1_in_other_top5": true
+      }
+    },
+    {
+      "id": "formula-prefix0",
+      "candidate_ids": [
+        17351,
+        154842
+      ],
+      "native_ids": [
+        785,
+        1196
+      ],
+      "input_tokens": 32,
+      "request_sha256": "b69ad4dcb0c4ffe69265c779f67ee1aee1d273b0cd56821556589a5b739aacdb",
+      "prefill": {
+        "passed": false,
+        "logprob_rmse": 13.369442868231598,
+        "logprob_abs_max": 20.24422788619995,
+        "candidate_top1": 17351,
+        "native_top1": 785,
+        "mutual_top1_in_other_top5": false
+      },
+      "decode": {
+        "compared": false,
+        "reason": "First generated tokens differ; prefixes unaligned"
+      }
+    },
+    {
+      "id": "json-add-prefix0",
+      "candidate_ids": [
+        785,
+        1196
+      ],
+      "native_ids": [
+        785,
+        1196
+      ],
+      "input_tokens": 44,
+      "request_sha256": "944261f6b31251e3fd7fbcb41ae39323e229baca638843c874c01317152fc1b3",
+      "prefill": {
+        "passed": false,
+        "logprob_rmse": 0.6870959697660677,
+        "logprob_abs_max": 2.0099945068359375,
+        "candidate_top1": 785,
+        "native_top1": 785,
+        "mutual_top1_in_other_top5": true
+      },
+      "decode": {
+        "passed": false,
+        "logprob_rmse": 0.7621530609937011,
+        "logprob_abs_max": 3.0040512084960938,
+        "candidate_top1": 1196,
+        "native_top1": 1196,
+        "mutual_top1_in_other_top5": true
+      }
+    },
+    {
+      "id": "4k-prefix0",
+      "candidate_ids": [
+        785,
+        1196
+      ],
+      "native_ids": [
+        785,
+        1196
+      ],
+      "input_tokens": 4095,
+      "request_sha256": "1cfaa4a4641212863ce77aca8c4442df43320d0636b181e3fcca106c30595277",
+      "prefill": {
+        "passed": false,
+        "logprob_rmse": 1.3540410630103592,
+        "logprob_abs_max": 3.6294479370117188,
+        "candidate_top1": 785,
+        "native_top1": 785,
+        "mutual_top1_in_other_top5": true
+      },
+      "decode": {
+        "passed": false,
+        "logprob_rmse": 0.9536538646695462,
+        "logprob_abs_max": 2.0155982971191406,
+        "candidate_top1": 1196,
+        "native_top1": 1196,
+        "mutual_top1_in_other_top5": true
+      }
+    },
+    {
+      "id": "4k-prefix8",
+      "candidate_ids": [
+        7424,
+        320
+      ],
+      "native_ids": [
+        7424,
+        320
+      ],
+      "input_tokens": 4103,
+      "request_sha256": "55ebff854d2246b1e0c2f7872affe17b04f04c3ac31dde317f03d5347df14ed9",
+      "prefill": {
+        "passed": false,
+        "logprob_rmse": 0.5666958932773084,
+        "logprob_abs_max": 1.8259410858154297,
+        "candidate_top1": 7424,
+        "native_top1": 7424,
+        "mutual_top1_in_other_top5": true
+      },
+      "decode": {
+        "passed": false,
+        "logprob_rmse": 0.4887289331056327,
+        "logprob_abs_max": 1.7822532653808594,
+        "candidate_top1": 320,
+        "native_top1": 320,
+        "mutual_top1_in_other_top5": true
+      }
+    }
+  ]
+}

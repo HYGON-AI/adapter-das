@@ -551,5 +551,24 @@
     "candidate-pd/attention-probe-v1/first-attention-comparison.json",
     "candidate-pd/check-rope-rounding-cpu-v1.py",
     "candidate-pd/attention-probe-v1/rope-rounding-cpu-v1.json"
-  ]
+  ],
+  "lightop_recipe_component": {
+    "passed_component": true,
+    "real_case_rank_pairs": 16,
+    "Q_K_checks": 32,
+    "changed_input_graph_replays": 2,
+    "all_Q_K_elementwise_exact_to_native": true,
+    "canonical_FP32_cache_identity_preserved": true,
+    "typed_cache_dtype": "torch.bfloat16",
+    "disabled_constructor_keeps_original_branch": true,
+    "raw_report": "candidate-pd/attention-probe-v1/rope-runtime-v4.json",
+    "raw_report_sha256": "2b47672508b4849aeede6998f6be4bc4d0e606f153edc9d9e86fb7c63cba3bec",
+    "production_source_sha256": {
+      "hcu_sglang/environ.py": "6f665dcbe8eb31afe0c5a8e0c0d37ff4fb0428e2b401352a91bcf9d76853d551",
+      "hcu_sglang/layers/rotary.py": "1355156869b6e185b1639577fe051b9efcc3918dc43d6b11ab36a19fe4c9ed80",
+      "tests/contracts/hcu_source_alignment_targets.json": "e2aa23bcb8efae5fb40b31d81a65b7e1a402cfa8d8dd3fece1827ef5356efc53"
+    },
+    "scope_limit": "Only observed first-layer short-prefix inputs and one changed-input component graph, not full model acceptance. Fused KV-store and offsets not exercised.",
+    "old_head_split_control": "Full64-head public LightOp matches all observed native outputs; splitting8heads produces23861different elements. Failed v3candidate plugin probe retained; not used for model service."
+  }
 }

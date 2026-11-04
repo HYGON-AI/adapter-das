@@ -190,3 +190,5 @@ P16 使用提交 23685d8 的正式 CP v2 配方，移除观察模块与额外插
 首层 fused QKV 的 2624 列输出、Q/K 归一化输入与输出在全部有效 CP 行逐元素一致；静态 Q/K norm、Q-b/O 权重与 scale、吸收矩阵也逐元素一致。Q-b 输出仍有很小的 BF16 差异，最大 rank NRMSE 约 8.2e-6。RoPE 则在 Q/K/位置输入完全相同的条件下出现输出差异，Q 最大 rank NRMSE 约 0.00142，K 约 0.00170。Indexer 返回顺序不同，但每个有效行选出的索引集合完全相同，不能按索引元素位置差直接判为选错 token。
 
 受控 CPU 复算以 checkpoint 的 theta=8000000、rotary_dim=64 生成缓存；BF16 cache 和 BF16 乘加逐步舍入能精确重建两组、八个 rank 的原生 RoPE Q/K 输出。该缓存是受控生成值，并非运行时直接捕获值；下一步检查真实分发和镜像内公共算子，不能据此直接宣称最终精度根因已修复。[边界证据](glm5.3-w4a8-attention-alignment.json)记录范围与原始产物入口。当前仍未通过六组数值合同，本轮没有改变生产量化、GEMM、激活或阈值。
+
+GLM 配方现显式设置 plugin 的 `SGLANG_HCU_USE_LIGHTOP_ROPE=1`，选择镜像内公共 LightOp BF16 RoPE，并保留框架 FP32 cache。分发策略与 typed cache 接线位于 plugin，不在 adapter 增加模型专属算法。正式插件发现、构造和分发已验证：两组八 rank 的 32 项 Q/K 及两组更换输入后的 Graph 重放均逐元素匹配原生，FP32 cache 对象未变，关闭开关后保留原分支。LightOp 使用完整 head 分发；复用旧 sgl_kernel 的 8-head 分块会产生差异，失败探针记录保留。完整模型数值仍待复测。

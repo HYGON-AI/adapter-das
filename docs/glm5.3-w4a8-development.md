@@ -182,3 +182,11 @@ P16 使用提交 23685d8 的正式 CP v2 配方，移除观察模块与额外插
 使用实际 post-attention norm 输入及 checkpoint 的首层 dense W8A8 权重，分别在两套镜像重放 M4/M8 的 gate/up（N=24576、K=6144）和 down（N=6144、K=12288）。两端 24 份共同捕获的激活、INT8 量化值、FP32 token scale 和 GEMM 输出逐元素一致；当前 ASM 与 LightOp 公共 GEMM 接口的完整输出一致，128 个输出通道的 CPU INT64 dot/scale 参考也精确通过。公共接口可能内部委派 LightOp，不能仅凭 triton_scaled_mm 名称声称实际执行 Triton kernel。
 
 进一步用镜像里的 LightOp fused SiLU，在同一套当前镜像算子上，分别以原生和候选实测输入逐元素重建了各自的首层 dense 输出。因此该边界的差异已由上游输入带入，不修改其 GEMM 分发或激活算法。FP32 SiLU 中间值参考与原生 BF16 中间舍入不同，仅作为诊断对照，不替换生产语义。[组件证据与复现入口](glm5.3-w4a8-dense0-alignment.json)记录实际库版本及夹具哈希；下一步观察首层 attention 的投影、归一化、RoPE 与核心计算边界。
+
+## 2026-11-05 首层 attention 投影与 RoPE 实测边界
+
+两组固定前缀各捕获全部 16 个 prefill rank，并保留 PP0 的首层投影、归一化、RoPE、attention 和输出投影实际入参/输出。原生参考使用四节点同版本原镜像；四份 P/D 响应的 token IDs 和三类所请求 logprob 与未加观测的原生 v3 逐项一致。32 份状态及一份静态权重已下载归档，逐文件大小和 SHA256 全部核对。早期混合原生 P 与当前 D 的可选诊断因框架线协议版本不同而取消，没有产生请求状态，不作为精度证据。
+
+首层 fused QKV 的 2624 列输出、Q/K 归一化输入与输出在全部有效 CP 行逐元素一致；静态 Q/K norm、Q-b/O 权重与 scale、吸收矩阵也逐元素一致。Q-b 输出仍有很小的 BF16 差异，最大 rank NRMSE 约 8.2e-6。RoPE 则在 Q/K/位置输入完全相同的条件下出现输出差异，Q 最大 rank NRMSE 约 0.00142，K 约 0.00170。Indexer 返回顺序不同，但每个有效行选出的索引集合完全相同，不能按索引元素位置差直接判为选错 token。
+
+受控 CPU 复算以 checkpoint 的 theta=8000000、rotary_dim=64 生成缓存；BF16 cache 和 BF16 乘加逐步舍入能精确重建两组、八个 rank 的原生 RoPE Q/K 输出。该缓存是受控生成值，并非运行时直接捕获值；下一步检查真实分发和镜像内公共算子，不能据此直接宣称最终精度根因已修复。[边界证据](glm5.3-w4a8-attention-alignment.json)记录范围与原始产物入口。当前仍未通过六组数值合同，本轮没有改变生产量化、GEMM、激活或阈值。

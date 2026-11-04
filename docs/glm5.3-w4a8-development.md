@@ -77,3 +77,13 @@ python3 -m zipfile -e "$FLASH_MLA_WHEEL" "$VENDOR_OVERRIDE_DIR"
 23/24 两节点通过公共 `mooncake.engine.TransferEngine` 验证 GPU→GPU RDMA：40 KiB 和 4 MiB 非均匀字节模式、128 字节偏移，接收内容及前后保护区均逐元素精确一致，两进程退出码均为 0。初始化日志确认 SHCA RDMA transport，未设置 `MC_FORCE_TCP`。控制消息使用独立 TCP socket；第一版使用共享盘控制文件，在不同 NFS 服务端之间未及时可见而超时，该失败记录保留，不能作为数据传输失败或通过的判据。
 
 固定版本、产物哈希和范围见 [通信验证记录](glm5.3-w4a8-network.json)。四节点 v2 已采用这组依赖继续启动；本节只证明两节点通信，尚不证明完整 DeepEP、KV 交接、MTP 或目标 graph 已通过。
+
+## 2026-11-04 连续 W4A8 设备代码与 DeepEP u17 ABI
+
+四节点 v2 的 32 个 scheduler 均越过通信初始化和权重加载。prefill 在实际 DeepEP normal 计算中报 `W4A8 WASP kernel launch failed`；decode 在 low-latency 初始化时由 RocSHMEM 的 `ibv_alloc_parent_domain` 返回 95 并终止。四个进程均已退出，未将退出码 137 直接归因为显存不足。
+
+镜像 DeepGEMM 为提交 `b061ec70272a001fca622ea814d3ee163e24bb05`。独立真实专家检查中，默认 WASP 1006 启动失败，原 HIPC 1002 明确报 `no kernel image`。为隔离 1002，诊断构建保留该实现的 kernel body，排除 WASP include/分发并明确拒绝 mode 1006，再使用上游标准 Torch hipify。相同 HIP 源码和编译参数仅切换 code object 格式：COV5 完成 gate/up 与 down 两次 INT8 GEMM，17 个有效行对 BF16 QDQ 参考均逐元素一致；COV6 编译成功后仍报 `no kernel image`。这只验证独立 HIPC 1002 模块，尚未接入完整服务，也未验收 WASP 1006。
+
+DeepEP 采用镜像对应提交 `a755fa7e14631af7e8a6a0d6ead217101d3bfdda` 的 `BUILD_SHCA=ON` 构建，匹配 u17 SDK、`U16_LID=OFF` 和 COV5。其 build.sh 显式 checkout RocSHMEM `b71ac40294bb10c5ffb11b94bed7d7d20529ab02`，不同于 gitlink 的 `1c22be1a9e83d6500db171b5902e3b0e3d649481`，按实际构建契约记录版本。465 个非版本元数据的跟踪文件与固定源码逐项一致；setup.py 按已声明逻辑重写 `deep_ep/version.py`，保留原始严格字节检查失败记录，不宣称全部文件未改变。
+
+隔离 SHCA wheel 保留原 DeepEP 安装。23/24 两节点共 16 rank、真实 hidden=6144/experts=384/topk=8，分别完成 3-token BF16 和 17-token INT8 low-latency dispatch/combine。所有路由都跨节点，检查每个有效 token、FP32 INT8 scale 和加权 combine，16/16 rank 逐元素精确通过。这不包含完整模型、MTP 或 graph 验收。产物与验证范围见 [后续 ABI 诊断记录](glm5.3-w4a8-vendor-abi.json)；后续需将连续 GEMM 的已验证实现作为可审查的 ABI 适配接入，再继续完整 P/D、有限矩阵和 32-rank profile。

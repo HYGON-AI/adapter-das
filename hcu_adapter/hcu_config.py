@@ -468,6 +468,18 @@ BACKEND_CATALOG = {
                               "auto-fallback to triton"},
         },
     },
+    "w4a8_contiguous_gemm": {
+        "var": None,
+        "summary": "DTK W4A8 HIPC code-object ABI compatibility",
+        "backends": {
+            "dtk": {
+                "status": "candidate",
+                "note": "Optional gfx936 COV5 extension for pinned DeepGEMM b061ec; "
+                        "preserves INT8 activations, native wrapper and cached aliases. "
+                        "Explicit WASP1006 requests are rejected; full P/D pending.",
+            },
+        },
+    },
     "w4a16_moe": {
         "var": "HCU_W4A16_MOE_IMPL",
         "summary": "W4A16 fused MoE experts (moe_wna16 AWQ/GPTQ-int4 line)",

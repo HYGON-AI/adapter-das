@@ -252,6 +252,16 @@ w8a8 fused MoE experts (standard dispatch, triton runner entry; deepep runner un
 
 路由变量：`HCU_FUSED_MOE_IMPL`
 
+## w4a8_contiguous_gemm
+
+DTK W4A8 HIPC code-object ABI compatibility
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| dtk | candidate Optional gfx936 COV5 extension for p |
+
+路由变量：（auto）
+
 ## w4a16_moe
 
 W4A16 fused MoE experts (moe_wna16 AWQ/GPTQ-int4 line)

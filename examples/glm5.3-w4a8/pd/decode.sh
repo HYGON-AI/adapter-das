@@ -121,7 +121,7 @@ exec python3 -m hcu_sglang \
     --mem-fraction-static "${MEM_FRACTION_STATIC:-0.858}" \
     --disable-radix-cache \
     --chunked-prefill-size -1 \
-    --cuda-graph-max-bs 16 \
+    --cuda-graph-max-bs-decode 16 \
     --max-running-requests 128 \
     --reasoning-parser glm45 \
     --tool-call-parser glm47 \

@@ -87,3 +87,9 @@ python3 -m zipfile -e "$FLASH_MLA_WHEEL" "$VENDOR_OVERRIDE_DIR"
 DeepEP 采用镜像对应提交 `a755fa7e14631af7e8a6a0d6ead217101d3bfdda` 的 `BUILD_SHCA=ON` 构建，匹配 u17 SDK、`U16_LID=OFF` 和 COV5。其 build.sh 显式 checkout RocSHMEM `b71ac40294bb10c5ffb11b94bed7d7d20529ab02`，不同于 gitlink 的 `1c22be1a9e83d6500db171b5902e3b0e3d649481`，按实际构建契约记录版本。465 个非版本元数据的跟踪文件与固定源码逐项一致；setup.py 按已声明逻辑重写 `deep_ep/version.py`，保留原始严格字节检查失败记录，不宣称全部文件未改变。
 
 隔离 SHCA wheel 保留原 DeepEP 安装。23/24 两节点共 16 rank、真实 hidden=6144/experts=384/topk=8，分别完成 3-token BF16 和 17-token INT8 low-latency dispatch/combine。所有路由都跨节点，检查每个有效 token、FP32 INT8 scale 和加权 combine，16/16 rank 逐元素精确通过。这不包含完整模型、MTP 或 graph 验收。产物与验证范围见 [后续 ABI 诊断记录](glm5.3-w4a8-vendor-abi.json)；后续需将连续 GEMM 的已验证实现作为可审查的 ABI 适配接入，再继续完整 P/D、有限矩阵和 32-rank profile。
+
+## 2026-11-04 可审查的 HIPC COV5 接入
+
+新增独立构建器 `tools/build_deepgemm_w4a8_cov5.py` 和可选机制 `hcu_adapter.deepgemm_cov5`。前者固定实际编译的四份 vendor 源码/头文件摘要，只生成独立 HIPC1002 模块并原子发布；后者仅在模块显式出现在 Python 路径时接入，验证完整 wheel 版本、wrapper 字节及扩展 ABI 元数据。以私有 op facade 和模块局部默认值保留原函数对象、签名、校验与已缓存别名，不改动共享配置或 masked 等其他算子。新 catalog、registry、UI 快照和已有 `HCU_DISABLE_OPS` 快关同步登记，没有新增环境变量。
+
+真实专家检查经过原公共 API，默认选择 HIPC1002，gate/up 和 down 保持 INT8/FP32 scale 并通过原 QDQ 误差检查。两次 GEMM 各做两次变输入 graph replay，沿用原误差门限通过；缓存别名、函数 code、共享配置和 masked op 身份检查通过，显式 WASP1006 拒绝。任务产物为 `w4a8-contiguous-provider-mode1002-v1.json`；该组件验证仍不替代完整服务验收。配方统一采用公开 `--cuda-graph-max-bs-decode 16`，等价于先前兼容别名的目标设置。

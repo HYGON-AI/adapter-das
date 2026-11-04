@@ -52,6 +52,16 @@ def install() -> None:
             from hcu_adapter import hcu_env as _he
         except Exception:
             _he = None
+        # Optional code-object repair must precede DeepGEMM/SGLang aliases.
+        try:
+            from hcu_adapter import deepgemm_cov5
+
+            deepgemm_cov5.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: requested DeepGEMM COV5 repair not installed",
+                exc_info=True,
+            )
         # deep_gemm name availability (DSV4 family): sglang.srt.models.deepseek_v4
         # (and _dspark) import deep_gemm at module level, and the FIRST registry
         # scan can happen as early as the sections below importing sglang.srt.

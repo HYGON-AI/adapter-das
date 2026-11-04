@@ -48,3 +48,22 @@ SHCA/DTK 环境的通用安装方案。
 `SGLANG_OPT_USE_TOPK_V2=0` 固定在配方中；不额外指定
 `--dsa-topk-backend torch`。Ninja 使用镜像已有 wheel 内的原生二进制，
 Triton/Torch 编译缓存默认在各容器本地。
+
+当前 gfx936 节点的连续 W4A8 HIPC 需要 COV5。使用固定 DeepGEMM
+提交 `b061ec70272a001fca622ea814d3ee163e24bb05` 的源码，在同一镜像中执行：
+
+```bash
+HCU_ADAPTER_HOST=none python3 "$ADAPTER_DIR/tools/build_deepgemm_w4a8_cov5.py" \
+    --source "$DEEPGEMM_SOURCE" --output "$COV5_OUTPUT"
+export PYTHONPATH="$COV5_OUTPUT${PYTHONPATH:+:$PYTHONPATH}"
+```
+
+`DEEPGEMM_SOURCE` 指向上述源码，`COV5_OUTPUT` 必须是源码树外的新目录。
+构建器校验实际编译的 vendor 源文件和头文件字节，生成独立模块并原子发布，
+不写回原源码或安装包。启动时仅在该模块可导入时接入，锁定镜像 DeepGEMM
+完整版本及 Python wrapper 哈希，保留公共函数、校验和缓存别名。仅该 wrapper
+的私有默认 mode 变为原 HIPC 1002，显式 mode 1006 拒绝；其他算子及共享
+vendor 配置保持原样。启动日志记录实际模块路径，registry 记录
+`w4a8_contiguous_gemm`。移除该目录或在新进程设置
+`HCU_DISABLE_OPS=w4a8_contiguous_gemm` 可跳过接入；恢复原路径不代表
+当前节点的原 COV6 算子已经可用。

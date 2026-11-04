@@ -57,3 +57,13 @@ python3 -m zipfile -e "$FLASH_MLA_WHEEL" "$VENDOR_OVERRIDE_DIR"
 ```
 
 仅对需要该验证的启动设置 `PYTHONPATH="$VENDOR_OVERRIDE_DIR"` 与 `FLASH_MLA_ROOT_DIR="$VENDOR_OVERRIDE_DIR/flash_mla/asm"`。先确认实际导入的 `flash_mla.cuda.__file__` 和哈希，再继续服务验收；解包尚未完成时启动的一条早期探针导入了原包，该条未作为隔离包验证。证据清单为任务产物 `flashmla-cov5-provenance.json`、`code-object-check.json`、`flashmla-cov5-validation-v1.json`，原始失败记录保留。
+
+## 2026-11-04 单机真实请求与 INT8 专家指令确认
+
+组合 v9 完成 TP8/EP8 加载及 warmup。与原生使用相同固定输入 ID 和文档采样参数的三条请求均正常 stop，最终答案为 `323`、`H₂O`、`18`。水分子式的 Unicode 下标使第一版仅匹配 ASCII 的检查失败；保留原响应和失败记录，按 NFKC 表示等价重新检查同一响应后通过，没有重新生成或调整数值误差阈值。本轮仍为 MTP/graph 关闭的单机诊断。
+
+额外抓取一条 33 输入、2 输出 token 的完整诊断请求，8 个 rank 的 gzip/JSON 均解析通过，本地归档内压缩文件 SHA256 逐项一致。trace 共命中 2400 次 `fused_moe_kernel_gptq_awq` 和 9312 次 `_per_token_quant_int8`。对应 8 份实际 Triton 编译产物中，A 为 `i8` 指针，packed B 为 `i8` 字节存储，矩阵指令为 `v_mmac_i32_16x16x32_i8`，输出为 BF16。结合 CT 的 INT4 权重布局，确认当前专家计算保留 A8；不能根据旧配置文件名中的 `w4a16` 或 BF16 输出类型判断量化降级。
+
+独立抽查真实第 3 层一个专家，DeepGEMM masked 的 gate/up 和 down 两次 INT8 GEMM 对 QDQ 参考的 NRMSE 分别为约 `5.9e-9`、`4.5e-5`。在完全相同的 BF16 输入和实际 gate/up 中间结果上，原生与候选的输入 INT8/scale、SiLU-mul 后 INT8/scale 四组张量在 17 个有效行内逐元素一致；先前 CPU 舍入参考的两次严格检查失败仍保留。这些局部证据不替代完整模型中间结果与 teacher-forced 精度对照。
+
+版本、trace 哈希和验收范围见 [单机候选 profile 记录](glm5.3-w4a8-candidate-single-profile.json)。目标四节点第一次启动停在 RCCL 初始化：镜像的 verbs/provider 不能打开当前 SHCA，且缺少所选网络插件；原生匹配的 verbs/provider 和网络插件通过隔离路径接入后，23/24 两节点实际 SGLang PyNccl 的 FP32、BF16、INT32 归约及两次更换输入的 graph replay 均精确通过，日志确认使用 4 个 SHCA 和 RDMA 插件。完整 DeepEP、Mooncake KV 传输、MTP、目标 graph、有限矩阵及候选 32-rank profile 继续验证。

@@ -27,6 +27,17 @@ API 必须覆盖四个质量维度，缺一不可（每个维度都有历史 bug
 
 ## 四质量维度
 
+vLLM mHC 安装态生命周期探针为 `tests/tools/_probe_vllm_mhc_lifecycle.py`，
+其 CPU 身份 double 与真实 native/GPU 门禁分开。官方 Torch 复用仍须数值、
+同地址变输入 Graph、长/短/空批次和 layer/e2e golden。capture 不执行 Graph；
+先 replay 核对原输入基线，空 Graph 单列。原门槛下 vendor 大 batch 舍入
+失败保留，不得用另一参考或另一实现追认原 fused 通过。
+
+vLLM 0.33 的 draft-weight-update 真实路径会遍历 draft model 来恢复 source
+LM heads。CPU runner 夹具须返回空 `torch.nn.Module`，namespace 不满足
+官方契约；保留真实遍历，不把它 mock 掉。多次 spawn 的整文件预算与
+每个子进程 timeout 分开计算，截断后须保留原日志，以独立完整运行补证。
+
 vLLM dense FP8官方fallback接线探针：`tests/tools/_probe_vllm_fp8_linear.py`
 直接验证既有官方provider；`_probe_vllm_fp8_family.py` 验证runtime正式注册、
 官方选型、QuantFP8及apply_weights完整链路。非单位tensor/token/channel尺度、

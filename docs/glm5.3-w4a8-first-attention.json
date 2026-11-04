@@ -174,7 +174,7 @@
     "native_archive_sha256": "415db36f5d32b476b22b55b0a0aee8efbc33bf8e3596d384ce8d249909b59f8a"
   },
   "interpretation": "First observed abnormal boundary is layer0 attention/projection/CP materialization, before dense MLP or routed MoE. Root cause within this boundary not yet proven; do not change downstream quantization to hide it.",
-  "next_control": "Prefill only SGLANG_ENABLE_CP_V2=1, matching actual native. Keeps W4/dynamicINT8, all production source and D9MTP/graphs. Body layout and physical padding change together; not a kernel-only A/B. Pending.",
+  "next_control": "Prefill-only CPv2 two-case observer completed; results below. Explicit native CPv2 selection added only to this GLMCT recipe; further uninstrumented numerical and finite matrix still required.",
   "shared_first10_causal_prefix": [
     {
       "role": "native",
@@ -190,5 +190,68 @@
       "max_abs": 0.10009765625,
       "nrmse": 0.8479306101799011
     }
-  ]
+  ],
+  "cpv2_control": {
+    "scope": "Two short fixed prefixes only; actual CPv2 all16P ranks, same production source/vendor/CTW4A8/D9. Observation retained; no uninstrumented or full numerical acceptance yet.",
+    "factor": "SGLANG_ENABLE_CP_V2=1 onP; body layout and padding coupled",
+    "cases": [
+      {
+        "id": "arithmetic-prefix0",
+        "attention_output_worst_rank_nrmse": 0.0018989667130939719,
+        "attention_output_max_abs": 0.00048828125,
+        "logits_top1": {
+          "native": [
+            99419,
+            99419,
+            99419,
+            99419,
+            99419,
+            99419,
+            99419,
+            99419
+          ],
+          "candidate": [
+            99419,
+            99419,
+            99419,
+            99419,
+            99419,
+            99419,
+            99419,
+            99419
+          ]
+        },
+        "raw_logits_worst_rank_nrmse": 0.2599023953115674
+      },
+      {
+        "id": "formula-prefix0",
+        "attention_output_worst_rank_nrmse": 0.0017604742546026904,
+        "attention_output_max_abs": 0.00048828125,
+        "logits_top1": {
+          "native": [
+            785,
+            785,
+            785,
+            785,
+            785,
+            785,
+            785,
+            785
+          ],
+          "candidate": [
+            785,
+            785,
+            785,
+            785,
+            785,
+            785,
+            785,
+            785
+          ]
+        },
+        "raw_logits_worst_rank_nrmse": 0.3366207964522167
+      }
+    ],
+    "remaining": "Final raw logits still differ; original numerical thresholds and finite matrix remain required."
+  }
 }

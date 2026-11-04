@@ -9,6 +9,9 @@
 decode 使用另两节点 TP16/DP16/EP16、DeepEP low_latency、EAGLE 5/1/6、
 decode graph max batch 16。decode 的两节点规模是本任务的配置，
 不同于来源部署文档的四节点 TP32。prefill 的 PP2 不启用 MTP，graph 关闭。
+Prefill 显式设置 `SGLANG_ENABLE_CP_V2=1`，与原生 GLM 的策略 CP 及每 rank
+物理补齐方式一致。旧 CP 的 32-token 请求曾在首层 attention 出口出现部分行全零；
+两组 CP v2 短前缀对照恢复，但完整数值精度仍在验证。
 
 先配置宿主代码目录和 checkpoint，再在每个角色的两台节点设置对应的
 `NODE_HOST`、`NODE_RANK=0|1`、`DIST_INIT_HOST`。同一角色必须共用

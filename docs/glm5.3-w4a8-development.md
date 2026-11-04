@@ -166,3 +166,10 @@ v6 的 32 个 scheduler 均已就绪，decode 完成 target-verify、draft-decod
 两组请求的第 0 层 input-layernorm 输入、gamma 和输出，在所有有效位置及 8 个 rank 上均精确一致。首个偏离出现在该层 attention 出口：算术 33-token 的各 rank 最大 NRMSE 为 0.001667，水分子式 32-token 为 0.965085；对应残差仍精确一致。32-token 请求的 8 个 rank 均仅前 4 行非零，后 28 行全零，且 rank 间输出不同。其前 4 行与原生对应 CP 局部行也没有对齐，不能仅凭形状就认定补一个 gather 足够。
 
 两组请求共享相同的前 10 个输入 token：原生这些位置的首层 attention 输出精确一致，候选对应位置 NRMSE 为 0.847931。异常已经出现在后续 dense MLP 和 routed MoE 之前，下一步只对照该 attention、投影与 CP 数据布局边界。[中间值证据](glm5.3-w4a8-first-attention.json)保留源响应一致性、逐 rank 行记录和原始文件哈希。临时 CP v2 对照仅切换 prefill 的既有开关以匹配原生实际路径，保留 CT W4/动态 INT8 和原 decode/MTP/graph 配置；其结果尚待验证，没有提前修改正式配方。
+
+
+## 2026-11-05 显式对齐原生 CP v2 配方
+
+同一生产源码和观察代码，仅将 prefill 的 `SGLANG_ENABLE_CP_V2` 设为 1；decode v9 的权重、MTP 和 graph 进程保持运行。两组实际调用均确认进入策略 CP v2，按原生方式将每个 rank 补齐至 8 行。水分子式 32-token 请求的首层 attention 最坏 rank NRMSE 从 0.965085 降至 0.001760，首两个 token 恢复为原生的 `[785, 1196]`；算术请求为 0.001899，首两个 token 仍与原生相同。该结果支持当前短请求异常与旧 CP 执行路径有关，不单独归因为某个 gather 或 kernel。
+
+本 GLM CT prefill 配方显式设置该已有开关，保持 W4/动态 INT8 和原有算子库，其他模型及 decode 的默认值不变。该修正只验证了两组插桩短前缀，最终 logits 仍有差异；去插桩的六前缀数值阈值、完整答案及缓存/chunk/并发/MTP 矩阵继续验证，不能将首 token 恢复视为完整精度通过。

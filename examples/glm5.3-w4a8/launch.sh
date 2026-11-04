@@ -8,7 +8,7 @@ set -euo pipefail
 : "${PLUGIN_DIR:?Set the plugin source directory}"
 : "${MODEL_PATH:?Set the compressed-tensors checkpoint directory}"
 : "${WORK_DIR:?Set the writable task directory}"
-export PYTHONPATH="$ADAPTER_DIR:$SGLANG_DIR/python:$PLUGIN_DIR"
+export PYTHONPATH="$ADAPTER_DIR:$SGLANG_DIR/python:$PLUGIN_DIR${PYTHONPATH:+:$PYTHONPATH}"
 # Use Ninja's bundled executable so build helpers do not re-enter Python bootstrap.
 glm_ninja_bin="$(HCU_ADAPTER_HOST=none python3 -c 'import ninja; print(ninja.BIN_DIR)')"
 export PATH="$glm_ninja_bin:$PATH"

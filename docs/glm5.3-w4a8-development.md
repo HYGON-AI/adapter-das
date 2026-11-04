@@ -41,3 +41,19 @@
 构建子进程环境现同时移除 `PYTHONPATH`，并显式设置公开及传播的 host 为 `none`；预热窗口中显式传入的子进程 env 也按此处理。父进程环境保持原样。重跑后冷缓存成功生成 `libtorch_c_dlpack_addon_torch211-rocm.so`，主诊断继续运行；证据是 `rope-jit-check-v1-deadlock.log`、`rope-jit-check-v2.log`。不改动镜像中的 Torch/DTK 算子库，模型生成验证仍待完成。
 
 镜像的 `/usr/local/bin/ninja` 是 Python 入口，JIT 编译调用它时再次执行已安装的 `sitecustomize`。启动配方通过已安装 `ninja.BIN_DIR` 将同一 wheel 的原生二进制置于 PATH 前部，保留编译命令、工具版本和父服务的 adapter 配置。正在运行的模型继续等待其原有 JIT 完成，未为此重启。
+
+## 2026-11-04 FlashMLA code object 兼容诊断
+
+组合 v8 已越过 RoPE/concat，在镜像内 FlashMLA sparse prefill 报 `no kernel image`。同卡、同输入的原生镜像调用通过；指定 DTK26.10 镜像内的 8/64 heads、带/不带 `topk_length` 均失败。设备代码中有 gfx936，不能据此推断可执行。当前节点的 HYHAL 为 `6.3.31-V1.5.7 20261029-124220`；同一 DTK 编译器生成的最小 HIP 核中，code object v5 可查找函数并执行，v6 的模块加载成功但函数查找返回 500。
+
+在隔离目录用镜像版本对应的 FlashMLA 提交 `e7b26ad186028b07b9267e296eaf0acaa5cc7069`、CUTLASS 子模块 `33e45645599f371c2382e67920085498f5905955` 构建，显式设置 `FLASH_MLA_CODE_OBJECT_VERSION=5`，未修改算子源码、Torch 或 DTK。隔离包的 5 组 BF16 sparse prefill（tokens 1/6/17/256，heads 8/64）及更换输入后的 graph replay 均通过预先声明的 FP32 参考误差检查；最大绝对误差小于 0.0044。原安装包保持原样，完整模型生成和 P/D 仍待验证。这是当前节点/镜像组合的证据，不代表所有 v6 运行时都不支持该格式。
+
+启动脚本现保留调用者的 `PYTHONPATH`，使此类已核实的隔离包可在同一镜像中验证；三份任务源码仍排在前面。复现构建时，在上述固定源码与子模块目录执行：
+
+```bash
+export HCU_ADAPTER_HOST=none FLASH_MLA_CODE_OBJECT_VERSION=5 FLASH_MLA_OPT=1 MAX_JOBS=8
+python3 -m pip wheel "$FLASH_MLA_SOURCE" --no-deps --no-build-isolation -w "$WHEEL_DIR"
+python3 -m zipfile -e "$FLASH_MLA_WHEEL" "$VENDOR_OVERRIDE_DIR"
+```
+
+仅对需要该验证的启动设置 `PYTHONPATH="$VENDOR_OVERRIDE_DIR"` 与 `FLASH_MLA_ROOT_DIR="$VENDOR_OVERRIDE_DIR/flash_mla/asm"`。先确认实际导入的 `flash_mla.cuda.__file__` 和哈希，再继续服务验收；解包尚未完成时启动的一条早期探针导入了原包，该条未作为隔离包验证。证据清单为任务产物 `flashmla-cov5-provenance.json`、`code-object-check.json`、`flashmla-cov5-validation-v1.json`，原始失败记录保留。

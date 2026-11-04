@@ -25,6 +25,7 @@
 
 | 变量 | 默认 | 自动规则 | 说明 |
 |---|---|---|---|
+| `HCU_VLLM_MHC_IMPL` | stock | —（candidate，默认不注册） | vLLM 0.33/gfx936：torch 经公开 OOT 调用官方 pre/post + IR RMS；post/head 类保持官方。启动期选择；改变已注册策略须新进程。`HCU_DISABLE_OPS=vllm_mhc` 优先恢复原始官方路径，该诊断回退不代表已知失败的 TileLang 通过。 |
 | `HCU_JIT_FP8_FFI` | 1 | HIP 宿主安装 | generic/v2 分组量化及 DSV4 silu-mul JIT 的 FFI 存储兼容。仅将 e4m3fn 输出零拷贝 view 为 uint8，保持输入、scale、dtype 选型、原 factory 及已有 cache/别名，不改写源码。显式 0 在启动时跳过安装；已安装后不提供运行期撤销。 |
 | `HCU_ADAPTER_HOST` | auto | 启动参数 / 已加载模块 / 单一可用宿主；双包无启动线索时保持 sglang 兼容 | 自动分发宿主桥；`sglang`/`vllm` 可用于诊断时显式固定，`none` 禁用自动桥。父进程的自动结果经 adapter 私有键传给 spawn 子进程，正常部署无需设置。 |
 | `HCU_ADAPTER_VLLM_REQUIRED_EXTENSIONS` | 空（不请求） | —（显式启动断言，不按硬件/wheel 自动推断） | vLLM 必选 extension **entry-point 名**，逗号分隔、大小写敏感；缺失或失败阻断。启动前设置，非运行期快关；经 REGISTRY 解析，正常 HOSTvllm/auto 的 common 启动汇总标记 `explicit`；HOSTnone 直接 general-plugin 不自动汇总，诊断用 `hcu_env.resolve` 查看值/来源。 |
@@ -50,7 +51,8 @@
 | `HCU_DSA_PRESHUFFLE` | 1 | — | DSA aiter-preshuffle 路径；=0 回 legacy page_size=1 |
 | `HCU_DSA_PAGE_SIZE` | 空 | CLI `--page-size` 等效优先 | DSA page_size 覆盖，须为 index_kpool 倍数 |
 | `HCU_SLIMQUANT` | 1 | —（方法按 checkpoint 的 quantization_config 自选，非该格式则不激活） | slimquant_w4a8 注册；=0 隔离排查用 |
-| `HCU_RMS_NORM_IMPL` | triton | —（triton 生产档；aiter 档已过 GPU parity 门禁可显式切换） | rms_norm 后端档位：triton\|aiter(rmsnorm_forward 桥)\|torch；fused_add_rmsnorm/gemma 变体恒走 triton(torch) |
+| `HCU_RMS_NORM_IMPL` | triton | —（triton 生产档；aiter 档已过 GPU parity 门禁可显式切换） | rms_norm 后端档位（仅 plain rmsnorm）：triton\|aiter(rmsnorm_forward 桥)\|torch；fused_add/gemma 变体见 `HCU_FUSED_ADD_RMS_IMPL` |
+| `HCU_FUSED_ADD_RMS_IMPL` | auto | —（lightop 档已过 parity+cuda-graph 门禁 2026-11-03，但 perf 0.76x 慢于 triton——默认保持 auto=triton） | fused_add_rmsnorm/gemma 变体后端档位：=lightop 显式启用 vendor 档（lightop.fused_add_rms_norm/gemma_fused_add_rmsnorm 原地核，fp32 累加同 triton 数值契约，一次异常即降级 triton；A/B：`tests/tools/_lightop_fused_add_ab.py`） |
 | `HCU_SILU_MUL_IMPL` | auto | —（auto=triton；lightop 档过契约+图重放压测后 auto 转正） | 及格即转正不让客户改默认值；=lightop 显式启用 vendor 档（A/B：`tests/tools/_lightop_silu_ab.py`） |
 | `SGLANG_HCU_EP_BF16` | 0 | 显式 =1 开启 | routed FP4 experts 经社区 FP8 cast 和 128×128 block 反量化转换为 BF16，供 DeepEP BF16 dispatcher；配合 `--deepep-dispatcher-output-dtype bf16`。运行时适配，不写回 `fp8.py`，仅为该方法复制 block 配置，不改变其他层的 checkpoint 配置。 |
 | `HCU_DEEPEP_BRIDGE` | 1 | —（签名探测：仅当 deep_ep 是 DTK fork 形 quant_type 且缺 use_fp8 时才打补丁） | deep_ep API 桥：sglang v0.5.21 `low_latency_dispatch(use_fp8=)` 调用形 → DTK fork（`topk_weight` 位置参 + quant_type 0=bf16/2=E4M3FNUZ/3=UE8M0 映射，权重从调用帧兜取）；=0 关闭 |

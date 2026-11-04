@@ -173,3 +173,12 @@ v6 的 32 个 scheduler 均已就绪，decode 完成 target-verify、draft-decod
 同一生产源码和观察代码，仅将 prefill 的 `SGLANG_ENABLE_CP_V2` 设为 1；decode v9 的权重、MTP 和 graph 进程保持运行。两组实际调用均确认进入策略 CP v2，按原生方式将每个 rank 补齐至 8 行。水分子式 32-token 请求的首层 attention 最坏 rank NRMSE 从 0.965085 降至 0.001760，首两个 token 恢复为原生的 `[785, 1196]`；算术请求为 0.001899，首两个 token 仍与原生相同。该结果支持当前短请求异常与旧 CP 执行路径有关，不单独归因为某个 gather 或 kernel。
 
 本 GLM CT prefill 配方显式设置该已有开关，保持 W4/动态 INT8 和原有算子库，其他模型及 decode 的默认值不变。该修正只验证了两组插桩短前缀，最终 logits 仍有差异；去插桩的六前缀数值阈值、完整答案及缓存/chunk/并发/MTP 矩阵继续验证，不能将首 token 恢复视为完整精度通过。
+
+
+## 2026-11-05 去插桩 CP v2 六组复验与 dense0 排除
+
+P16 使用提交 23685d8 的正式 CP v2 配方，移除观察模块与额外插件白名单，decode v9 进程保持不变。六组固定前缀均完成，两端前两个 token 全部相同、6 组 decode 前缀均可对齐，但 6 组 prefill 和 6 组 decode 的既定分布阈值仍全部失败。算术与水分子式的 prefill RMSE 分别为 0.696257、0.859662；完整逐组结果补入[数值记录](glm5.3-w4a8-numerical.json)。不能把修正短请求的部分行全零等同于全部精度恢复。
+
+使用实际 post-attention norm 输入及 checkpoint 的首层 dense W8A8 权重，分别在两套镜像重放 M4/M8 的 gate/up（N=24576、K=6144）和 down（N=6144、K=12288）。两端 24 份共同捕获的激活、INT8 量化值、FP32 token scale 和 GEMM 输出逐元素一致；当前 ASM 与 LightOp 公共 GEMM 接口的完整输出一致，128 个输出通道的 CPU INT64 dot/scale 参考也精确通过。公共接口可能内部委派 LightOp，不能仅凭 triton_scaled_mm 名称声称实际执行 Triton kernel。
+
+进一步用镜像里的 LightOp fused SiLU，在同一套当前镜像算子上，分别以原生和候选实测输入逐元素重建了各自的首层 dense 输出。因此该边界的差异已由上游输入带入，不修改其 GEMM 分发或激活算法。FP32 SiLU 中间值参考与原生 BF16 中间舍入不同，仅作为诊断对照，不替换生产语义。[组件证据与复现入口](glm5.3-w4a8-dense0-alignment.json)记录实际库版本及夹具哈希；下一步观察首层 attention 的投影、归一化、RoPE 与核心计算边界。

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
 set -euo pipefail
 : "${SGLANG_DIR:?Set the v0.5.22.plugin source directory}"
 : "${ADAPTER_DIR:?Set the adapter source directory}"
@@ -11,6 +14,8 @@ export SGLANG_PLUGINS=hcu SGLANG_USE_AITER=0
 # Keep the initial packed-INT4 probe on the Triton W4A8 path.
 export SGLANG_ROCM_USE_AITER_MOE=0
 export SGLANG_OPT_USE_TOPK_V2=0
+# Match the native recipe's gfx936 INT8 index-K cache.
+export SGLANG_DSA_HCU_INT8_INDEX_K_CACHE=1
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 OMP_NUM_THREADS=4
 # Compilation caches must stay local to each container across multiple nodes.
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/tmp/glm53-w4a8/triton}"

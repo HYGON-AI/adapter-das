@@ -232,6 +232,7 @@ def install():
     # 上游走保守回退路径。按 __wrapped__ 精确识别，未来新增探针自动覆盖。
     import functools as _ft
 
+    _cuda_feature_probes = {}
     for _name in list(vars(_common)):
         _v = getattr(_common, _name)
         _inner = getattr(_v, "__wrapped__", None)
@@ -239,7 +240,8 @@ def install():
             isinstance(_inner, _ft.partial)
             and _inner.func is getattr(_common, "_check_cuda_device_version", None)
         ):
-            setattr(_common, _name, lambda: False)
+            _cuda_feature_probes[_name] = lambda: False
+            setattr(_common, _name, _cuda_feature_probes[_name])
 
     # gcn 架构探针（is_gfx950_supported / is_gfx1250_supported，@lru_cache 无
     # __wrapped__）：原实现走 torch.version.hip 真值分支后裸调
@@ -279,6 +281,8 @@ def install():
         "is_cuda_alike": _hcu_is_cuda_alike,
         "is_flashinfer_available": _hcu_fi_available,
     }
+    # utils re-exports feature probes before the common-module seam is installed.
+    _sync.update(_cuda_feature_probes)
     for _n, _fn in _sync.items():
         if getattr(_pkg_utils, _n, None) is not _fn:
             setattr(_pkg_utils, _n, _fn)

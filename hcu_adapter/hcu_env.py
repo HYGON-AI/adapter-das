@@ -246,6 +246,13 @@ REGISTRY = {
                  "关融合不是绕法（mapper 后的组 targets 只认融合名）；"
                  "=0 跳过安装。",
     },
+    "HCU_FLASHMLA_SPARSE_CHUNK_MB": {
+        "env": "HCU_FLASHMLA_SPARSE_CHUNK_MB", "default": "512",
+        "about": "sparse FlashMLA emu（sgl_kernel/flash_mla_sparse.py）按 s_q "
+                 "分块的 fp32 工作集预算（MiB）：整块 gather+scores 在 8k "
+                 "prefill chunk 上要 34 GiB 并在 prefill graph 捕获期 OOM"
+                 "（S1 Hy4 2026-11-03）；行间独立，分块数值不变",
+    },
     # custom all-reduce
     "HCU_AITER_AR": {
         "env": "HCU_AITER_AR", "default": "0",

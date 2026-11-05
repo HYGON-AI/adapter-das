@@ -133,7 +133,12 @@ def _contains_pred(token):
 
 
 def stage_ops(full):
-    run_probe("ops", "rope-parity", "_rope_probe.py", _min_cos_pred())
+    # The original JIT contract includes independent rounding/numerical
+    # checks and fresh-input graphs without requiring model assets.
+    _pytest("ops", "rope-parity",
+            ["tests/kernels/test_original_rope.py", "-q"], timeout=1200)
+    if os.environ.get("HCU_CKPT"):
+        run_probe("ops", "rope-checkpoint-parity", "_rope_probe.py", _min_cos_pred())
     run_probe("ops", "rmsnorm-bridge", "_rms_probe.py", _min_cos_pred())
     run_probe("ops", "gemm-bf16-sanity", "_gemm_sanity.py", _gemm_pred)
     run_probe("ops", "bridge-graph-safety", "_graph_safety_probe.py",
@@ -281,7 +286,9 @@ def stage_e2e(update_golden):
 
 HINTS = {
     "rope-parity": "bug class fbc540c: same-name != same-semantics; check"
-                   " tests/tools/_rope_probe.py vs sglang cache layout",
+                   " tests/kernels/test_original_rope.py vs sglang cache layout",
+    "rope-checkpoint-parity": "check explicit HCU_CKPT config and"
+                              " tests/tools/_rope_probe.py vs sglang cache layout",
     "bridge-graph-safety": "capture-baked host state / H2D; see"
                            " tests/tools/_graph_safety_probe.py",
     "fa-scenario-matrix": "vendor FA: try HCU_DISABLE_OPS=aiter_fa,"

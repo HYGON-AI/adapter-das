@@ -6,7 +6,7 @@
 from pathlib import Path
 import runpy
 import subprocess
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -65,3 +65,23 @@ def test_verdict_requires_actual_passes_and_failure_has_priority(records, expect
     module = runpy.run_path(str(Path(__file__).resolve().parents[1] / "tools/run_triage.py"))
     module["RESULTS"].extend(records)
     assert module["verdict"]() == expected
+
+
+@pytest.mark.parametrize("checkpoint", [None, "/explicit-model"])
+def test_ops_rope_uses_original_contract_and_keeps_explicit_checkpoint(checkpoint, monkeypatch):
+    module = runpy.run_path(str(Path(__file__).resolve().parents[1] / "tools/run_triage.py"))
+    if checkpoint is None:
+        monkeypatch.delenv("HCU_CKPT", raising=False)
+    else:
+        monkeypatch.setenv("HCU_CKPT", checkpoint)
+    function = module["stage_ops"]
+    pytest_group, probes = Mock(), Mock()
+    with patch.dict(function.__globals__, _pytest=pytest_group, run_probe=probes):
+        function(False)
+    assert pytest_group.call_args_list[0].args == (
+        "ops", "rope-parity", ["tests/kernels/test_original_rope.py", "-q"])
+    checkpoint_calls = [call for call in probes.call_args_list
+                        if call.args[1] == "rope-checkpoint-parity"]
+    assert len(checkpoint_calls) == int(checkpoint is not None)
+    if checkpoint_calls:
+        assert checkpoint_calls[0].args[2] == "_rope_probe.py"

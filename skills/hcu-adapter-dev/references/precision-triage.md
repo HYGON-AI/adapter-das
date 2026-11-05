@@ -6,6 +6,17 @@ PASS；全部跳过标 SKIP，混合结果或没有可识别通过计数标 INCO
 缺少 layers/e2e 资产和仅环境信息均不能输出 ALL GREEN。定位报告中的
 跳过与预期失败须单独列出，不能算作设备或模型通过。
 
+默认 `ops/rope-parity` 执行 `test_original_rope.py` 的 8 项社区原始
+JIT 数值/变输入 Graph 契约，不依赖模型目录。只有显式设置
+`HCU_CKPT` 才额外执行旧配置探针 `ops/rope-checkpoint-parity`；
+显式路径或配置错误仍报告失败。该组件测试不代表 checkpoint
+模型精度通过。入口回归修复前 2 FAIL，修复后连同 CPU 算子
+55 PASS（隐藏 GPU、CUDA 未初始化）；真实 HCU 的诊断子组
+8 PASS、源码前后审计通过，L0 GREEN（31 条既有警告）。
+这里只验证变动的 RoPE 子组，FA/AR 跳过及整轮 ops 状态不作追认。
+证据 `external-evidence:triage271-complete-raw.json.gz`，
+SHA256 `099aaba347fee83e29af326ad8a43a2ed60ac01609af5f67888d229c8bc6fc86`。
+
 入口：`python tests/tools/run_triage.py [--stage env|ops|layers|e2e] [--full]`
 （容器内、adapter 根目录）。四级漏斗，每级 FAIL 都会打印疑似算子 + 对应
 快关 + 复现测试。

@@ -953,3 +953,13 @@ draft/force 两个开关、其他 backend 原样委托、非 HIP 无操作、
 不作为硬件 BCG 支持或模型资格证据。
 原始证据 `external-evidence:bcg265-complete-raw.json.gz`，
 SHA256 `0c02ce30d66b4cc28c257b7ae31f3d906fa65f96a7ab70009127b4730a1ca3b3`。
+
+### L1.5 增补 FA3 路由覆盖
+
+清单增加 `dense-fa3-paged-output-layout`、
+`dense-fa3-packed-output-buffer`、`dense-fa3-packed-replay` 三项，
+引用上述已独立通过的真实路由测试，而不是仅调用底层 Triton kernel。
+清单当前共 54 个逻辑 case，Dense 为 10 个；新增三项展开为
+8+2+1 个参数节点。新增契约已包含在 FA3 25 PASS 中，清单与 CPU
+算子组合 70 PASS、L0 GREEN。合并版本的正式 Dense 10 项与全量
+adapter 回归另行执行；旧完整 51 项结果不作为新完整 54 项通过。

@@ -13,7 +13,7 @@
   "families": [
     {
       "id": "dense",
-      "intent": "Dense attention construction, prefill/decode, fragmented KV layout, graph-metadata replay, fused-add RMSNorm variance/storage semantics, packed fused QK norm, original RoPE and fused SiLU storage/graph contracts",
+      "intent": "Dense attention construction, prefill/decode, fragmented KV layout, graph-metadata replay, FA3 packed/wide output and LSE layout plus output buffers, fused-add RMSNorm variance/storage semantics, packed fused QK norm, original RoPE and fused SiLU storage/graph contracts",
       "cases": [
         {"id": "dense-prefill-decode", "kind": "upstream-pytest", "nodeid": "test/registered/attention/unittests/dense/test_triton.py::TestTritonDenseAttentionBackendCorrectness::test_projected_dense_attention_cases"},
         {"id": "dense-layout", "kind": "upstream-pytest", "nodeid": "test/registered/attention/unittests/dense/test_triton.py::TestTritonDenseAttentionBackendCorrectness::test_layout_robustness_cases"},
@@ -21,7 +21,10 @@
         {"id": "dense-fused-add-norm-graph", "kind": "adapter-pytest", "nodeid": "tests/kernels/test_layernorm.py::test_fused_add_variance_fresh_input_graph"},
         {"id": "dense-qk-norm-graph", "kind": "adapter-pytest", "nodeid": "tests/kernels/test_qknorm.py::test_fused_qknorm_packed_fresh_input_graph"},
         {"id": "dense-original-rope-graph", "kind": "adapter-pytest", "nodeid": "tests/kernels/test_original_rope.py::test_original_rope_packed_fresh_input_graph"},
-        {"id": "dense-original-silu-graph", "kind": "adapter-pytest", "nodeid": "tests/kernels/test_original_silu.py::test_original_silu_fused_store_fresh_input_graph"}
+        {"id": "dense-original-silu-graph", "kind": "adapter-pytest", "nodeid": "tests/kernels/test_original_silu.py::test_original_silu_fused_store_fresh_input_graph"},
+        {"id": "dense-fa3-paged-output-layout", "kind": "adapter-pytest", "nodeid": "tests/kernels/test_flash_attn3.py::test_paged_router_output_layout"},
+        {"id": "dense-fa3-packed-output-buffer", "kind": "adapter-pytest", "nodeid": "tests/kernels/test_flash_attn3.py::test_decode_packed_output_buffer"},
+        {"id": "dense-fa3-packed-replay", "kind": "adapter-pytest", "nodeid": "tests/kernels/test_flash_attn3.py::test_decode_3d_capture_safe"}
       ]
     },
     {

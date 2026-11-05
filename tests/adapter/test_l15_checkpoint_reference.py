@@ -49,6 +49,33 @@ def test_real_eager_graph_requests_keep_exact_prompt_and_output_ids():
     assert all(r["prompt_ids"] == [2, 3] and r["output_ids"] == [1] * 8 for r in rows)
 
 
+@pytest.mark.parametrize("fault", ["clean", "controller", "worker", "server", "boolean",
+                                  "invalid-controller"])
+def test_memory_fraction_reference_requires_matching_execution(fault):
+    report = _report()
+    report["mem_fraction_static"] = .7
+    for job in report["jobs"]:
+        evidence = job["evidence"]
+        evidence["mem_fraction_static"] = .7
+        evidence["server_info"]["mem_fraction_static"] = .7
+    evidence = report["jobs"][0]["evidence"]
+    if fault == "controller":
+        report.pop("mem_fraction_static")
+    elif fault == "worker":
+        evidence.pop("mem_fraction_static")
+    elif fault == "server":
+        evidence["server_info"].pop("mem_fraction_static")
+    elif fault == "boolean":
+        evidence["mem_fraction_static"] = True
+    elif fault == "invalid-controller":
+        report["mem_fraction_static"] = float("nan")
+    if fault == "clean":
+        assert len(requests(report)[1]) == 8
+    else:
+        with pytest.raises(ValueError, match="memory fraction|checkpoint worker"):
+            requests(report)
+
+
 @pytest.mark.parametrize("fault", [
     "clean", "controller", "worker", "server", "scheduler", "devices", "boolean",
 ])

@@ -19,6 +19,8 @@ export SGLANG_HCU_W8A8_USE_LIGHTOP=1
 export SGLANG_HCU_GLM_CT_BF16_ROUTER=1 SGLANG_LIGHTOP_TOPK=1
 # Match the native residual RMSNorm's FP32 sum and final BF16 rounding.
 export HCU_FUSED_ADD_RMS_IMPL=lightop
+# Preserve native BF16 rounding in plain attention Q/K normalization as well.
+export HCU_RMS_NORM_IMPL=lightop
 # Override the legacy adapter default; the plugin provides native LightOp Top-K.
 export SGLANG_DSA_FUSE_TOPK=1
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 OMP_NUM_THREADS=1

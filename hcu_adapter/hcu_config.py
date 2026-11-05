@@ -16,7 +16,7 @@ Schema (hcu_adapter.yaml, first hit wins in discovery order):
     version: 1
     ops:
       silu_and_mul: triton      # triton | lightop | torch
-      rms_norm: aiter           # triton | aiter | torch
+      rms_norm: aiter           # triton | aiter | lightop | torch
       fused_add_rms_norm: triton  # triton | lightop | torch
       allreduce: aiter          # aiter | nccl (custom AR retired 2026-10-19)
       paged_mqa_logits: triton   # triton (DEFAULT, R-13 #4) | emu | vendor
@@ -107,6 +107,8 @@ BACKEND_CATALOG = {
             "aiter": {"status": "candidate",
                       "note": "aiter.rmsnorm_forward(x,w,eps,training) "
                               "-> (out, ..); plain rmsnorm only"},
+            "lightop": {"status": "candidate",
+                        "note": "Public BF16 plain RMSNorm; other dtypes/Gemma use Triton"},
             "torch": {"status": "production",
                       "note": "reference path"},
         },

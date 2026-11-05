@@ -401,7 +401,8 @@ REGISTRY = {
     },
     "HCU_RMS_NORM_IMPL": {
         "env": "HCU_RMS_NORM_IMPL", "default": "triton",
-        "about": "rms_norm 后端档位：triton|aiter(rmsnorm_forward 桥)|torch；"
+        "about": "rms_norm 后端档位：triton|aiter(rmsnorm_forward 桥)|lightop|torch；"
+                 "lightop 仅覆盖 BF16 plain RMSNorm，其他 dtype 使用 triton；"
                  "仅管 plain rmsnorm，fused_add/gemma 变体见 "
                  "HCU_FUSED_ADD_RMS_IMPL",
     },

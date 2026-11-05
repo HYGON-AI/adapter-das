@@ -99,3 +99,9 @@ export AITER_JIT_DIR="$AITER_CAR_COV5_OUTPUT/jit"
 其他模块引用同镜像安装文件。各节点必须使用相同的镜像资产。
 仅设置编译选项不会替换已有二进制，启动进程须使用上述 `AITER_JIT_DIR`。
 本方案不修改 vendor 或 SGLang 源码，也不增加运行时 wrapper。
+
+
+配方通过 `HCU_RMS_NORM_IMPL=lightop` 对齐原生 BF16 plain RMSNorm，
+通过 `HCU_FUSED_ADD_RMS_IMPL=lightop` 单独选择 residual RMSNorm。
+plain 路径的实际输入、输出 buffer 和 Graph 验证范围见
+[组件记录](../../../docs/glm5.3-w4a8-plain-rms-alignment.json)；整模型精度仍须独立复测。

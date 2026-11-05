@@ -1941,3 +1941,35 @@ SHA256 `4fe1957e0a00d75d6be7943ee5983199d16b67e9842f30574a2cd016b75aa46a`。
 社区源码前后及全部 603 个候选文件摘要审计通过；该结果来自
 独立矩阵报告，不由上述全量计数推导。完整证据与覆盖限制见
 [当前完整矩阵结果](l15-family-matrix.md)。
+
+### CT-FP8 官方 CPU dtype 归因（2026-11-06）
+
+在同一 CPU 环境、隐藏全部 GPU 的独立进程，对此前绑定的真实
+Qwen3-0.6B-Channel-FP8 完整 accuracy 请求，分别以官方
+Transformers/compressed-tensors 加载 FP32 和 BF16 参考。
+两者均独立 `from_pretrained`、`run_compressed=False`，不是将已加载
+FP32 模型整体转 dtype。逐个核对 507 个原始 tensor，BF16 权重按
+原始 FP8 channel 反量化后的加载 dtype 舍入；五次唯一前缀 forward
+分别观察全部 196 个 Linear 的真实动态输入 QDQ。
+
+FP32 的全部 12 行所选概率、greedy 指标及 top20 分布指标，与此前
+原 V1 报告逐项完全相同。HCU 对 CPU FP32 的 top20 logprob 最大差
+仍为 **2.673436**；对官方 CPU BF16 为 **2.5625**。
+CPU BF16 对 CPU FP32，在 CPU BF16 自身的 top20 token 上最大差
+为 **3.309192**。后一个指标使用不同的 top20 锚点，不能与前两者
+直接相减来分摊误差。
+
+该结果没有定位具体 HCU 算子错误，也没有为原 FP32 精度门提供豁免。
+CPU BF16 包含 BF16 输出层、官方 eager attention/归一化/RoPE 存储边界，
+并非 SGLang/HCU 的等价执行；所有参考均对固定 HCU 序列做完整前缀
+teacher forcing，不证明独立 greedy 生成或增量 KV 行为。
+生产默认 dtype、量化路径和原 V1 门槛保持不变。
+
+首个诊断脚本因误将 CT 的可选 `quantization_enabled` 属性视为必有
+而退出，保留该失败；按现有参考工具采用的缺省开启语义修正后，
+在新目录完整重跑并实际观察 QDQ，未以缺省值代替执行证据。
+原始报告、日志、实际执行脚本及原 V1 对照归档为
+`external-evidence:ctdtype278-279-complete-raw.json.gz`，
+SHA256 `ca96b73af4070b174bb4309dc04e4c459ec25beb36f3717861b06c303990a832`。
+概率 tensor 留在仓库外的远端证据目录，归档保存其大小和 SHA256，
+不宣称压缩归档内包含这些 tensor。

@@ -381,6 +381,9 @@ def hcu_runtime_plugin() -> None:
         from hcu_adapter.bridges.vllm_fp8 import install as install_fp8_fallback
 
         install_fp8_fallback()
+        from hcu_adapter.bridges.vllm_allreduce import prepare_runtime
+
+        prepare_runtime()
         from hcu_adapter.bridges.vllm_mhc import install as install_mhc_fallback
 
         install_mhc_fallback()

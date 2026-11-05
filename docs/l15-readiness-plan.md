@@ -1915,3 +1915,25 @@ mamba extra_buffer。没有执行图像、NEXTN、HTTP 或解析器验证。
 审计归档为 `external-evidence:models269-270-complete-raw.json.gz`，
 SHA256 `81875e6c89696b1f97d6527f302660bcfb3a549eb22f0159131b841def5a97c4`。
 这补齐同步后两条真实运行链的证据，不构成多模型精度验收通过。
+
+### 合并修复后的全量回归（2026-11-06）
+
+固定含 FA3、Conv1D 和 prefill 登记修复的 603 文件快照，执行
+完整 kernels/adapter/vendor（排除 stress）：**1565 passed**、
+47 failed、137 errors、79 skipped、2 xfailed、1 deselected。
+逐条核对 JUnit 和堆栈，47 个失败、137 个 setup 错误均属于
+用户暂缓的 vLLM，非 vLLM 失败与错误为 **0**。这不把暂缓项
+改记通过，也不把整个套件记作全绿。
+
+后续 ops 的 kernel 子组为 316 passed / 2 skipped / 2 xfailed，
+FA 场景组 53 skipped，AR gate 2 passed / 1 skipped /
+1 deselected；旧快照的 RoPE 默认 checkpoint 路径仍失败。
+RoPE 入口后续修复的独立 55 项 CPU 和 8 项 HCU 验证见精度
+定位手册，未改写正在运行的旧快照或追认其 ops 全绿。
+
+控制器正常终结，前后社区 10594 个跟踪文件及额外源码审计
+通过，终结后再次核对全部 603 个候选文件摘要均一致。
+原始全量/ops 日志、JUnit、184 项分类及源码审计归档为
+`external-evidence:full267-complete-raw.json.gz`，
+SHA256 `4fe1957e0a00d75d6be7943ee5983199d16b67e9842f30574a2cd016b75aa46a`。
+当前 54 项 L1.5 的完整矩阵另在运行，不能由本段推导其通过。

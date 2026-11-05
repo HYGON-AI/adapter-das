@@ -284,6 +284,16 @@ W4A16 fused MoE experts (moe_wna16 AWQ/GPTQ-int4 line)
 
 路由变量：`HCU_W4A16_MOE_IMPL`
 
+## ct_channel_w4a8_components
+
+Channel INT4 / token INT8 components and explicit BF16 DeepEP LL route candidate; model acceptance pending
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate w4a8_int8_triton: masked absmax/127. |
+
+路由变量：（auto）
+
 ## int8_linear_gemm
 
 SGLang CT and explicit W8A8 INT8 linear scaled GEMM

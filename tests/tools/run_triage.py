@@ -43,7 +43,8 @@ RESULTS = []  # (stage, name, status, detail)
 
 def record(stage, name, status, detail=""):
     RESULTS.append((stage, name, status, detail))
-    mark = {"PASS": "ok", "FAIL": "FAIL", "SKIP": "skip", "INFO": "--"}[status]
+    mark = {"PASS": "ok", "FAIL": "FAIL", "SKIP": "skip",
+            "INCOMPLETE": "part", "INFO": "--"}[status]
     print(f"[{stage}] {mark:4} {name}" + (f" :: {detail}" if detail else ""),
           flush=True)
 
@@ -168,7 +169,24 @@ def _pytest(stage, name, args, timeout=900):
     )
     summ = summaries[-1].strip(" =\r") if summaries else " | ".join(
         output.strip().splitlines()[-2:])
-    record(stage, name, "PASS" if p.returncode == 0 else "FAIL", summ)
+    counts = {
+        key: int(value) for value, key in re.findall(
+            r"\b(\d+)\s+(passed|skipped|xfailed|xpassed)\b", summ,
+        )
+    }
+    if p.returncode:
+        status = "FAIL"
+    elif counts.get("passed", 0) and not any(
+        counts.get(key, 0) for key in ("skipped", "xfailed", "xpassed")
+    ):
+        status = "PASS"
+    elif counts.get("skipped", 0) and not any(
+        counts.get(key, 0) for key in ("passed", "xfailed", "xpassed")
+    ):
+        status = "SKIP"
+    else:
+        status = "INCOMPLETE"
+    record(stage, name, status, summ)
     if p.returncode:
         # Keep the traceback and exact failing node IDs in the triage log.
         print(output, flush=True)
@@ -278,6 +296,8 @@ HINTS = {
 
 def verdict():
     fails = [r for r in RESULTS if r[2] == "FAIL"]
+    incomplete = [r for r in RESULTS if r[2] in ("SKIP", "INCOMPLETE")]
+    npass = sum(1 for r in RESULTS if r[2] == "PASS")
     print("\n" + "=" * 72)
     for stage, name, status, detail in RESULTS:
         if status == "FAIL":
@@ -285,12 +305,15 @@ def verdict():
             print(f"FAIL {stage}/{name}: {detail}")
             if hint:
                 print(f"     -> {hint}")
-    if not fails:
-        npass = sum(1 for r in RESULTS if r[2] == "PASS")
-        print(f"ALL GREEN ({npass} passed, "
-              f"{sum(1 for r in RESULTS if r[2] == 'SKIP')} skipped)")
+        elif status in ("SKIP", "INCOMPLETE"):
+            print(f"INCOMPLETE {stage}/{name}: {detail}")
+    if not fails and (incomplete or not npass):
+        print(f"INCOMPLETE ({npass} passed groups, "
+              f"{len(incomplete)} unverified groups)")
+    elif not fails:
+        print(f"ALL GREEN ({npass} passed)")
     print("=" * 72)
-    return 1 if fails else 0
+    return 1 if fails else 2 if incomplete or not npass else 0
 
 
 def main():

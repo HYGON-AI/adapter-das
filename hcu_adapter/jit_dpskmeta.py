@@ -31,12 +31,12 @@ in earlier needles, except where noted):
 
 Every needle was derived from the live boot/capture chain or the
 `dsv4_syntax_check.sh` preflight driver (wrapper-include + hipcc
--fsyntax-only over the whole family), nmz16 2026-10-20. gfx950-only files
+-fsyntax-only over the whole family), validation-host-16 2026-10-20. gfx950-only files
 (mxfp8_gemv_gfx95 static_asserts by design) and wo_a_fused (Hopper cluster
 PTX; wo_a takes the HIP streaming-dequant path instead) are intentionally
 NOT patched.
 
-K3/day-0 extension (nmz26 2026-11-05): the same structured-bind family
+K3/day-0 extension (validation-host 2026-11-05): the same structured-bind family
 extends to include/sgl_kernel/deepseek_v4/topk_impl.cuh (to_fp32 /
 coarse_bin_bounds; carried on the include/ channel, _PATCHES_INCLUDE),
 csrc/deepseek_v4/topk_v2.cuh and csrc/kimi_k3/situ_and_mul.cuh. Where the
@@ -201,7 +201,7 @@ _PATCHES = {
         ),
         # template-body float2 binds (syntax preflight cannot see these;
         # they detonate at kernel instantiation — main_q_norm_rope module,
-        # nmz16 2026-10-20)
+        # validation-host-16 2026-10-20)
         (
             "  const auto [x_real, x_imag] = cast<fp32x2_t>(elem);",
             "  const fp32x2_t _re = cast<fp32x2_t>(elem);  // HCU: float2 bind\n"

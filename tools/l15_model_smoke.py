@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Single-HCU real Engine startup/generation, dummy and checkpoint evidence split."""
+"""HCU real Engine startup/generation, dummy and checkpoint evidence split."""
 
 from __future__ import annotations
 
@@ -116,7 +116,25 @@ def validate_quantization_option(info, requested):
         raise ValueError("runtime quantization option differs from requested configuration")
 
 
+def validate_tp_size(value):
+    if type(value) is not int or value not in (1, 2, 4, 8):
+        raise ValueError("select a TP size of 1, 2, 4 or 8")
+
+
+def validate_tp_option(info, requested):
+    validate_tp_size(requested)
+    actual = info.get("tp_size", 1)
+    if type(actual) is not int or actual != requested:
+        raise ValueError("runtime TP size differs from requested configuration")
+    for state in info.get("internal_states", []):
+        actual = state.get("tp_size", 1)
+        if type(actual) is not int or actual != requested:
+            raise ValueError("scheduler TP size differs from requested configuration")
+
+
 def worker(args):
+    tp_size = getattr(args, "tp_size", 1)
+    validate_tp_size(tp_size)
     checkpoint = None
     if args.family == "checkpoint":
         if args.checkpoint_manifest is None:
@@ -143,7 +161,7 @@ def worker(args):
         validate_cases(accuracy_cases)
     options = dict(
         model_path=str(args.model), dtype=dtype, random_seed=42,
-        tp_size=1, attention_backend="triton", max_total_tokens=512,
+        tp_size=tp_size, attention_backend="triton", max_total_tokens=512,
         context_length=128, max_running_requests=4, mem_fraction_static=0.25,
         cuda_graph_max_bs_decode=2, disable_cuda_graph=args.mode == "eager",
     )
@@ -197,6 +215,7 @@ def worker(args):
         validate_lm_head_option(info, fp32_head)
         validate_execution_dtype(info, dtype)
         validate_quantization_option(info, quantization)
+        validate_tp_option(info, tp_size)
     if checkpoint is not None and not audit_checkpoint(args.model, checkpoint)["passed"]:
         raise ValueError("checkpoint changed during model execution")
     write_json(args.out, {
@@ -209,6 +228,7 @@ def worker(args):
         "enable_fp32_lm_head": fp32_head,
         "dtype": dtype,
         "quantization": quantization,
+        "tp_size": tp_size,
         "model_type": config.get("model_type"),
         "text_model_type": text_configuration(config).get("model_type"),
         "generations": generations, "server_info": info,
@@ -226,6 +246,8 @@ def run(args):
     fp32_head = getattr(args, "enable_fp32_lm_head", False)
     dtype = getattr(args, "dtype", "bfloat16")
     quantization = getattr(args, "quantization", None)
+    tp_size = getattr(args, "tp_size", 1)
+    validate_tp_size(tp_size)
     if dtype not in ("bfloat16", "float32"):
         raise ValueError("select bfloat16 or float32 execution")
     if profile == "accuracy" and families != ["checkpoint"]:
@@ -246,7 +268,7 @@ def run(args):
             tiny_config(family)
     host = getattr(args, "host", "adapter")
     runtime = preflight(args.up_tree.resolve(), root, args.binding_manifest.resolve(),
-                        host=host)
+                        host=host, device_count=tp_size)
     checkpoint_inputs = fingerprint(args.checkpoint.resolve()) if "checkpoint" in families else None
     jobs = []
     for family in families:
@@ -267,7 +289,7 @@ def run(args):
                 [sys.executable, "-m", "tools.l15_model_smoke", "--worker",
                  "--model", str(model), "--family", family, "--mode", mode,
                  "--out", str(report), "--profile", profile, "--dtype", dtype,
-                 "--host", host]
+                 "--host", host, "--tp-size", str(tp_size)]
                 + (["--checkpoint-manifest", str(manifest)] if checkpoint is not None else [])
                 + (["--enable-fp32-lm-head"] if fp32_head else [])
                 + (["--quantization", quantization] if quantization is not None else []),
@@ -293,6 +315,8 @@ def run(args):
                 and evidence.get("enable_fp32_lm_head", False) is fp32_head
                 and evidence.get("dtype", "bfloat16") == dtype
                 and evidence.get("quantization") == quantization
+                and type(evidence.get("tp_size", 1)) is int
+                and evidence.get("tp_size", 1) == tp_size
             )
             if checkpoint is not None:
                 binding = audit_checkpoint(model, checkpoint)
@@ -312,6 +336,7 @@ def run(args):
                 "enable_fp32_lm_head": fp32_head,
                 "dtype": dtype,
                 "quantization": quantization,
+                "tp_size": tp_size,
             })
             print(f"model smoke: {family}/{mode} {'PASS' if job['passed'] else 'FAIL'}", flush=True)
             if not integrity["passed"] or (
@@ -329,6 +354,8 @@ def main():
     parser.add_argument("--profile", choices=("smoke", "accuracy"), default="smoke")
     parser.add_argument("--dtype", choices=("bfloat16", "float32"), default="bfloat16",
                         help="official model compute dtype; float32 is an opt-in diagnostic")
+    parser.add_argument("--tp-size", type=int, choices=(1, 2, 4, 8), default=1,
+                        help="tensor parallel size; expose exactly this many idle HCU devices")
     parser.add_argument("--quantization",
                         help="official quantization override; default is checkpoint auto-detection")
     parser.add_argument("--enable-fp32-lm-head", action="store_true",

@@ -93,6 +93,20 @@ def test_explicit_quantization_requires_actual_server_agreement():
             smoke.validate_quantization_option(info, requested)
 
 
+def test_tp_size_requires_actual_server_and_scheduler_agreement():
+    smoke.validate_tp_option({}, 1)  # historical single-device evidence
+    smoke.validate_tp_option(
+        {"tp_size": 2, "internal_states": [{"tp_size": 2}]}, 2)
+    for value in (True, False, 0, 3, -1, "2"):
+        with pytest.raises(ValueError, match="TP size"):
+            smoke.validate_tp_size(value)
+    for info in ({}, {"tp_size": 1}, {"tp_size": True},
+                 {"tp_size": 2, "internal_states": [{}]},
+                 {"tp_size": 2, "internal_states": [{"tp_size": 1}]}):
+        with pytest.raises(ValueError, match="TP size"):
+            smoke.validate_tp_option(info, 2)
+
+
 def _checkpoint(tmp_path):
     model = tmp_path / "model"
     model.mkdir()
@@ -145,8 +159,9 @@ def test_hashing_rechecks_assets_already_read(tmp_path, monkeypatch, coarse_meta
 @pytest.mark.parametrize("dtype", ["bfloat16", "float32"])
 @pytest.mark.parametrize("quantization", [None, "w8a8_int8"])
 @pytest.mark.parametrize("change", ["clean", "before", "during"])
+@pytest.mark.parametrize("tp_size", [1, 2])
 def test_worker_binds_bytes_before_loading_and_after_execution(
-    tmp_path, monkeypatch, change, dtype, quantization
+    tmp_path, monkeypatch, change, dtype, quantization, tp_size
 ):
     model = _checkpoint(tmp_path)
     expected = fingerprint(model)
@@ -158,6 +173,7 @@ def test_worker_binds_bytes_before_loading_and_after_execution(
         def __init__(self, **kwargs):
             assert kwargs["dtype"] == dtype
             assert kwargs.get("quantization") == quantization
+            assert kwargs["tp_size"] == tp_size
             created.append(kwargs)
 
         def __enter__(self):
@@ -174,14 +190,14 @@ def test_worker_binds_bytes_before_loading_and_after_execution(
                     for _ in range(2)]
 
         def get_server_info(self):
-            return {"dtype": dtype, "quantization": quantization,
-                    "internal_states": [{"decode_cuda_graph_bs": [],
+            return {"dtype": dtype, "quantization": quantization, "tp_size": tp_size,
+                    "internal_states": [{"tp_size": tp_size, "decode_cuda_graph_bs": [],
                     "memory_usage": {"graph": {"decode": 0}}}]}
 
     monkeypatch.setitem(sys.modules, "sglang", SimpleNamespace(Engine=Engine))
     args = SimpleNamespace(model=model, family="checkpoint", mode="eager",
                            checkpoint_manifest=manifest, out=tmp_path / "worker.json",
-                           dtype=dtype, quantization=quantization)
+                           dtype=dtype, quantization=quantization, tp_size=tp_size)
     if change == "before":
         (model / "model.safetensors").write_bytes(b"changed before loading")
     if change == "clean":
@@ -190,6 +206,7 @@ def test_worker_binds_bytes_before_loading_and_after_execution(
         assert evidence["passed"] and evidence["checkpoint_files_sha256"] == expected
         assert evidence["dtype"] == dtype
         assert evidence["quantization"] == quantization
+        assert evidence["tp_size"] == tp_size
     else:
         with pytest.raises(ValueError, match="checkpoint changed"):
             smoke.worker(args)
@@ -208,10 +225,11 @@ def test_controller_cannot_accept_unbound_or_changed_checkpoint(
 ):
     model = _checkpoint(tmp_path)
     monkeypatch.setattr(smoke, "preflight",
-                        lambda *args: {"upstream": {"commit": "community"}})
+                        lambda *args, **kwargs: {"upstream": {"commit": "community"}})
     monkeypatch.setattr(smoke, "audit_source", lambda *args: {"passed": True})
 
     def job(argv, **kwargs):
+        assert argv[argv.index("--tp-size") + 1] == "1"
         assert ("--enable-fp32-lm-head" in argv) is fp32_head
         assert argv[argv.index("--dtype") + 1] == dtype
         assert ("--quantization" in argv) == (quantization is not None)
@@ -253,6 +271,47 @@ def test_controller_cannot_accept_unbound_or_changed_checkpoint(
     if fault == "after":
         assert not report["complete"] and len(report["jobs"]) == 1
         assert report["jobs"][0]["checkpoint_integrity_after"]["passed"] is False
+
+
+@pytest.mark.parametrize("fault", ["clean", "ignored", "boolean", "missing"])
+@pytest.mark.parametrize("host", ["adapter", "adapter+plugin"])
+def test_tp2_controller_binds_worker_parallelism(tmp_path, monkeypatch, fault, host):
+    model = _checkpoint(tmp_path)
+
+    def preflight(*args, **kwargs):
+        assert kwargs == {"host": host, "device_count": 2}
+        return {"upstream": {"commit": "community"}, "device_count": 2}
+
+    def job(argv, **kwargs):
+        assert argv[argv.index("--tp-size") + 1] == "2"
+        assert argv[argv.index("--host") + 1] == host
+        assert kwargs["env"]["SGLANG_PLUGINS"] == (
+            "hcu" if host == "adapter+plugin" else "none")
+        manifest = Path(argv[argv.index("--checkpoint-manifest") + 1])
+        evidence = {
+            "artifact": "l15-model-worker", "passed": True, "family": "checkpoint",
+            "mode": argv[argv.index("--mode") + 1], "model": str(model),
+            "weight_evidence": "real-checkpoint",
+            "host": host,
+            "checkpoint_files_sha256": json.loads(manifest.read_text()),
+        }
+        if fault != "missing":
+            evidence["tp_size"] = {"clean": 2, "ignored": 1, "boolean": True}[fault]
+        Path(argv[argv.index("--out") + 1]).write_text(json.dumps(evidence))
+        return {"returncode": 0, "timed_out": False}
+
+    monkeypatch.setattr(smoke, "preflight", preflight)
+    monkeypatch.setattr(smoke, "audit_source", lambda *args: {"passed": True})
+    monkeypatch.setattr(smoke, "run_job", job)
+    args = SimpleNamespace(
+        up_tree=tmp_path, checkpoint=model, families="checkpoint", modes="eager,graph",
+        binding_manifest=tmp_path / "bindings.json", out=tmp_path / "report.json",
+        timeout=10, tp_size=2, host=host,
+    )
+    assert smoke.run(args) is (fault == "clean")
+    report = json.loads(args.out.read_text())
+    assert report["tp_size"] == 2
+    assert report["passed"] is (fault == "clean")
 
 
 @pytest.mark.skipif(os.name != "posix", reason="remote Linux job lifecycle")

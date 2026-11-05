@@ -1,5 +1,11 @@
 # 精度问题快速定位流程
 
+`run_triage.py` 的 pytest 组只有实际 passed 且无 skip/xfail/xpass 才算
+PASS；全部跳过标 SKIP，混合结果或没有可识别通过计数标 INCOMPLETE。
+总退出码 0=全部所选组已验证，1=存在失败，2=无失败但验证不完整；
+缺少 layers/e2e 资产和仅环境信息均不能输出 ALL GREEN。定位报告中的
+跳过与预期失败须单独列出，不能算作设备或模型通过。
+
 入口：`python tests/tools/run_triage.py [--stage env|ops|layers|e2e] [--full]`
 （容器内、adapter 根目录）。四级漏斗，每级 FAIL 都会打印疑似算子 + 对应
 快关 + 复现测试。
@@ -33,10 +39,53 @@
 
 ## 方法论要点（历史沉淀）
 
+- **绑定 checkpoint 内的模型代码**：`tools.checkpoint_files` 除权重与配置，
+  还递归绑定本地 `.py` 字节，覆盖 `trust_remote_code` 使用的配置、
+  tokenizer、模型及相对导入 helper；指纹过程不执行这些代码。
+  编辑、新增或删除源码均使旧绑定失效，不能将历史遗漏源码的清单
+  倒推为完整绑定。该修复的 158 项 CPU 回归与 L0（34 条既有警告）
+  通过，不构成新增模型精度结论。依赖包和运行环境另行留存于仓库外。
 - **一次只变一个变量**：换镜像/换栈/换旗标都会移动基线，先同栈复现再隔离
   （--disable-cuda-graph 首测被镜像变量骗过一次）。
+- **先确认计算开关实际改变输出**：真实 Qwen3 短双语 HF GPU BF16
+  诊断中，原始流及两种 fused residual 分子约定分别切换
+  `allow_bf16_reduced_precision_reduction`，三组完整概率张量均逐位一致。
+  同一诊断的 GPU FP32 对照与 CPU FP32 top-20 最大 logprob 差为
+  `9.728e-5`。该证据排除了此开关作为这些输入的修复，不外推其他
+  GEMM 形状、模型或实现，也不豁免 SGLang 原 V1 精度失败。
+- **观察原地函数需同时绑定调用边界与控制输出**：模块 hooks 可能漏掉
+  直接融合调用；以原函数 code object 观察时应在未启用采样的 warmup
+  初始化，拒绝覆盖其他 profiler，先克隆写回前输入、再保存返回后输出。
+  覆盖计数须匹配实际层数/调用数，观察后 token 及完整报告概率须与
+  同节点未观察对照一致，最后绑定源码与权重审计。CPU synthetic
+  预检不等于真实设备采样，具体 Qwen 普通及融合 QK Norm 证据见
+  `test-suite.md`。
 - **图问题用探针不用猜**：capture→replay 换输入，输出跟随=安全；不跟随=
   烘焙。三个桥（rope/rmsnorm/topk）全靠这招排除。
+- **前缀共享可替换物理 KV 槽位**：prefill 后的 radix cache 可能将另一
+  请求的相同前缀映射到已缓存槽位。不能只按首次分配的槽位列表断言
+  decode 缓存串用；须核对实际 KV 索引、完整 token 前缀及逐位 K/V
+  等价，再按语义历史做独立 attention 参考。真实短双语 Qwen 诊断
+  已逐项验证这种替换，见 `test-suite.md`；这不是允许任意槽位重排。
+- **解码对照先匹配完整历史**：`tools.l15_decode_consistency` 比较
+  `input_ids + output_ids[:position]` 完全相同的位置，支持 eager/graph
+  与冻结前缀的单 token prefill 对照。输出分叉后不得继续按数组位置比较
+  不同条件下的概率；ID 全相同也需查看共同 top token 的概率偏差。
+  未报告 token 的概率属于缺失证据，不能当作零误差。工具只做概率诊断，
+  不验证源码/权重绑定、随机种子或独立参考，不能作为模型精度通过。
+  若 eager 自身的增量解码也与完整前缀 prefill 不同，排查范围应包含
+  KV cache、量化及 prefill/decode 算法与舍入边界，不能只归因 Graph。
+  这些路径本身可能采用不同数值算法，完整 prefill 也不是独立精度金标。
+- **attention 舍入须分段归因**：从实际低层调用取得有效 mask、选中并
+  反量化的 key、Q、sink 和 scale；缓存地址或后端的占位 `k/v` 不能代替
+  实际读取值。key 按保留重复项的多重集合对齐，排除未消费的 padding
+  head。独立高精度参考须包含零值虚拟 sink，并直接正确舍入到 BF16，
+  避免先转 FP64 再转 BF16 在中点附近产生二次舍入。分别检查打分、
+  softmax 概率和 P@V；若对齐后的概率相同，仍需检查累加顺序。先用
+  原形状重放复现已采样输出，再只交换概率与 value 的对应排列验证
+  因果。原始 FP32 累加器未保留时须明确缺失，不能从 BF16 输出倒推。
+  局部舍入归因不替代模型分布验收，也不能据此排序生产 key、提高默认
+  dtype 或放宽原精度门，来强制跨模式逐位一致。
 - **金标在 fp32/torch 侧**：NCCL 也在被测链路里，不能当参考；AR 黄金
   参考 = all_gather 后 fp32 精确和。
 - **量化参考保留激活 QDQ**：CT channel-FP8 的 CPU 参考必须同时包含
@@ -48,10 +97,30 @@
   adapter 错误。fused-add norm 必须分别保存相加前输入和残差，社区 JIT
   默认以未舍入 FP32 和计算方差、以激活 dtype 舍入后的和作分子。
   对照实际选用的路径，不能拿另一条路径的公式替代其契约。
-- **观察器须有对照**：custom weight loader 安装只读 hooks 时检查公开
-  begin/update/end 的成功返回和采样文件完整性；未成功安装不能算采样成功。
-  复现原双请求增量解码并核对输出 ID/logprob，不能用单请求全量 prefill
-  推断原问题。CPU clone hooks 含主机同步，仅供 eager 诊断，不能进入 graph。
+- **观察器须有对照**：社区公开 `--forward-hooks` 可供 eager 采样；
+  核对实际 server info、注册日志和样本覆盖，参数被接受不等于 hooks 已匹配。
+  当前社区在 graph 捕获之后注册 Python hooks，不能据此声称观察到图重放。
+  custom weight loader 属于在线权重更新流程，不是启动后的通用采样入口；
+  不得绕过其更新生命周期守卫。复现原增量请求并核对全部报告的 ID/logprob，
+  不能用单请求全量 prefill 推断原问题。CPU clone 含主机同步，仅供 eager
+  诊断，需保留未加观察器的对照。
+- **层名和 token 行必须实查**：DSV4 的 `_next_layer` 模块引用会影响
+  `named_modules()` 去重后的规范名称，固定的 `model.layers.N.mlp`
+  可能匹配不到实际存在的层。可用覆盖嵌套路径的模式发现模块，再按实际
+  `layer_id` 标记，并检查每层、每 rank、每请求的覆盖；匹配失败不是缺层证明。
+  TP 的尾部 padding 与 `tensor_split` 会改变同一 token 所在 rank 和行号。
+  先用实际进程与 rank 映射、原始 token 历史和各分片形状定位有效行，
+  不比较任意两个 row 0，也不把 padding 当作有效激活。post-hook 的输入
+  可能已被原地修改，归因前还需与计算前的独立 clone 核对。
+- **混合向量一致不等于残差流一致**：DSV4 的 MLP 输入只是 mHC 多条残差流
+  混合后的向量；前层 MLP 的输入和输出相同，不能排除其原始残差、
+  Engram 或后续 mHC 状态不同。若最早差异已在某层 MLP 输入，先观察该层
+  attention 及前后的原始状态，不能直接归因为该层专家或压缩比变化。
+  实际模型可直接调用 `.forward` 或层方法，绕过普通 module hooks；
+  attention 又可用关键字传参，默认 post-hook 的 `args` 因而为空。
+  还须区分完整 attention 输出与 `AttnOutput.partial` 的待归约局部和，
+  以及 `HcState` 的物化残差与待执行 post。入口状态可能被 `release`
+  清空，须在消费前独立保存；观察器不能通过主动物化状态改变执行路径。
 - **分布级断言**：bf16 噪声会重排 top1，判定用 cos/top-k 集合/文本锚点。
 - **短序列 DSA 注意**：kv_len ≤ index_topk 走 k_only 快速路径，MQA emu
   根本不被调、logits 全零是设计内——别在这里白排查。

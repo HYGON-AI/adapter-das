@@ -50,6 +50,38 @@ def test_real_eager_graph_requests_keep_exact_prompt_and_output_ids():
 
 
 @pytest.mark.parametrize("fault", [
+    "clean", "controller", "worker", "server", "scheduler", "devices", "boolean",
+])
+def test_tp2_reference_requires_matching_execution_topology(fault):
+    report = _report()
+    report["tp_size"] = 2
+    report["runtime"]["device_count"] = 2
+    for job in report["jobs"]:
+        evidence = job["evidence"]
+        evidence["tp_size"] = 2
+        evidence["server_info"]["tp_size"] = 2
+        evidence["server_info"]["internal_states"][0]["tp_size"] = 2
+    evidence = report["jobs"][0]["evidence"]
+    if fault == "controller":
+        report.pop("tp_size")
+    elif fault == "worker":
+        evidence.pop("tp_size")
+    elif fault == "server":
+        evidence["server_info"].pop("tp_size")
+    elif fault == "scheduler":
+        evidence["server_info"]["internal_states"][0].pop("tp_size")
+    elif fault == "devices":
+        report["runtime"]["device_count"] = 1
+    elif fault == "boolean":
+        report["tp_size"] = True
+    if fault == "clean":
+        assert len(requests(report)[1]) == 8
+    else:
+        with pytest.raises(ValueError):
+            requests(report)
+
+
+@pytest.mark.parametrize("fault", [
     "dummy", "source", "duplicate", "duplicate-modes", "wave", "cached", "prompt", "nan", "failed",
 ])
 def test_weak_or_incomplete_smoke_is_refused(fault):

@@ -3,6 +3,12 @@
 目标：社区 SGLang 源码不变，通过 adapter 的 Triton 功能基线与模型执行链回归，
 为明确的模型及配置提供启动依据。不以性能作为本轮验收条件。
 
+原始运行报告、日志和环境坐标保存在仓库外，禁止提交真实节点、
+地址、账号、容器名及个人目录。下文 `external-evidence:` 表示外部
+归档标识，`validation-host-*` 为匿名历史标签，不是可连接的节点。
+这些历史证据只证明各自绑定的版本与配置；迁移到新上游基点后须重新验证，
+不能将历史通过计数作为新组合的验收结果。
+
 ## 当前迭代目标（2026-11-03）
 
 用户要求按以下顺序持续推进，每个独立功能点验证后及时提交：
@@ -29,37 +35,40 @@
 版本、实际参数、生成与精度结果。GPU 测试只在用户授权的远端空闲卡运行；
 禁止在本节点执行全量 adapter 测试。
 
-2026-11-03 用户新增 nmz7 调试授权：nmz7 与 nmz28 都使用
-`sglang_liph_adapter` 容器，代码目录相同。nmz7 经资源检查确认 GPU
+真实 checkpoint 的 TP 参数、逐设备预检和精度报告绑定方式见
+[真实模型 TP 配置验收](l15-model-smoke.md)。
+
+2026-11-03 用户新增 validation-host-a 调试授权：validation-host-a 与 validation-host-c 都使用
+`adapter-validation` 容器，代码目录相同。validation-host-a 经资源检查确认 GPU
 4–7 空闲、0–3 在用；首次回归选择物理 GPU 4，只暴露这一张卡。
 每次任务启动前重新检查空闲状态，结果单独记录节点和设备，不沿用
-nmz28 的环境结论；不清理或占用其他用户任务。
+validation-host-c 的环境结论；不清理或占用其他用户任务。
 
-2026-11-03 用户进一步授权 nmz21 的同名容器。经 nmz7 免密跳转确认
+2026-11-03 用户进一步授权 validation-host-b 的同名容器。经 validation-host-a 免密跳转确认
 代码目录相同，8 张 BW1100 均约 97% 空闲显存，本轮仅暴露物理 GPU 0。
 清理该新容器镜像残留的 SGLang 0.5.18 DTK 定制包与 kernel 包，
 核对 SGLang 从社区源码、`sgl_kernel` 从 adapter 导入；不更改其他节点环境。
 
-2026-11-04 用户再次确认 nmz21 可用于调试。三个节点的授权持续有效，
-仍在每次作业前检查资源；本次实查 nmz21 容器正常、计算利用率为 0，
+2026-11-04 用户再次确认 validation-host-b 可用于调试。三个节点的授权持续有效，
+仍在每次作业前检查资源；本次实查 validation-host-b 容器正常、计算利用率为 0，
 但 8 张卡显存占用 88%–89%，因此没有在该节点启动新 GPU 作业。
 不能把计算利用率为 0 当作显存空闲，也不能沿用之前的空闲检查。
 
 历史前置差距包括 `jit_*`、`dsv4_*` 的源码磁盘写回，
 现已逐项迁移；Qwen2 当前组合通过严格源码完整性检查，其他模型与配置
 仍须逐项验证，上述完整目标尚未完成。对象广播 `dist_bc` 已迁移为运行时只读 numpy buffer
-兼容，保留已导入函数别名，不再写回 `common.py`。nmz28 隐藏 GPU 的
+兼容，保留已导入函数别名，不再写回 `common.py`。validation-host-c 隐藏 GPU 的
 回归为 **6 passed**：包括以 Git 原始社区广播函数执行两 rank spawn/Gloo，
 验证双向广播、空/中文/bytes/大对象和测试源文件字节不变。
 这是广播路径的迁移证据，尚不代表整个 adapter 启动不再修改源码。
-回归日志为 `results/l15-readiness/pristine-dist-bc.log`；本地 CPU 契约
+回归日志为 `external-evidence:pristine-dist-bc.log`；本地 CPU 契约
 4 passed（需远端社区树的 Gloo 项在本地不运行），L0 GREEN（31 warn）。
 真实 checkpoint eager/graph 复验在启动前因 GPU 0 仅约 4% 空闲而被阻止，
 未运行，也未占用其他卡；该集成复验仍待空闲窗口补齐。
 
-新增 nmz7 授权后，在空闲物理 GPU 4 补齐真实 Qwen2-0.5B checkpoint
+新增 validation-host-a 授权后，在空闲物理 GPU 4 补齐真实 Qwen2-0.5B checkpoint
 eager/graph 回归，**2/2 PASS**；报告为
-`results/l15-readiness/iteration1-nmz7-checkpoint.json`。此次使用旧完整性
+`external-evidence:iteration1-validation-host-a-checkpoint.json`。此次使用旧完整性
 判据，社区树仍包含其他历史磁盘补丁，所以只作为广播迁移后的启动回归，
 不作为新“原样源码”目标通过的证据。
 
@@ -77,13 +86,13 @@ assume-unchanged 或 skip-worktree。被忽略的新增 Python/JIT 源文件也
 覆盖旧绿色报告。历史 27 case / 12 model-mode 的通过记录继续保留，
 但不转授为新完整性规则下的通过结果。
 
-nmz7 审计当前共享社区树：**10,594 tracked files，30 changed files，
-0 added sources**。报告为 `results/l15-readiness/iteration2-upstream-source.json`。
+validation-host-a 审计当前共享社区树：**10,594 tracked files，30 changed files，
+0 added sources**。报告为 `external-evidence:iteration2-upstream-source.json`。
 这说明原样源码目标尚未达成；不通过 reset/删除现有工作树改动制造绿色，
 后续在保留现场的前提下迁移适配并从干净社区树验证。
 门禁与广播、编排工具组合远端 CPU 回归 **68 passed**；补充旧报告覆盖、
 已暂存新增源码等拒绝测试后，最终源码完整性专项远端 **12 passed**。
-日志为 `iteration2-nmz7-source-tests.log`、`iteration2-source-extra.log`；
+日志为 `iteration2-validation-host-a-source-tests.log`、`iteration2-source-extra.log`；
 真实模型 CLI 对当前脏树在任何 GPU worker 启动前拒绝，并保存 30 文件差异
 （`iteration2-source-rejection.json`）；L0 GREEN（31 warn）。
 
@@ -97,15 +106,15 @@ DeepEP、mega-MoE、已有专门 graph 路径、空 batch、eager/breakable
 分支不变。仅在真实 `torch.version.hip` 下安装，安装顺序移到算子桥之后，
 避免为提前改文件而提前导入模型。对应磁盘补丁白名单已移除。
 
-nmz7 隐藏 GPU 的控制流/广播/安装结构回归 **24 passed**，包含直接执行
+validation-host-a 隐藏 GPU 的控制流/广播/安装结构回归 **24 passed**，包含直接执行
 社区 HEAD 原始 `DeepseekV2MoE.forward`（非手抄协议）以及早先绑定的方法
 别名、公开 install、参数透传和全局 capture 状态不变。证据为
-`results/l15-readiness/iteration3-moe-runtime.log`。这些是控制流证据，
+`external-evidence:iteration3-moe-runtime.log`。这些是控制流证据，
 不冒称完整 DeepSeek checkpoint、数值或 graph 端到端已重新通过。
 
 独立干净工作树 `sglang-0.5.22-pristine-iter3` 在运行前完整性通过，
 commit 为 `baa9befa381511cd4d56f83980951e5a45fffc6d`。
-nmz7 物理 GPU 4 的 MLA dummy graph worker 启动/生成通过，
+validation-host-a 物理 GPU 4 的 MLA dummy graph worker 启动/生成通过，
 但总控正确判为失败：启动仍改写 **28 个文件**（此前为 30 个），
 其中 `common.py` 和 `deepseek_v2.py` 均不再变化。
 其余为 25 个 JIT C++/HIP 输入文件和 `fp8.py`、`deepseek_v4.py`、
@@ -123,20 +132,20 @@ tensor 直接分配为 pinned 内存；保留原函数对象、签名、已有�
 pageable 行为。原 helper 的兼容调用也移除不安全的 ring 复用。
 安装移至算子桥之后，真正 CUDA 宿主与显式关闭时均不安装。
 
-nmz7 隐藏 GPU 的最终组合回归 **45 passed，6 skipped，1 deselected**：
+validation-host-a 隐藏 GPU 的最终组合回归 **45 passed，6 skipped，1 deselected**：
 四个新增 GPU 参数项在隐藏 GPU 时跳过，另外两个 skip 分别为非 HIP
 专用入口及子进程无 SGLang PYTHONPATH；未把它们算作通过。
 CPU 算子契约另有 **38 passed**。此前空闲 GPU 4 上，原社区函数的真实
 H2D、离线协议的真实 H2D，以及 48 波三流变长度异步拷贝均通过；
-最终新增的旧 helper GPU 参数项尚待空闲卡复验。nmz7 后续检查
+最终新增的旧 helper GPU 参数项尚待空闲卡复验。validation-host-a 后续检查
 GPU 4–7 空闲显存均不足 3%，已停止进一步 GPU 分配。
 日志为 `iteration4-spec-final-cpu.log`、`iteration4-ops-cpu.log`、
 `iteration4-spec-real-h2d.log`、`iteration4-spec-h2d-gpu.log`。
 
-获 nmz21 授权后，GPU 0 上完整 speculative 专项 **22 passed**，
+获 validation-host-b 授权后，GPU 0 上完整 speculative 专项 **22 passed**，
 补齐旧 helper 的多流异步拷贝参数项，包含直接执行 Git 原始函数、
 真实 H2D、pin 回退、只读源文件、已有别名、spawn 子进程与漂移拒绝。
-报告为 `iteration4-nmz21-spec-final.log`；此前“等待空闲卡”的缺项
+报告为 `iteration4-validation-host-b-spec-final.log`；此前“等待空闲卡”的缺项
 现已补齐。此专项不等于完整 speculative 模型或全量 adapter 套件。
 
 独立干净社区树 `sglang-0.5.22-pristine-iter4` 的 MLA dummy graph worker
@@ -147,13 +156,13 @@ GPU 4–7 空闲显存均不足 3%，已停止进一步 GPU 分配。
 启动日志另暴露 JIT warp needle/FP8 登记问题，后续迁移 JIT 时需一并处理。
 这不代表完整 speculative 模型、所有 GPU 参数项或全量套件已通过。
 
-nmz21 清理镜像残留后，另建干净社区树
-`sglang-0.5.22-pristine-iter4-nmz21`，同一社区 commit、物理 GPU 0，
+validation-host-b 清理镜像残留后，另建干净社区树
+`sglang-0.5.22-pristine-iter4-validation-host-b`，同一社区 commit、物理 GPU 0，
 真实 `/model/qwen2/Qwen2-0.5B-Instruct` checkpoint 的 graph worker
 启动及两批生成通过；实际捕获 prefill 与 decode graph。
 总控因同样的 **27 个源码文件**改写仍判失败，Python 差异仅为
 `fp8.py` 和 `deepseek_v4.py`。报告为
-`iteration4-nmz21-pristine-before.json`、`iteration4-nmz21-checkpoint.json`。
+`iteration4-validation-host-b-pristine-before.json`、`iteration4-validation-host-b-checkpoint.json`。
 该结果证明当前容器中的真实权重启动/生成链路，不代表语义金标、
 完整 speculative 模型或源码零改写验收通过。
 
@@ -174,7 +183,7 @@ nmz21 清理镜像残留后，另建干净社区树
 再替换参数、清理 scale，保留 DeepEP BF16 的显式选择语义。
 该已有变量现纳入 env 注册表/手册；没有新增默认 BF16 转换。
 
-nmz21 隐藏 GPU 的加载/广播/MoE/spec/结构组合 **72 passed，
+validation-host-b 隐藏 GPU 的加载/广播/MoE/spec/结构组合 **72 passed，
 10 skipped，1 deselected**，其中 8 个 skip 为 GPU 参数项，
 另 2 个为非 HIP 专用与子进程未配置 SGLang 来源。原始社区加载函数、
 FP4 cast 与专家 dequant helper 均从 Git HEAD 提取执行；
@@ -187,7 +196,7 @@ GPU 0 空闲检查后，转换专项 **4 passed**，包含社区原始函数和�
 `iteration5-fp4-runtime-cpu.log`，修正夹具后重新执行上述组合。
 
 独立干净树 `sglang-0.5.22-pristine-iter5`，社区 commit
-`baa9befa381511cd4d56f83980951e5a45fffc6d`，nmz21 GPU 0：
+`baa9befa381511cd4d56f83980951e5a45fffc6d`，validation-host-b GPU 0：
 真实 Qwen2-0.5B checkpoint graph worker 启动/两批生成通过，
 但总控因 **26 个文件**改写仍判失败。`fp8.py` 现保持原样；
 剩余是 25 个 JIT 文件及 `deepseek_v4.py`。
@@ -204,7 +213,7 @@ L0 GREEN（31 项既有 warning），未执行全量 adapter/vendor 套件。
 安装器验证签名与两处单参数调用位置，漂移拒绝；上游已有对应支持时不改 code。
 移除该 Python 文件的 text-patch 白名单，安装放到算子/vendor 初始化之后。
 
-nmz21 隐藏 GPU 的六模块组合回归 **97 passed、12 skipped、1 deselected**；
+validation-host-b 隐藏 GPU 的六模块组合回归 **97 passed、12 skipped、1 deselected**；
 随后新增的 spawn 与上游原生支持加载回归 **3 passed**。测试包含从 Git
 HEAD 提取的社区原始加载器与融合 helper、非单位 INT8 per-channel scales、
 独立反量化投影、PP/MTP、真实线程池异步、未配对/重复分片及只读源码。
@@ -243,7 +252,7 @@ BuildSpec/ninja/cache、编译参数及依赖追踪仍在使用，不转移社�
 warp 变换把接收类型修正为 `T`，避免旧顺序造成首轮安装缺针。
 补齐已有 v2 FP8 conversion needle 的治理登记，不删除 portability 修复。
 
-nmz21 隐藏全部 GPU 的最终缓存/环境/启动结构及 CPU 算子组合回归
+validation-host-b 隐藏全部 GPU 的最终缓存/环境/启动结构及 CPU 算子组合回归
 **75 passed、5 skipped、1 deselected**（`iteration7-final-cpu.log`）。
 其中 source 两臂分别
 使用离线接口及 Git HEAD 原始社区资产/函数；spawn 子进程实际安装文件
@@ -264,7 +273,7 @@ RoPE NeoX/interleaved 及 FP8 group32/group128 **4 passed**
 隐藏 GPU 导致部分其他可选桥无法取得设备 capability，导入日志保留相关
 warning；该结果只证明本次导入没有源码写回，不作为功能就绪证据。
 
-此前 nmz21 多次显存预检不足，确认有其他用户的 8 卡
+此前 validation-host-b 多次显存预检不足，确认有其他用户的 8 卡
 `all_reduce_perf` 压测，未停止其任务。节点释放后重新预检，
 物理 GPU 0 空闲显存比例 0.969343，再补齐设备验证。
 
@@ -279,7 +288,7 @@ DTK DLPack 暴露名义 `float8_e4m3fn`，社区 HIP kernel 要求 `uint8`
 已有 factory 别名，适配 warm cache 与后续 cold key；布局漂移拒绝。
 原有 `HCU_JIT_FP8_FFI` 补入环境注册表，显式 0 在启动时跳过安装。
 
-nmz21 隐藏 GPU 的最终接口/环境/启动顺序回归 **25 passed、3 skipped**
+validation-host-b 隐藏 GPU 的最终接口/环境/启动顺序回归 **25 passed、3 skipped**
 （`iteration8-fp8-ffi-cpu-final.log`，排除另行探测的 4 个 DSV4 GPU 项）。
 包括离线及 Git 原始社区 factory/cache、指针和 stride、warm/cold
 别名、spawn、非目标 dtype、快关与失败原子性。
@@ -307,7 +316,7 @@ RoPE 两布局及 generic/v2 FP8 group32/128 的真实编译、独立参考与
 DTK OCP 转换分支，原始头文件字节不变；其他架构继续原有分支，
 尤其不修改 gfx942 的 FNUZ 语义。新增 needle 仍经白名单登记和缓存哈希。
 
-nmz21 GPU 0 对原失败用例原样复测，连续/变长布局 × group32/128
+validation-host-b GPU 0 对原失败用例原样复测，连续/变长布局 × group32/128
 **4 passed**（`iteration9-dsv4-ffi-gpu.log`）。每项由原社区 public API
 实际编译，独立 FP32 SiLU×mul/分组 scale/FP8 参考对拍，三轮改变输入
 幅度和专家有效 token 数后 replay；有效行检查 scale、逐元素误差和
@@ -317,7 +326,7 @@ cosine，未放宽首轮失败断言。隐藏 GPU 的 source/FFI 两臂回归
 
 ### 真实 Qwen3 与可重复 CPU FP32 参考探针
 
-nmz21 物理 GPU 1 重新预检空闲显存比例 0.969343，
+validation-host-b 物理 GPU 1 重新预检空闲显存比例 0.969343，
 真实 `/model/qwen3/Qwen3-0.6B` eager/graph **2/2 passed**，
 报告 `iteration9-qwen3-checkpoint.json`。同一 pristine-iter7 社区树，
 两批两请求每请求 8 token，控制器源码完整性 **0 changed、0 added sources**。
@@ -342,8 +351,8 @@ tool_call_parser/reasoning_parser 均为 None。
 ```bash
 HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES= CUDA_VISIBLE_DEVICES= \
   python3 -m tools.l15_checkpoint_reference \
-  --smoke-report results/l15-readiness/iteration9-qwen3-checkpoint.json \
-  --out results/l15-readiness/iteration10-qwen3-reference.json
+  --smoke-report external-evidence:iteration9-qwen3-checkpoint.json \
+  --out external-evidence:iteration10-qwen3-reference.json
 ```
 
 工具要求严格源码检查成功、真实 checkpoint、eager/graph 两模式完整
@@ -384,7 +393,7 @@ CPU 参考运行前要求新报告的 controller/worker 清单一致，
 历史未绑定报告继续标记 `legacy-unbound`，保留其证据局限。
 字节绑定本身不把短输入探针提升为完整精度验收。
 
-nmz21 隐藏 GPU 的绑定/参考/执行失败契约 **32 passed**
+validation-host-b 隐藏 GPU 的绑定/参考/执行失败契约 **32 passed**
 （`iteration11-checkpoint-binding-cpu.log`），覆盖缺失/越界分片、哈希期间
 已读文件被修改、加载前与执行期间权重变化、旧 worker 缺少指纹、
 控制器停止后续启动及参考端 controller/worker 不一致。
@@ -422,14 +431,14 @@ logprob、greedy regret、同一组 20 个 token 的 logprob，以及这 20 类�
 ```bash
 HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES=1 CUDA_VISIBLE_DEVICES=1 \
   python3 -m tools.l15_model_smoke \
-  --up-tree /home/lipenghui/lph-adapter/sglang-0.5.22-pristine-iter7 \
+  --up-tree /path/to/sglang-0.5.22-pristine-iter7 \
   --families checkpoint --checkpoint /model/qwen3/Qwen3-0.6B \
   --profile accuracy --modes eager,graph \
-  --out results/l15-readiness/accuracy-generation.json
+  --out external-evidence:accuracy-generation.json
 HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES= CUDA_VISIBLE_DEVICES= \
   python3 -m tools.l15_checkpoint_reference \
-  --smoke-report results/l15-readiness/accuracy-generation.json \
-  --out results/l15-readiness/accuracy.json
+  --smoke-report external-evidence:accuracy-generation.json \
+  --out external-evidence:accuracy.json
 ```
 
 首轮 `iteration12-{qwen2,qwen3}-accuracy-generation*` 失败保留：
@@ -440,7 +449,7 @@ Transformers 5.12 的聊天模板默认返回字典，导致请求传入字符�
 （`iteration13-real-tokenizer-cases.log`）：短输入长度 Qwen2=31/30、
 Qwen3=24/23，其他两批均为 512/2048。
 
-nmz21 GPU 1/2 的 `iteration13-{qwen2,qwen3}-accuracy-generation.json`
+validation-host-b GPU 1/2 的 `iteration13-{qwen2,qwen3}-accuracy-generation.json`
 均完成 eager/graph **2/2 生成通过**，每模式三批两请求各 8 token；
 社区源码和 checkpoint 字节检查均通过。
 独立 CPU FP32 参考各比较 **96 个生成位置**，两份
@@ -478,8 +487,8 @@ checkpoint 使用 Transformers 官方 `AutoModelForImageTextToText`。
 CPU 配置/词表/模型执行/精度诊断组合 **51 passed**
 （`iteration15-composite-cpu.log`），L0 GREEN（31 既有 warning）。
 
-nmz21 物理 GPU 3（预检空闲显存比例 0.969343），
-`sglang_liph_adapter`，真实 `/model/Qwen/Qwen3.5-2B-Base`，
+validation-host-b 物理 GPU 3（预检空闲显存比例 0.969343），
+`adapter-validation`，真实 `/model/Qwen/Qwen3.5-2B-Base`，
 社区 pristine-iter7 commit
 `baa9befa381511cd4d56f83980951e5a45fffc6d`，
 eager/graph **2/2 passed**。模型包含 24 层（18 线性注意力、6 完整注意力），
@@ -528,15 +537,15 @@ context_length=128、max_total_tokens=512、mem_fraction_static=0.25，
    固定基线与待适配版本分开记录，串接回归与模型冒烟。
 
 每步验证后单独提交；测试失败保留原始证据，不放宽断言制造绿色。
-GPU 测试在用户授权的 nmz7/nmz21/nmz28 的 `sglang_liph_adapter` 容器运行。
-本轮代码目录为 `/public/home/lipenghui/lph-adapter/adapter-das`；
+GPU 测试在用户授权的 validation-host-a/validation-host-b/validation-host-c 的 `adapter-validation` 容器运行。
+本轮代码目录为 `/public/path/to/adapter-das`；
 社区源码为同级 `sglang-0.5.22`。
 
 ## 严格组件门
 
 ```bash
 HIP_VISIBLE_DEVICES=0 CUDA_VISIBLE_DEVICES=0 \
-  bash ci/l15_readiness_gate.sh /home/lipenghui/lph-adapter/sglang-0.5.22
+  bash ci/l15_readiness_gate.sh /path/to/sglang-0.5.22
 ```
 
 该入口强制实际执行五家族矩阵，不继承旧门禁的 observe/off 或失败总数预算。
@@ -549,11 +558,11 @@ setup/teardown 异常及超时均不通过；运行前删除旧逐 case 报告�
 
 ## 第一步验证（2026-11-03）
 
-- nmz28 / `sglang_liph_adapter` / 单卡 GPU 0：Dense prefill/decode、
+- validation-host-c / `adapter-validation` / 单卡 GPU 0：Dense prefill/decode、
   fragmented layout、graph metadata 三个严格 case 全通过，保留逐 subtest
   结果，passing parent 不能掩盖子用例 skip。
 - 同容器隐藏 GPU 后，矩阵与清单回归 **67 passed**；L0 **GREEN（31 warn）**。
-- 原始报告：`results/l15-readiness/phase1-dense.json`（节点本地生成，不入版本库）。
+- 原始报告：`external-evidence:phase1-dense.json`（节点本地生成，不入版本库）。
 - 这是严格执行机制和 Dense 的证据；其余家族与模型启动尚待后续步骤验证。
 
 ## 第二步验证（2026-11-03）
@@ -562,8 +571,8 @@ setup/teardown 异常及超时均不通过；运行前删除旧逐 case 报告�
 - 社区 MoE routing 接入后，计算链与 GDN 桥另跑 **13 passed**。
 - 实际发现并修复 GDN bridge 多余转置；非方形状态、envelope stride、
   禁写、ring 和三轮 graph replay 均通过独立 FP32 对拍。
-- 报告：`results/l15-readiness/phase2-all.json`；
-  最终链路日志：`results/l15-readiness/phase2-final-chains.log`。
+- 报告：`external-evidence:phase2-all.json`；
+  最终链路日志：`external-evidence:phase2-final-chains.log`。
 
 ### 官方 FP32 输出层单变量诊断（2026-11-03）
 
@@ -572,7 +581,7 @@ setup/teardown 异常及超时均不通过；运行前删除旧逐 case 报告�
 参考报告绑定同一配置，拒绝忽略选项或混用旧 worker 证据。此功能用于归因，
 不改变 adapter 默认行为或 `bf16-cpu-fp32-top20-v1` 的任一阈值。
 
-nmz21 同一容器、同一社区 commit，Qwen2/Qwen3 分别沿用物理 GPU 1/2；
+validation-host-b 同一容器、同一社区 commit，Qwen2/Qwen3 分别沿用物理 GPU 1/2；
 启动前显存空闲比例均为 0.969343。两套模型 eager/graph 共 **4/4**
 启动及生成通过，controller/worker/server 均确认选项开启；各 **96 个位置**
 完成独立 CPU FP32 参考。相较 iteration13，权重字节、每行输入及生成
@@ -592,7 +601,7 @@ token 序列均相同。源码完整性检查通过，未改写社区源码。
 该实验表明只改变输出层选项不足以消除偏差，尚不能断言是 HCU 特有问题。
 后续仍需逐层或同精度配置定位。
 
-证据位于 `results/l15-readiness/iteration16-{qwen2,qwen3}-fp32-head-`
+证据位于 `external-evidence:iteration16-{qwen2,qwen3}-fp32-head-`
 前缀的 `generation.json/log` 和 `accuracy.json/log`；既有失败保留。
 隐藏 GPU 的四模块 CPU 回归 **59 passed**，日志
 `iteration16-final-cpu.log`；L0 GREEN（31 既有 warning）。
@@ -603,8 +612,8 @@ token 序列均相同。源码完整性检查通过，未改写社区源码。
 ```bash
 HCU_ADAPTER_HOST=none VLLM_PLUGINS=none HIP_VISIBLE_DEVICES= CUDA_VISIBLE_DEVICES= \
   python3 -m tools.l15_checkpoint_dtype_probe \
-    --smoke-report results/l15-readiness/iteration13-qwen2-accuracy-generation.json \
-    --out results/l15-readiness/iteration17-qwen2-dtype.json --threads 4
+    --smoke-report external-evidence:iteration13-qwen2-accuracy-generation.json \
+    --out external-evidence:iteration17-qwen2-dtype.json --threads 4
 ```
 
 仅接受已通过 eager/graph 执行且绑定实际 checkpoint 字节的 accuracy
@@ -622,7 +631,7 @@ top20+tail 对比：HCU→CPU FP32、HCU→CPU BF16、CPU BF16→FP32；
 不输出精度 passed 或替换 V1 策略。CPU BF16 并不是相同实现的
 SGLang/HCU 基线，既不能直接证明 HCU 存在错误，也不能豁免原失败。
 
-2026-11-03，nmz21/nmz7/nmz28 均无满足预检条件的空闲 GPU，
+2026-11-03，validation-host-b/validation-host-a/validation-host-c 均无满足预检条件的空闲 GPU，
 本轮仅使用隐藏 GPU 的 CPU 进程。初次整体转换模型的试跑因 RoPE buffer
 舍入风险而作废，保留在 `iteration17-*-converted-rope-invalid.*`
 及 `iteration17-converted-rope-invalid.txt`，未用于精度判断。
@@ -652,7 +661,7 @@ token108840、HCU rank18：HCU 与 CPU BF16 均为 -19.0，CPU FP32
 
 ### 真实 Channel-FP8 checkpoint 启动（2026-11-03）
 
-资源复查发现 nmz7 GPU 已释放，选择物理 GPU4 并再次进行容器内预检：
+资源复查发现 validation-host-a GPU 已释放，选择物理 GPU4 并再次进行容器内预检：
 空闲显存比例 **0.969710**，BW1100/gfx938，DTK HIP 6.3.26113、
 Torch 2.11.0；adapter `0129b81`，同一 pristine 社区 commit
 `baa9befa381511cd4d56f83980951e5a45fffc6d`。
@@ -688,7 +697,7 @@ smoke 新增显式 `--dtype float32`，通过社区 Engine 的公开 dtype 参�
 必须一致；历史缺失 dtype 字段的报告仅按原 BF16 默认解释。未改社区
 源码、adapter 默认计算精度或任何 V1 阈值。
 
-nmz7 物理 GPU4，逐项预检空闲显存比例 0.969710，同一 checkpoint
+validation-host-a 物理 GPU4，逐项预检空闲显存比例 0.969710，同一 checkpoint
 `/model/qwen3/Qwen3-0.6B`、容器、社区 commit 和固定 accuracy 用例，
 顺序执行 BF16、FP32，各完成 eager/graph **2/2** 生成及
 独立 CPU FP32 参考 **96 个位置**。两者实际 checkpoint 字节、
@@ -714,7 +723,7 @@ nmz7 物理 GPU4，逐项预检空闲显存比例 0.969710，同一 checkpoint
 
 ### FP8 实际路由与 CT 组件数值闭环
 
-nmz7 物理 GPU5 再次预检空闲显存比例 0.969710，使用社区公开
+validation-host-a 物理 GPU5 再次预检空闲显存比例 0.969710，使用社区公开
 `Engine.start_profile(activities=["CPU","GPU"], with_stack=True,
 record_shapes=True)` / `stop_profile()`，在 eager 模型预热后记录两个请求
 各 8 token 的实际执行。未改社区源码或用调试 wrapper 替换模型计算。
@@ -750,7 +759,7 @@ hash 的原始 trace 抽取调用计数。运行时 adapter stamp 为
 
 ### 同机 Transformers CPU/HCU 定点归因
 
-`iteration22-qwen3-device-probe.json` 在 nmz7 GPU4（预检空闲比例
+`iteration22-qwen3-device-probe.json` 在 validation-host-a GPU4（预检空闲比例
 0.969710），对原 `short-en` 的同一冻结序列，分别官方加载 FP32/BF16，
 先 CPU、再仅将设备迁到 HCU；保留 FP32 RoPE buffer，eager attention、
 禁用 KV cache，不安装 SGLang 宿主桥。checkpoint 与输入报告前后字节
@@ -764,7 +773,7 @@ hash 的原始 trace 抽取调用计数。运行时 adapter stamp 为
   合并 JSD 0.002814；目标位置分别 **-6.256028 / -6.635359**。
   SGLang BF16 原目标值约 -7.1713，与 HCU Transformers BF16
   也有差异；仍需在融合 GEMM/归一化/attention/增量执行之间继续归因。
-- nmz7 CPU 是 Intel Xeon Platinum 8558P，而之前 nmz21 是
+- validation-host-a CPU 是 Intel Xeon Platinum 8558P，而之前 validation-host-b 是
   Hygon C86-4G；BF16 CPU 结果不能跨节点当成同一实现。
   环境、Torch build/git 与诊断字节绑定保存在
   `iteration22-qwen3-device-environment.json`。该探针保持诊断性质，
@@ -795,7 +804,7 @@ role-switch 使用的 capture-bs 列表，不能以空列表误判未捕获。
 
 ## 第三步验证（2026-11-03）
 
-- nmz28 单卡 GPU 0：Dense、MoE、MLA、Mamba2、GDN hybrid 五类两层
+- validation-host-c 单卡 GPU 0：Dense、MoE、MLA、Mamba2、GDN hybrid 五类两层
   dummy 模型，以及真实 `Qwen2-0.5B-Instruct` checkpoint，分别完成 eager
   与 graph 启动/生成，共 **12/12 PASS**。真实权重来自容器
   `/model/qwen2/Qwen2-0.5B-Instruct`，包含 safetensors 与 tokenizer。
@@ -826,15 +835,15 @@ dtype 诊断同时拒绝 checkpoint 量化声明与显式在线量化，不能�
 的原始 config 当作在线量化执行的数值金标。
 
 真实 `/model/hygon/Qwen3-30B-A3B-Channel-INT8-w8a8` 自动检测的失败保留于
-`results/l15-readiness/iteration23-qwen3-moe-int8.json/log`：社区 CT MoE
+`external-evidence:iteration23-qwen3-moe-int8.json/log`：社区 CT MoE
 构造拒绝并提示仅支持 NPU。社区另有 GPU `W8A8Int8MoEMethod`，且 cookbook
 固定版本 `40adc4d30ec2640e3391cfd78759bd3598e95f71` 的同模型 BW1100
 配方显式指定 `--quantization w8a8_int8`，因此先验证现有官方入口。
 该入口是否完成真实加载、生成及数值验证须分别保留后续实测证据。
 
-nmz21 隐藏 GPU 的工具回归 **114 passed**，报告
-`results/l15-readiness/iteration25-quantization-option-cpu.log`。
-此次新增节点授权包括 nmz7、nmz21、nmz28 的 `sglang_liph_adapter`，
+validation-host-b 隐藏 GPU 的工具回归 **114 passed**，报告
+`external-evidence:iteration25-quantization-option-cpu.log`。
+此次新增节点授权包括 validation-host-a、validation-host-b、validation-host-c 的 `adapter-validation`，
 代码共享目录相同；GPU 作业仍须逐次检查空闲资源。
 
 ## INT8 Linear 与量化模型验证（2026-11-03）
@@ -843,18 +852,18 @@ nmz21 隐藏 GPU 的工具回归 **114 passed**，报告
 
 显式 `w8a8_int8` 的首次真实 30B 执行继续暴露
 `W8A8Int8LinearMethod.apply -> NameError: int8_scaled_mm`，原始失败保留在
-`results/l15-readiness/iteration26-qwen3-moe-int8.json` 及 jobs 日志。
+`external-evidence:iteration26-qwen3-moe-int8.json` 及 jobs 日志。
 此前仅给 CT scheme 补 GEMM global，未覆盖显式量化的另一个消费者。
 `hcu_adapter.int8_linear` 复用现有 `sgl_kernel.gemm_int8.int8_scaled_mm`，
 先验证两个消费者的方法和 globals 契约，再绑定各自模块符号。
 原方法及已缓存别名保持原样；没有新增数学实现或源码写回。
 catalog/UI/runtime registry 同步登记为 candidate，不据此作性能晋级。
 
-nmz21 隐藏 GPU 的桥接/矩阵工具回归 **35 passed**，L0 **GREEN（31 warn）**，
+validation-host-b 隐藏 GPU 的桥接/矩阵工具回归 **35 passed**，L0 **GREEN（31 warn）**，
 见 `iteration31-int8-linear-cpu.log` 和 `iteration31-int8-linear-l0.log`。
 设备回归与真实模型复测需以各自结果判断，不能由 CPU 绑定回归替代。
 
-nmz21 GPU4 的既有 INT8 GEMM 与新增真实 W8A8 Linear 调用链共 **20 passed**，
+validation-host-b GPU4 的既有 INT8 GEMM 与新增真实 W8A8 Linear 调用链共 **20 passed**，
 后者包含 6 个参数化节点及三轮变输入 graph；见
 `iteration31-int8-linear-gpu.log`。严格 MoE 家族另获 **7/7 case PASS**，
 包括新 INT8 MoE，报告 `iteration30-moe-family.json` 的执行后社区源码
@@ -862,7 +871,7 @@ nmz21 GPU4 的既有 INT8 GEMM 与新增真实 W8A8 Linear 调用链共 **20 pas
 
 ### 真实 30B Channel-INT8 模型启动与生成
 
-`iteration31-qwen3-moe-int8.json` 在 nmz7 GPU4/BW1100 gfx938 上记录
+`iteration31-qwen3-moe-int8.json` 在 validation-host-a GPU4/BW1100 gfx938 上记录
 真实 `Qwen3-30B-A3B-Channel-INT8-w8a8` 的 **eager/graph 2/2 PASS**。
 16 项 checkpoint 资产包含 7 个 safetensors shard，controller/worker
 前后字节绑定一致，两项执行后社区源码完整性通过。基线仍为
@@ -886,7 +895,7 @@ mem0.9。因此是社区基线启动探针，不是配方全部选项验收。
 
 ### 全量回归中的 Python 兼容修复（2026-11-04）
 
-nmz21 的原始 `iteration31-regression-full.log` 在收集期失败：
+validation-host-b 的原始 `iteration31-regression-full.log` 在收集期失败：
 Python 3.10 缺少 `tomllib`，而包声明支持 Python ≥3.9。
 打包测试增加标准库/`tomli` 兼容导入，`test` extra 声明
 Python <3.11 的 `tomli` 依赖；未跳过测试。该容器真实 wheel 构建/
@@ -915,14 +924,14 @@ max_abs=0；见 `iteration32-rope-probe.log`。原路径错误没有被覆盖。
 `_tar_installed` 的引用，恢复显式快关；kpool pool fixture 增补社区
 `index_page_size` 字段；影子导入与 CPU 参考测试使用干净 HOSTnone
 子进程，生产工具的“已加载宿主即拒绝”守卫不变。
-nmz21 后续资源检查显示显存已占用，GPU 作业在启动前拒绝；未终止其他进程。
-改在已确认空闲的 nmz7 GPU5 验证全部相关文件，得到
+validation-host-b 后续资源检查显示显存已占用，GPU 作业在启动前拒绝；未终止其他进程。
+改在已确认空闲的 validation-host-a GPU5 验证全部相关文件，得到
 **51 passed、1 skipped、1 deselected**，见
 `iteration34-regression-fixes.log`。skip 是旧 aiter 布局才适用的 opt-in
 场景，deselected 为本轮不运行的双卡 stress 项。
 该证据是全量失败后的增量验证，不把原 56 failed/29 errors 改为整轮全绿。
 
-最终增量检查：nmz7 GPU4 的量化家族严格门 **9/9 case PASS**，零
+最终增量检查：validation-host-a GPU4 的量化家族严格门 **9/9 case PASS**，零
 skip/xfail，执行后社区源码完整性通过，见
 `iteration34-quantization-family.json`。最终 L0 **GREEN（31 warn）**，
 见 `iteration34-final-l0.log`。当前保留的 vLLM 47 failed/29 errors
@@ -930,7 +939,7 @@ skip/xfail，执行后社区源码完整性通过，见
 
 ### BF16 逐层归因与增量解码复现（2026-11-04）
 
-使用同一 nmz7 GPU4、Qwen3-0.6B checkpoint 字节和社区 commit
+使用同一 validation-host-a GPU4、Qwen3-0.6B checkpoint 字节和社区 commit
 `baa9befa381511cd4d56f83980951e5a45fffc6d`，在 adapter `d813991`
 执行只读诊断，未修改模型 forward 或社区源码。HF 独立按 BF16 加载，
 仅把设备迁移到 HCU，保留 RoPE 的 FP32 buffer；参考为 HF eager。
@@ -967,7 +976,7 @@ forward、batch2。额外保存 fused norm 的原始输入和残差，避免只�
 的相加值作归一化分子，不能误用全 FP32 或全 BF16 相加公式判断。
 
 两轮 worker 均正常退出、执行后社区源码完整性通过。证据为
-`results/l15-readiness/iteration37-{hf,sglang}-layers.log`、
+`external-evidence:iteration37-{hf,sglang}-layers.log`、
 `iteration37-*-layers.pt`、`iteration37-sglang-generation.json`、
 `iteration37-layer-comparison.json` 和 `iteration37-layer-probe-runtime.json`。
 hooks 仅用于 eager 归因，含主机同步，不进入生产或 graph 路径；
@@ -986,7 +995,7 @@ batch3/page16/group2 各做 eager/真实 graph，三轮改变输入与映射槽�
 同时检查输出、连续递推状态、图内外状态一致性及其他槽位禁止改写。
 本功能没有替换生产计算或修改社区源码。
 
-nmz7 GPU4：整个计算链文件 **25 passed**，严格 Mamba 家族
+validation-host-a GPU4：整个计算链文件 **25 passed**，严格 Mamba 家族
 **7/7 case PASS**、零 skip/xfail，矩阵工具回归 **32 passed**；
 执行后社区源码完整性通过。证据为 `iteration39-chains.log`、
 `iteration39-mamba-family.json`、`iteration39-matrix-cpu.log` 和
@@ -1004,7 +1013,7 @@ per-token-group 激活 scale 和非连续 scale view。masked 覆盖空专家、
 专家分组和 129 行尾 tile。FP32 独立反量化对拍保持 cosine ≥0.9999、
 maxrel ≤0.05；真实 graph 三轮改变输入、权重、尺度与 counts/expert IDs。
 
-nmz7 GPU5：完整 FP8 GEMM 文件 **17 passed**，接入后的严格量化家族
+validation-host-a GPU5：完整 FP8 GEMM 文件 **17 passed**，接入后的严格量化家族
 **10/10 case PASS**、零 skip/xfail，矩阵工具 **32 passed**，社区源码
 执行后完整性通过。见 `iteration40-fp8-grouped.log`、
 `iteration40-fp8-grouped-runtime.json`、`iteration41-quantization-family.json`、
@@ -1032,7 +1041,7 @@ FP8 两入口和 layout 拒绝。修复前新增 **8 failed**，修复后连同
 **GREEN（31 warn）**；见 `iteration42-deepgemm-switch-before.log`、
 `iteration42-switch-after.log`、`iteration42-l0.log`。
 
-随后在 nmz7 GPU4 暴露单卡、真实社区与 DTK 依赖下分别启动干净
+随后在 validation-host-a GPU4 暴露单卡、真实社区与 DTK 依赖下分别启动干净
 SGLang 宿主解释器：默认、两键显式 0、两键显式 1 **3/3 成功**，
 真实 `deep_gemm` 函数绑定及解析值/来源均符合预期，
 执行后社区源码完整性通过。证据为
@@ -1052,9 +1061,9 @@ SGLang 宿主解释器：默认、两键显式 0、两键显式 1 **3/3 成功**
 ```bash
 HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES= CUDA_VISIBLE_DEVICES= \
 python -m tools.l15_checkpoint_reference \
-  --smoke-report results/l15-readiness/iteration45-ctfp8-generation.json \
+  --smoke-report external-evidence:iteration45-ctfp8-generation.json \
   --quantized-reference ct-fp8-token-channel \
-  --out results/l15-readiness/iteration47-ctfp8-bfloat16-accuracy.json
+  --out external-evidence:iteration47-ctfp8-bfloat16-accuracy.json
 ```
 
 参考通过 Transformers 公开加载接口和 compressed-tensors 的
@@ -1065,7 +1074,7 @@ python -m tools.l15_checkpoint_reference \
 每次完整 forward 必须逐层观察到真实输入量化与 fake-quantize 调用。
 仅反量化权重而移除激活 QDQ 不是此 checkpoint 的参考。
 
-nmz7 GPU4、BW1100/gfx938、Torch 2.11.0/HIP 6.3.26113，
+validation-host-a GPU4、BW1100/gfx938、Torch 2.11.0/HIP 6.3.26113，
 Transformers 5.12.1、compressed-tensors 0.17.0；
 社区固定 `baa9befa381511cd4d56f83980951e5a45fffc6d`。
 真实 `/model/qwen3/Qwen3-0.6B-Channel-FP8` 的 9 项资产字节绑定通过，
@@ -1097,7 +1106,7 @@ triton、page1、mem0.25、eager+graph、context4096、total tokens16384，
 
 ### 提交前全量回归（2026-11-04）
 
-nmz7 GPU4 执行 `pytest tests/kernels tests/adapter tests/vendor -k "not stress"`：
+validation-host-a GPU4 执行 `pytest tests/kernels tests/adapter tests/vendor -k "not stress"`：
 **1017 passed、47 failed、29 errors、131 skipped、2 xfailed、1 deselected**，
 用时 682.58 秒。47 个失败与 29 个错误均属于 vLLM 路径，按当前范围暂缓；
 其中 13 个失败位于未以 vllm 命名的 `test_model_mutation.py`，
@@ -1115,7 +1124,7 @@ CPU 算子契约另有 **38 passed**。原始日志为
 **1.000000**，rmsnorm **0.999997**，BF16 GEMM excess **1.02x**，
 graph safety 通过。该路径问题属于探针默认配置，不是算子数值失败。
 
-nmz7 GPU5 空闲显存比例 **0.9697097** 时，完成一次完整的 32-case
+validation-host-a GPU5 空闲显存比例 **0.9697097** 时，完成一次完整的 32-case
 L1.5 family matrix：Dense 3、MLA 5、MoE 7、量化 12、Mamba 5，
 **32/32 PASS、零 skip/xfail**，结果为 `iteration49-all-families.json`，
 运行日志为 `iteration49-all-families.log`，执行后社区源完整性复核通过。
@@ -1128,20 +1137,20 @@ L1.5 family matrix：Dense 3、MLA 5、MoE 7、量化 12、Mamba 5，
 - `tools.l15_upgrade_check` 串接静态审查、严格组件门、模型闭环；陈旧或
   其他 upstream commit 的报告不能使升级就绪，审查接受文件必须精确匹配
   baseline/candidate/changes。未完成全部阶段时保持 `ready=false`。
-- nmz28 实际运行 `--baseline-ref HEAD --candidate-ref HEAD --audit-only`：
+- validation-host-c 实际运行 `--baseline-ref HEAD --candidate-ref HEAD --audit-only`：
   **0 changes、15 baseline gaps、19 dynamic registration sites**；
   `same_revision=true`、`audit_only=true`、`ready=false`。这些缺口需运行时
   验证，不能将零差异解释为所有绑定完整或完成一次版本升级。
 - 同容器工具组合回归 **91 passed**；补充 needle 新路径检查后，本地仅跑
   漂移/编排 CPU 测试 **12 passed**。L0 **GREEN（31 warn）**。
   故意修改签名、函数体、删除符号/nodeid/needle 的回归均能拒绝。
-- 证据：`results/l15-readiness/phase4-workflow-audit.json`、
+- 证据：`external-evidence:phase4-workflow-audit.json`、
   同名 `-stages/upstream-diff.json`、`final-tool-tests.log`、`final-l0.log`。
   本次交付手动升级工作流，未配置定时巡检，也未验证新社区版本。
 
 ### DeepSeek-V4.1-Flash-Channel-INT4 真实启动闭环（2026-11-04）
 
-在 nmz7 的 `sglang_liph_adapter` 容器中，以 adapter
+在 validation-host-a 的 `adapter-validation` 容器中，以 adapter
 `d1df244867a5738c4c4a15f35e4eae5c5e7fec09`、社区 SGLang
 `baa9befa381511cd4d56f83980951e5a45fffc6d` 和 cookbook
 `40adc4d30ec2640e3391cfd78759bd3598e95f71` 运行真实
@@ -1181,8 +1190,8 @@ HTTP 200 且请求返回码为 0。巴黎/埃菲尔铁塔请求生成连贯文�
 当前启动通过结论。
 
 完整配方、环境、指纹和请求证据见
-`results/l15-readiness/iteration51-dsv41-int4.json`，原始服务日志和请求
-结果见同名目录。下一步先在 nmz21 做离线 EP4 dispatcher 复现，再修改
+`external-evidence:iteration51-dsv41-int4.json`，原始服务日志和请求
+结果见同名目录。下一步先在 validation-host-b 做离线 EP4 dispatcher 复现，再修改
 adapter 运行时路由；修改前必须增加离线回归，且不写回社区源码。
 
 ### CT W4A8 DeepEP low-latency W4A16 路由（2026-11-04）
@@ -1196,7 +1205,7 @@ GEMM 和 SiLU gate，再把相同布局交回 DeepEP combine。普通 TP/EP1
 WNA16、BF16、FP8/W4AFP8、normal dispatch 和其他量化路径都保留上游
 实现；异常不会静默改走另一数学路径。
 
-本功能提交为 `a7db6fc`，CPU 路由/契约回归为 **9 passed**。nmz28
+本功能提交为 `a7db6fc`，CPU 路由/契约回归为 **9 passed**。validation-host-c
 容器中的社区源码目录仍为
 `baa9befa381511cd4d56f83980951e5a45fffc6d`，未发生文件改写；显式以
 社区 0.5.22 pristine Python 路径加载后，调用安装函数可观察到
@@ -1204,8 +1213,635 @@ WNA16、BF16、FP8/W4AFP8、normal dispatch 和其他量化路径都保留上游
 布局契约，尚未替代真实 EP4 权重加载、DeepEP 通信、masked GEMM 数值和
 生成验证。
 
-nmz28 当前 8 张卡仍由既有服务占用，显存约 94%，因此本轮没有启动新的
-GPU 作业。下一步是在 nmz28 释放后，用真实
+validation-host-c 当前 8 张卡仍由既有服务占用，显存约 94%，因此本轮没有启动新的
+GPU 作业。下一步是在 validation-host-c 释放后，用真实
 `DeepSeek-V4.1-Flash-Channel-INT4-w4a8` 做 TP4/EP4 启动、graph/eager
 生成和与 EP1 的数值/语义对拍；若该 masked W4A16 ABI 与实际 DeepEP
 buffer 形状不一致，先补离线形状/数值回归再修 adapter。
+
+### validation-host-b EP4 契约补齐（2026-11-05）
+
+用户再次授权使用 validation-host-b。本次启动前 8 卡显存及利用率均为 0%，
+仅暴露物理卡 0–3，在 `adapter-validation` 内使用同一代码目录、
+社区 `baa9befa381511cd4d56f83980951e5a45fffc6d` 与真实
+DeepSeek-V4.1 INT4 checkpoint。启动前源码字节审计通过，48 个分片全部存在。
+
+离线回归复现了原 EP4 分支的两个缺口：社区 CT Triton scheme 转换后仍保留
+`w13_weight_packed`/`w2_weight_packed` 属性，而 adapter 只识别不带
+`_packed` 的名称；channel-wise 权重的单尺度不能通过固定 group 白名单。
+现兼容这两种名称，并将合法的 channel 尺度等价展开到 vendor group-32 网格。
+保留 checkpoint 的 `swiglu_limit`（gate 仅上界截断、up 双向截断），
+对非 SiLU、非 gated、输入侧 routing 和其他 GEMM1 变换显式拒绝；
+带 zero-point 的权重不进入该对称分支。设备上的行数范围通过异步断言
+验证，避免 Python 读取 GPU 标量，并在 graph replay 时检查当前行数。
+
+validation-host-b GPU0 定向执行 `test_deepep_w4a16.py`、`test_ct_w4a8_moe.py`、
+`test_w4a16_moe_deepgemm.py`：**26 passed，24.41 秒**。新增真实 GPU
+对拍包含 group128/channel-wise 两种尺度、clamp、空 expert、
+变输入和变行数 graph replay；原始日志为
+`external-evidence:iteration54-validation-host-b-ep4-regression.log`。
+这是组件证据，不代表真实 EP4 模型已通过；本次真实启动仍在独立验证中。
+
+启动脚本 `_launch_dsv41_int4_ep4_pristine.sh` 同步修正为此次实际参数：
+显式四卡可见性、BF16 DeepEP dispatch、纯语言模型、mem0.90、
+关闭 prefill graph，由模型后端选择 page size，保留服务 warmup。
+源码预检在 `HCU_ADAPTER_HOST=none` 下执行，默认监听本机地址。
+validation-host-b `bash -n` 通过；原始 EP4 启动已在 decode graph warmup 中复现
+`forward_deepgemm_masked is deprecated`，修复后的重跑记为 iteration55，
+不能将脚本语法通过当作模型启动通过。
+
+### EP4 权重副本显存修复（2026-11-05）
+
+iteration55 进入新的 EP4 分支后，在 decode graph warmup 的
+`_grouped_gemm` 输出分配处 OOM（再申请 480 MiB；单卡仅余 688 MiB）。
+此前已成功加载全部真实权重。vendor 路径在各层原权重之外持有完整
+marlin repack 与 group32 尺度缓存，不能用小形状组件通过外推整模型可用，
+也不能仅下调 KV 预算掩盖累积的权重副本。
+
+DeepEP LL serving 改用 `grouped_gemm_triton.w4a16_masked` 直接读取
+原始 uint8 packed 权重和原始分组/channel 尺度，按设备行数跳过空 expert
+与无效 tile；FP32 累加、BF16/FP16 输出，不缓存第二份权重，也不展开尺度。
+vendor 路径保留为显式数值比较入口，EP1 与非目标量化的路由不变。
+两次 GEMM 后仍使用原有 clamp/SiLU 语义及 DeepEP combine ABI。
+
+validation-host-b GPU0 同组定向回归 **30 passed，27.06 秒**，新增 raw-weight tier
+与 vendor tier 的 group/channel clamp graph 对拍、无效行归零、变行数
+重放、非整 tile K/N/M，以及 raw tier 不产生 repack cache 的断言。
+原始日志为 `external-evidence:iteration56-regression.log`。
+iteration55 执行后社区源码 **10594 个 tracked file 字节审计通过**，
+commit 不变且无新增源文件。真实 EP4 端到端验收仍待修复后重跑。
+
+### validation-host-b EP4 整模型重跑边界（2026-11-05）
+
+iteration56 在 `b917a47` 上完成真实权重加载及四卡 decode graph
+捕获，batch 桶为 `[4, 8, 12, 16]`，耗时约 30 秒，graph 占用约
+4.52 GB；捕获后 rank0 仍有 8.53 GB、其余 rank 约 9.39 GB 可用。
+因此原 repack 缓存导致的 OOM 未再次出现。HTTP 应用启动且
+`/model_info` 返回 200，但默认服务 warmup 的首次 prefill 触发
+GPU VMFault，尚无成功的 EP4 生成结果，不能记为模型通过。
+
+iteration57 的诊断参数 `AMD_SERIALIZE_KERNEL=3` 被当前运行库警告为
+无效值（仅接受 0/1）。它再次完成 graph 捕获后，在
+`dsv41_sparse.token_req_indices` 的 `repeat_interleave` 调用附近崩溃；
+由于异步执行和无效的序列化设置，该栈仅作为定位线索，不作根因结论。
+两轮结束后的社区源码审计均通过：10594 个 tracked file 字节不变，
+commit 仍为 `baa9befa381511cd4d56f83980951e5a45fffc6d`，无新增源文件。
+
+独立 GPU `repeat_interleave` 探针覆盖 1/2/8/16/128/8192 token、
+多请求及零长度段，18 组均与 CPU 参考一致。该结果不能排除真实请求
+元数据、跨流生命周期或更早算子的问题。下一轮仅在临时诊断入口记录
+eager prefill 的请求索引、设备/CPU 长度与输出 token 数，不写社区源码。
+iteration58 的诊断钩子误在 decode graph 捕获期间同步，触发捕获错误；
+该轮属于诊断脚本失败，不归因于模型，后续诊断必须避开 capture。
+
+### V4.1 EP 补齐请求索引（2026-11-05）
+
+iteration59 在四个 rank 均记录到同一输入：真实请求 `req=[16]`、
+设备及 CPU 长度均为 `[6]`，但 `positions.shape[0]=8`。EP 路径按
+并行度补齐 token 后，社区 `token_req_indices` 将 8 直接作为
+`repeat_interleave` 的 `output_size`，违反其必须等于 repeats 总和的
+契约。诊断在展开前同步成功并用断言阻止了非法调用，区别于前面仅有
+异步故障栈的线索。
+
+`dsv41_request_indices` 仅为该函数安装私有 Torch facade，保留原函数
+对象、既有 backend 别名、decode 和 scalar-repeat target-verify 分支；
+不改全局 Torch 或社区文件。向量展开通过设备端累计长度和 searchsorted
+映射有效 token，多出的行映射到社区预留的 request 0，避免借用有效请求
+的位置 0。负长度及容量不足显式拒绝；不读取 GPU 标量，支持 graph。
+
+validation-host-b GPU0 定向回归 **19 passed，19.10 秒**，覆盖 6→8、空段/空批次、
+无补齐、非法长度、decode/verify 保持原行为、私有绑定/漂移拒绝，以及
+同地址变请求、变长度、全 padding 的 graph replay。
+真实社区 backend 的已导入别名和 spawn 子进程均通过正式 bootstrap
+探针。L0 为 GREEN（31 条既有 warning）。证据在
+`external-evidence:iteration60-validation-host-b-padding/`；复用入口为
+`tests/tools/_probe_dsv41_request_indices.py`。这是元数据组件和接线
+证据；修复后的真实 EP4 服务 warmup/生成仍须独立重跑。
+
+iteration61 使用普通异步执行、无诊断钩子，已通过原来失败的 6-token
+warmup。三个显式 DeepSeek 对话 token 请求分别正确输出 `42`、`Paris`、
+`63`（包含 21-token 补齐输入和 20-token 无补齐输入），另一个 28-token
+请求正确连续输出 `1 2 3 4 5 6 7 8 9 10`，覆盖多步 decode。
+但随后 529-token 请求在 DeepEP dispatch 报
+`x.size(0) <= num_max_dispatch_tokens_per_rank` 容量断言；
+2048-token 与中文探针尚未执行，不能记作长输入通过。
+
+这是配方中 `--deepep-mode low_latency` 与 `--chunked-prefill-size 8192`
+不匹配暴露的独立边界。iteration62 把两者对齐为 128 后，在模型加载前
+被社区 `chunked_prefill_size % page_size == 0` 校验拒绝：
+该模型自动选择 page size 256。这一轮没有执行模型或请求。
+
+配方改为显式固定社区
+`SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK=256`，并把 prefill
+chunk 对齐到 256；长 prompt 仍由社区调度器分块处理，不截断用户输入。
+为控制更大 dispatch capacity 的峰值显存，W4A16 在第二次 GEMM 前释放
+已消费的第一投影及 gate/up 临时张量，交给 Torch stream/graph allocator
+复用，不改数学运算。组件 graph 回归覆盖每 expert 128/256 行；
+真实模型的通信 buffer 及其显存峰值另由端到端重跑验证。
+短语义通过仍不代表完整模型精度，修正配方后的长输入与分块 KV/cache
+验证须继续实测。
+
+iteration63 在 validation-host-b GPU0 定向运行 EP4 seam、CT W4A8 与两种 GEMM
+tier 的数值/变输入 graph 回归：**34 passed，30.47 秒**。
+新增 `tests/tools/_check_dsv41_ep4_recipe.py` 直接解析实际启动脚本，
+按社区 Engine 的 `resolve_once → check_server_args` 顺序执行预检，
+再校验 chunk/最大请求数不超过 LL capacity；不加载模型权重。
+256 配方通过社区参数校验，旧 128 配方按预期因 page 对齐拒绝。
+预检报告读取社区 `resolving_view`，保留原始声明与解析结果的区别。
+
+iteration64 已将 validation-host-b 代码同步到 `ae24890`，但启动前资源检查发现
+8 张卡显存均占用 64%（计算利用率为 0）。控制器在加载模型前拒绝继续，
+未产生服务日志或新模型进程，也未清理其他任务。现场记录为
+`external-evidence:iteration64-validation-host-b-ep4/attempt.json` 与
+`gpu-before.txt`。GPU 隐藏的独立源码审计仍通过，10594 个 tracked file
+字节不变、无新增源文件；报告为同目录 `source-current.json`。
+
+截至 iteration64，可确认的是修复前后定向组件、真实短请求和多步 decode 的上述证据；
+256 配方的真实重启、529/2064-token 分块请求、中文与批量请求仍未执行，
+EP1/EP4 的完整精度对拍也未完成。后续有空闲卡时，先在同一提交和配方
+补齐这些验证，不能把参数预检通过外推为长输入或完整模型精度通过。
+
+### iteration65：validation-host-a 四卡 EP4 分块验证（2026-11-05）
+
+使用 adapter `ae24890`、社区 `baa9befa`，物理卡 0–3，沿用 dispatch
+capacity/prefill chunk 均为 256 的已提交配方。真实权重加载、四卡 decode
+graph 捕获及服务预热通过。三个短请求正确返回 `42`、`Paris`、`63`；
+与 iteration61 的相同输入比较，输出 token 和所记录输出 token logprob
+完全相同。这只是三个短请求的历史回归，不是独立参考或完整精度验收。
+
+529-token 请求已完成 `256 + 256 + 17` 分块并正确返回 `42`，
+耗时 204.58 秒，未复现此前的 DeepEP 容量断言或 OOM。2064-token 请求
+执行中因用户需要让出环境而停止，中文、多步序列和批量探针本轮未执行，
+不记作失败或通过。停止后 validation-host-a 全部 8 张卡显存和计算利用率均为 0；
+运行前后社区全部 10594 个 tracked file 字节不变，无新增源文件。
+证据位于 `external-evidence:iteration65-validation-host-a-ep4/`。
+
+组件回归补齐 EP4 的实际容量边界：每 rank 最多 dispatch 256 个 token 时，
+单 expert 接收缓冲区可容纳 `4 × 256 = 1024` 行，而原测试仅覆盖
+128/256 行。新增 1024 行参数在空闲 GPU4 上定向运行，Triton/vendor
+两条路径、channel/group scale、变 counts/空 expert 及变输入 graph replay
+共 **4 passed，19.02 秒**。它验证组件数值和 graph 契约，不代表真实模型
+所有 expert 同时填满或高并发显存已经通过。
+
+本轮最初的控制器曾轮询社区 `/health`，该版本健康检查会发送一次生成请求，
+默认 20 秒超时。发现额外流量后停止该控制器，改用已完成服务预热的日志标志，
+再单独执行语义断言；健康检查超时不作为本轮语义测试失败或通过的依据。
+保留此前日志，不修改社区健康检查行为或降低模型精度断言。
+
+### iteration66：validation-host-b 四卡预热超时（2026-11-05）
+
+在 validation-host-b 物理卡 4–7 运行 adapter `ae24890` 和同一份社区源码，
+其余卡已有任务。真实权重加载和四个 rank 的 decode graph 捕获完成，
+6-token 正常启动预热的 prefill 完成，但整个预热请求超过社区默认
+600 秒超时，启动器随后终止自身进程树，退出码 137。语义控制器尚未
+启动短输入、长输入或批量请求；本轮不能记录为模型启动或语义通过。
+日志未观察到 OOM 或此前的 DeepEP dispatch capacity 断言，
+但单凭超时也不能排除设备或通信停滞。
+
+运行前后社区 10594 个 tracked file 字节不变、无新增源文件。
+摘要及源码审计位于 `external-evidence:iteration66-validation-host-b-ep4/`。
+下一轮诊断保留正常预热，通过社区公开的 `SGLANG_WARMUP_TIMEOUT=1800`
+延长等待，并用 `--decode-log-interval 1` 记录每步是否推进；这两个
+诊断参数不构成修复已验证或模型精度通过的证据。
+
+### iteration68：将已知 EP 边界接入常规矩阵（2026-11-05）
+
+validation-host-b iteration67 继续预热期间，将已有的三项 GPU 回归入口纳入
+`tests/manifests/l15_family_matrix_v1.json`：请求补齐后的 graph 变输入及
+有效请求隔离，以及 raw Triton INT4 在 expert capacity 1024 下的 group/
+channel scale、clamp、变 counts 与变输入 graph replay。容量对应 EP4
+每 rank dispatch 256 的接收上界；这些仍是单卡组件测试，不证明四卡
+通信、真实模型所有 expert 同时填满或高并发显存通过。矩阵选择实际
+服务使用的 Triton 路径，vendor 比较路径继续留在完整 adapter 测试中。
+
+清单现在为 **35 个入口**：Dense 3、MLA 5、MoE 10、量化 10、Mamba 7。
+validation-host-b 在独立临时目录、HOSTnone/隐藏 GPU 下确认新增三个精确 pytest
+nodeid 均可收集，未更改运行中服务的 checkout；此收集结果不是 GPU
+执行通过。矩阵工具 CPU 回归 **32 passed**，清单校验通过，L0 GREEN
+（31 条既有 warning）。此前 iteration60/65 的组件执行证据继续保留，
+35 项完整矩阵尚未重跑，不能将历史 32/32 结果转授为新清单通过。
+
+### iteration67：保留正常预热并完成四卡启动（2026-11-05）
+
+validation-host-b 物理 GPU 4–7、adapter `ae24890`，诊断启动仅增加社区公开的
+`SGLANG_WARMUP_TIMEOUT=1800` 和逐步 decode 日志，其余沿用 256 配方。
+四个 rank graph 捕获通过，正常预热完成全部 7 个 decode batch，
+12:37:07 出现服务就绪标志；从 HTTP 开始监听到就绪共 **1555 秒**。
+因此 iteration66 的 600 秒等待不足，本轮已确认设备持续推进并完成
+正常预热，不能将此前超时直接归为 OOM 或容量断言复发。
+
+四卡启动配方在未设置时导出社区变量 `SGLANG_WARMUP_TIMEOUT=1800`，
+保留用户显式设置；不改 adapter 的全局默认或社区文件，不跳过预热。
+逐步 decode 日志仅为本轮诊断参数，没有加入默认配方。
+更新脚本通过远端 `bash -n`，L0 GREEN（31 条既有 warning）。
+
+`external-evidence:iteration67-validation-host-b-ep4/startup-summary.json` 保存
+实际服务进程参数、所选环境变量、诊断脚本 SHA256、四卡 graph 和就绪
+时间。启动前完整性通过；2064-token 长输入探针已开始，后续语义结果、
+运行后源码审计和完整精度验收仍待完成。该启动快照不代表整轮通过。
+
+本轮结束后的完整结果：三个短请求均通过，分别返回 `42`、`Paris`、
+`63`，与 iteration65 相同输入的输出 token 和所记录输出 token logprob
+一致（最大差值 0）。这只是历史 W4A16 功能回归，历史运行没有前后
+checkpoint 字节绑定，不能作为独立精度或 W4A8 等价验收。
+2064-token 请求在客户端 900 秒预算内未返回；529-token、中文和多步
+序列未执行。批量请求在服务 80 分钟总预算结束时断开，未取得结果，
+服务退出码为 124。长输入日志可见分块推进，未观察到 OOM 或 dispatch
+capacity 断言，但未完成请求不能记为通过，也不能据超时判为数值失败。
+
+严格验证器将整轮 `semantic_regression_passed` 记为 `false`，保留传输
+错误及缺失用例。社区源码运行前后全部 10594 个 tracked file 字节不变，
+无新增源文件。本轮服务及 worker 已退出，清理后物理 GPU4–7 显存和
+计算利用率均为 0；未停止 GPU0–3 的其他任务。完整摘要、原始语义响应、
+历史比较及清理证据位于同目录。下一轮需增加请求与总运行预算，补齐
+长输入、中文、多步和批量，不能用脚本退出码 0 代替探针结果。
+
+### W4A8 激活量化契约差距（2026-11-05）
+
+当前 checkpoint 配置的 routed/MTP 专家声明 channel INT4 权重
+（`group_size=-1`）和 dynamic、symmetric、per-token INT8 输入激活。
+实际 `HCU_W4A8_MOE=w4a16` 路径将这些组的 `input_activations` 置为
+`None`，保留 INT4 权重但使用 BF16 激活。此前“数值更保真”的表述缺乏
+整模型独立参考证据，已移除；W4A16 的组件数值、启动和语义回归不能转授
+为原 W4A8 数值语义一致或精度更高。
+
+社区 `baa9befa` 的 `_is_wint4afp8` 同时接受 INT/FLOAT 的 8-bit 动态
+激活，后续选择 `CompressedTensorsW4AFP8MoE`。该 scheme 的
+`create_weights` 直接以 `hidden_size // group_size` 分配尺度；对本配置
+的 `-1` 会得到负维度，因此 `heal` 只补 `Linear` 键尚不足以执行该模型，
+不能直接将后续差距全部归为缺少 CUTLASS。以上为配置和原始源码审计，
+没有执行新的 GPU 数值测试，也没有建立有效的社区模型精度基线。
+
+继续跟踪 scheme 的标准 `apply_weights → cutlass_w4a8_moe` 调用后，
+确认其输入和 SiLU×up 中间张量均分配为 `float8_e4m3fn`；
+`a13_scale/a2_scale=None` 时分别计算 tensor 级动态尺度，第二次 GEMM
+前的尺度为 `max(abs(SiLU(gate) * up), 1e-10) / 448`。输入重排使用
+同一标量尺度缩放所有 token 后转换 FP8，两个 GEMM 的 group_size
+均硬编码为 128。因此配置分类接受 INT8，不表示执行的是 per-token
+INT8；只增加 INT8 QDQ 也不能宣称还原了这条社区 FP8 路径。
+这些结论来自未修改源码的静态调用链，不证明当前 channel checkpoint
+可执行，也没有将标准路径的结论外推为 DeepEP LL 已通过。
+具体源码 SHA256 和函数位置见同目录 `kernel-contract.json`。
+
+后续必须核对配置声明与社区 scheme/实际 kernel 的激活 dtype、动态尺度、
+舍入和 clamp 契约，恢复可验证的 W4A8 路径，并补原始权重的组件/层级
+独立参考、变输入 graph 和真实模型分布验证。当前 W4A16 结果继续作为
+该路径的功能基线；每日追新仍等待这些功能与精度缺口补齐。
+
+### iteration71：checkpoint 声明的 W4A8 层级 CPU 参考（2026-11-05）
+
+新增 `tools.ct_w4a8_reference`，为 channel INT4 权重、动态 per-token
+INT8 激活提供独立 CPU FP32 Linear/单专家参考。它不选择服务 scheme，
+也未加入整模型 `--quantized-reference` 的支持列表。INT32 打包按低位
+nibble 在先、unsigned offset 8 解码；两个 Linear 边界都执行激活 QDQ，
+保留可选 SwiGLU clamp。仅接受已核对的量化参数和有限正 channel scale。
+
+validation-host-b 隐藏 GPU 的 **26 项 CPU 测试全部通过**，与官方
+`compressed-tensors 0.17.0` 的打包解码、动态尺度、整数码与 QDQ 对拍，
+包含零行、半整数舍入、不同 token 幅度、非整 pack 长度、符号位、
+双 GEMM 及参数拒绝。该库 FP32 对称 INT8 使用 `[-128, 127]`，
+尺度为 `absmax / 127.5`、ties-to-even；不能直接复用现有 SGLang
+INT8 路径的 `/127` 数值契约。参考显式要求 `[batch, token, hidden]`，
+拒绝 2D，因为此库的 token reducer 对 2D 会选择 tensor 级尺度。
+
+另用真实 checkpoint 的 `layers.0.ffn.experts.0` 三份权重，输入形状
+`[1, 3, 5120]`（合成幅度 1、1/32、零），完成无 clamp / clamp=0.75
+两组 CPU 专家对拍，与官方库 QDQ + 解包权重 + FP32 Linear 的输出
+精确相同。配置、索引及所选 shard 在探针前后实际读字节计算 SHA256，
+均匹配 iteration70 的预先清单；未将此抽样核对外推到其他 shard。
+证据位于 `external-evidence:iteration71-validation-host-b-w4a8-reference/`。
+
+这是为恢复 checkpoint 声明的 W4A8 数学建立的层级参考，尚未执行
+HCU W4A8 内核、routing/combine、真实推理隐藏态或整模型分布验收，
+也不代表社区 tensor-FP8 路径已还原。W4A16 服务及其既有结果保持原有
+验收范围，完整目标继续推进。
+
+### iteration69：35 项家族矩阵完整复跑（2026-11-05）
+
+validation-host-b 物理 GPU4、adapter `262f256`、社区 `baa9befa` 的严格矩阵
+**35/35 入口通过**，退出码 0：Dense 3、MLA 5、MoE 10、量化 10、
+Mamba 7。其中 33 项为 GPU 契约、2 项为 CPU 契约；pytest 明细包含
+62 个 test item 和 50 个 subtest，不将它们相加冒称独立入口数。
+逐项重查实际 nodeid、call phase、所有 phase/subtest 均通过，
+无 skip/xfail、超时或收集错误。三个新增 EP 边界入口已实际运行。
+
+运行前后社区全部 10594 个 tracked file 字节不变，无新增源文件。
+结果位于 `external-evidence:iteration69-validation-host-b-matrix/`：
+`outcomes.json` 保留全部 pytest 明细、环境与源码审计，并绑定原始完整
+报告和 stdout/stderr 的 SHA256；原始 `matrix.json` 与日志本地保留。
+这补齐新 35 项清单的执行证据，不等于全量 adapter 套件、四卡通信、
+真实模型长输入/批量或原始 W4A8 精度验收。此前模型测试的未完成项
+仍须单独补齐。
+
+### iteration72：声明式 W4A8 的独立设备组件（2026-11-05）
+
+新增候选 `hcu_adapter.kernels.w4a8_int8_triton`，暂不接入服务 scheme。
+第一步为 expert-major 有效行执行 FP32 `absmax / 127.5`、ties-to-even
+INT8 量化；第二步直接读取低位 nibble 在先的 INT4 原始字节，以
+INT8×INT4 的 INT32 累加完成全 K 归约，再乘 token/channel FP32 尺度。
+不缓存完整反量化权重，也不将 INT8 激活转换为 BF16 后再执行 dot。
+仅支持有限有效输入及有限正尺度，padding 的整数码/输出为零、尺度为 1；
+全零的有效行使用 FP32 epsilon。有效行数留在设备上，graph 重放重新读取。
+
+候选在远端 `/tmp/adapter-w4a8-kernel72` 隔离执行，没有改模型 checkout。
+先完成 7 个 gfx938 AOT 编译变体和 2 个 CPU Triton interpreter 对拍，
+包含真实 K=5120 形状的编译和半整数舍入；离线证据不作为设备通过依据。
+iteration70 清理后重新检查 GPU4–7 空闲，使用物理 GPU4，设备专项
+**13 passed，约 22 秒**，无 skip/xfail 或收集错误。覆盖 FP32/BF16/FP16
+输入、FP32/BF16 权重尺度、部分 tile、capacity=1024、空专家、NaN padding、
+全零有效行，以及捕获后改变输入、尺度和 counts 的重放。整数码和有效尺度
+精确相同、relative L2 < 2e-5、cosine > 0.99999，未放宽断言。
+首次尝试因诊断记录器的 pytest hook 参数名错误而在执行前失败，实际执行
+0 项；修正记录器后完成上述 13 项，保留原失败记录，不记为内核数值失败。
+
+`external-evidence:iteration72-validation-host-b-w4a8-kernel/` 保存逐项/逐 phase
+结果、脚本及编译/interpreter 报告。模型 checkout 基于 `51ad82e`，
+候选不是该 commit 的已提交代码；设备报告绑定实际候选内核和测试文件的
+前后 SHA256，二者均不变。catalog 仍标为 candidate，尚未接入服务。
+
+此组件遵循 checkpoint 声明的 token-INT8 数学，不能称为社区
+tensor-FP8 路径的复现。服务端专家链接线、routing/combine、真实隐藏态及
+整模型分布验收仍须继续；当前 W4A16 模型的语义回归不转授为此组件通过。
+
+### iteration73：真实权重单专家的 W4A8 设备链（2026-11-05）
+
+沿用 iteration72 实际测试过的内核字节，在 validation-host-b 物理 GPU4 执行
+`layers.0.ffn.experts.0` 的 gate/up/down 三份真实权重：
+5120→2304→5120，每个 Linear 边界均执行动态 token-INT8 量化，
+中间为 FP32 SwiGLU。独立 CPU FP32 oracle 的打包/量化契约已在
+iteration71 对拍官方 compressed-tensors；本轮直接比较完整专家输出，
+没有以 GPU 自身输出构造期望值，也未放宽 iteration72 的数值阈值。
+
+无 clamp / clamp=0.75 两组各覆盖 eager、初次 graph 重放、全空有效行、
+改变输入及 counts、重新激活，共 **10 组检查通过**。两个输入阶段均为
+`[1, 4, 5120]`，有效行数分别 3 和 2；输入为可由 BF16 表示的合成值、
+不同幅度及全零行，padding 填 NaN，不是实际推理隐藏态。有效输入的
+整数码和尺度精确一致；完整专家最大 relative L2 为
+**8.445362e-7**，非零输出最小 cosine 为 **0.99999988**，约 16.6 秒。
+
+配置、索引及所用 `model-00003-of-00048.safetensors` 在 CPU 准备数据前后
+实际读取字节，均匹配 iteration70 预先清单。生成的 CPU 参考/权重资产
+另绑定 SHA256，GPU 执行前核对该资产及候选内核字节，避免换权重后沿用
+期望值。证据为 `external-evidence:iteration73-validation-host-b-real-w4a8-expert/`。
+未将所选 shard 的校验外推为全 checkpoint 本轮审计，也不将单专家
+FP32 中间计算通过外推为服务的 BF16 存储、routing/combine、其他专家、
+真实隐藏态、社区 tensor-FP8 或整模型分布精度通过。
+
+### iteration70：四卡完整有限语义回归与权重绑定（2026-11-05）
+
+validation-host-b 物理 GPU4–7，实际 adapter `51ad82e`、社区 `baa9befa`，
+真实 DeepSeek-V4.1-Flash-Channel-INT4-w4a8 checkpoint，
+执行路径仍为 **W4A16**。TP4/EP4、DeepEP LL、dispatch/chunk/page=256、
+mem_fraction_static=0.90、max_running_requests=16，保留正常预热；
+本轮诊断显式设置 `SGLANG_WARMUP_TIMEOUT=3600`，不改配方默认 1800。
+四个 rank 的 `[4, 8, 12, 16]` decode graph 捕获完成，预热 7 个 decode
+batch，HTTP 监听到 ready 为 325 秒；不对较此前加速的原因作无证据归因。
+
+三个短请求分别返回 `42`、`Paris`、`63`，均通过，耗时约 157/163/166 秒。
+四项扩展全部通过：中文返回 `Paris`（82 秒）、529-token 返回 `42`
+（288 秒）、2064-token 返回 `63`（568 秒）、连续输出 1 至 10
+（1168 秒）。两条长请求的实际输入共享前 512 token，page_size=256，
+第二条请求实际命中 512 token，仍返回不同且正确的答案，覆盖缓存复用
+及输出隔离。批量 `[21, 21, 20]` 输入的三条答案全部通过（267 秒），
+日志实际出现 `#running-req: 3` 且 `cuda graph: True`，不只验证 HTTP
+数组接收而未验证三请求 decode。
+
+严格验证器独立重查答案、长度、批量输入、共享前缀/缓存命中、四 rank
+捕获、实际配置、controller、清理、源码和权重绑定，整轮
+`semantic_regression_passed=true`。10 组纯合成验证器 fixture 另确认：
+错误答案即使自报 true、传输错误、缺项、缓存未复用/超出前缀、权重变化、
+批量输入错配和清理失败都不能放行；fixture 通过不作为设备证据。
+
+运行前后社区全部 10594 个 tracked file 字节不变、无新增源文件；
+checkpoint 的 **54 份资产**在本轮执行前建立清单，执行后重新读字节
+验证一致，不能把这份绑定倒授给 iteration65/67。全部探针完成后，仅对
+本轮记录的服务/worker 身份发 SIGTERM；社区对子进程退出 -15 触发
+SIGQUIT 和自身 kill_process_tree，最终 server.rc=137。该退出发生在
+最后一次成功响应之后，原始尾日志与清理证据保留；不是把非零退出
+伪装成自然退出 0。最终身份审计无残留服务或 worker、无 zombie。
+
+完整结果和可复查脚本位于
+`external-evidence:iteration70-validation-host-b-ep4/`。本轮仍有 14 条运行后
+device-load/低剩余显存提示，未观察到实际 OOM 异常；不将这些提示抹去，
+也不据此声称已覆盖所有内存边界。这补齐 iteration67 未完成的长输入、
+中文、多步与批量功能回归，仍不等于原始 W4A8、独立精度参考、多模型
+或全量 adapter 套件验收通过。
+
+### iteration74：专家接口原型的量化边界差异（2026-11-05，未通过）
+
+新增未提交原型将 gate/up 合并投影、FP32 SwiGLU、二次 token-INT8 量化
+和 down 投影收口为 `w4a8_int8_masked_experts`。validation-host-b GPU4 上重跑原 13 项，
+另加 6 项专家链（3 种输入 dtype × 无 clamp / clamp=0.75），结果为
+**16 passed、3 failed**：原组件和有 clamp 的链通过，无 clamp 的三种
+输入 dtype 均在改变输入/counts/尺度后的检查失败。原型源代码和测试的
+实际字节另以 `.txt` 快照绑定；服务与已提交组件仍保持原有范围。
+
+对 FP32 输入失败相位另做 eager 复现：第一段设备 GEMM 与独立 CPU
+INT64 整数点积、FP32 token/channel 缩放精确一致；与 CPU 反量化 FP32
+GEMM 最大差值为 3.337860e-6。第二次量化的一个值分别落在
+`-127.5000076` 与 `-127.4999924`，整数码为 -128 与 -127，使最终专家
+输出 relative L2 为 9.765185e-4，超过原 2e-5 门槛。对相同设备中间值
+在 CPU 重新量化，整数码精确一致，因此该复现未指向量化内核对同输入
+的舍入错误；eager 也有输出差异，不能直接归为 graph 重放独有故障。
+
+完整失败、候选快照和逐段诊断见
+`external-evidence:iteration74-validation-host-b-w4a8-experts/`。这里只定位了
+FP32 样本的累加精度与后续量化非连续边界，尚未证明所有失败的完整归因，
+也未证明哪个整模型数值路径满足用户目标。接下来需核对整数累加、FP32
+fake-quant Linear 和实际服务存储的参考契约；保留原 CPU oracle 和失败
+记录，继续建立独立验证。当前不把 16/19 或 iteration73 的单专家通过
+外推为专家接口或完整 W4A8 链已通过。
+
+### iteration75：独立整数执行 CPU 参考（2026-11-05）
+
+保留 `linear` / `expert` 原 FP32 fake-quant 行为，另增显式
+`int32_linear` / `int32_expert`。后者由 INT64 点积独立模拟无溢出的
+INT32 完整累加，随后转 FP32，依次乘 token/channel 尺度；中间激活
+仍为 FP32，不声称覆盖实际 BF16 存储。K > 2097151 显式拒绝。
+validation-host-b 的 HOSTnone、隐藏 GPU 进程共 **44 passed**，包含原 26 项
+和新 18 项，132 个 setup/call/teardown 相位均通过，GPU 未初始化。
+新回归以 CT 0.17.0 官方整数码/打包、FP64 精确整数点积及 Python
+整数和交叉检查，包含超过 2^24 的完整累加、非整字边界和两种 clamp。
+
+证据位于 `external-evidence:iteration75-validation-host-b-integer-reference/`。
+附带固定社区 `baa9befa` 的 generic INT8 GEMM 源码审计：文件与 git blob
+逐字节一致，声明 INT32 accumulator、FP32 compute。这仅支持通用整数
+执行口径，不证明 W4AFP8 scheme、原 W4A8 模型语义或模型精度等价。
+iteration74 原 FP32 参考的 3 项失败未豁免；两种参考分别报告。
+
+### iteration77：专家链的整数执行补充合同（2026-11-05）
+
+validation-host-b GPU4 空闲检查后执行，与 iteration74 相同原型字节和输入生成器，
+另设显式调用 `int32_expert` 的 6 项补充测试；没有替换原 `expert`。
+FP32/BF16/FP16 输入 × 无 clamp / clamp=0.75 全部通过，18 个测试相位
+均通过，耗时 15.36 秒。覆盖 eager、graph、变输入/counts/尺度和空专家，
+保持 relative L2 < 2e-5、cosine > 0.99999 原阈值。候选与参考运行前后
+哈希一致，实际 Torch 2.11.0、Triton 3.6.0、BW1100。
+
+证据与独立测试快照位于
+`external-evidence:iteration77-validation-host-b-integer-expert-contract/`。
+这是合成专家链符合整数执行合同的证据，不能追认 iteration74 的
+FP32 fake-quant 对照通过，也未覆盖真实路由、combine、BF16 中间存储、
+服务接线或模型精度；原型仍未晋级为已验证服务实现。
+
+### iteration79：真实 checkpoint 专家的整数执行对照（2026-11-05）
+
+在 validation-host-b GPU4 复用已绑定的 `layers.0.ffn.experts.0` 权重，
+5120 → 2304 → 5120，验证同一未晋级专家接口原型。运行前独立 CPU
+隐藏 GPU 进程重新生成整数累加期望，保留 iteration73 的原 FP32
+fake-quant 期望。原资产 SHA256 校验一致；config、index 与所选 shard
+本轮前后重读字节校验，与 iteration70 前瞻绑定的对应资产一致。
+绑定范围仅为所选资产，不能外推至整个 checkpoint 的新一轮验证。
+
+无 clamp / clamp=0.75 各覆盖 eager、graph 初始、空专家、变输入及
+有效行数、重新激活，共 **10/10 通过**；设备输出与独立整数参考
+逐元素一致（max abs delta=0）。CPU 参考构建 17.75 秒，设备检查
+29.08 秒。两相位有效行数 3 → 2，输入为合成 BF16 可表示值，
+中间激活及最终输出仍为 FP32。整数参考与原 FP32 参考在这些样本的
+relative L2 为 4.03e-7～8.45e-7，不代表 iteration74 的其他样本失败消失。
+
+证据及脚本位于
+`external-evidence:iteration79-validation-host-b-real-integer-expert/`。
+本轮继续保留原 FP32 门禁；尚需验证实际 BF16 存储、路由权重、
+dispatch/combine、服务 scheme/loader 接线及整模型独立精度。
+
+### iteration82/83：CT 原 dtype 的 token-INT8 组件（2026-11-05）
+
+核对官方 compressed-tensors 0.17.0 发现：BF16/FP16 的原输入执行会
+保留尺度、除法和 QDQ 的存储 dtype，零行分别使用 BF16 epsilon
+0.0078125、FP16 epsilon 0.0009765625。原组件显式采用 FP32 量化，
+零行使用 FP32 epsilon，不能自动作为前述两种输入 dtype 的 CT
+原生执行替代品。这是执行精度契约的差距，不把原 FP32 组件判为错误。
+
+保留原 API，增加 CPU `token_int8_native` 与独立设备组件
+`token_int8_native_masked`。validation-host-b 隐藏 GPU、HOSTnone 进程共 **58 passed**
+（原 44 + 新 14），官方 CT 的整数码、尺度及 QDQ 逐元素对齐。
+GPU4 **12 passed**：6 组 dtype/尺寸的非连续输入与变输入/counts
+graph、3 组空容量、3 组原 dtype 量化接原整数 GEMM。后者先显式
+将已舍入尺度提升 FP32，再与独立 FP64 精确整数点积、FP32 缩放对齐，
+输出逐元素一致；不把反量化浮点 GEMM 作为整数点积参考。测试覆盖
+NaN padding、零行、空专家、恢复有效行以及变尺度。CPU 5.15 秒、
+设备 16.50 秒，全部 setup/call/teardown 通过且候选字节前后不变。
+另在同节点隐藏 GPU 运行 `tests/test_ops_cpu.py`，38 passed。
+
+证据位于 `external-evidence:iteration83-validation-host-b-native-int8/`。
+原 FP32 专家链失败未豁免；原型未接入该新组件。下一步仍需确定并
+验证专家 GEMM/SiLU 的中间存储、DeepEP combine dtype、正式 scheme
+加载和整模型精度，不能将本轮组件通过视为完整 W4A8 验收。
+
+### iteration84：分别存储激活的专家原型（2026-11-05，仅诊断）
+
+候选显式整数参考与 `w4a8_int8_native_masked_experts` 原型，在完整 INT32 点积转 FP32、
+依次乘 token/channel 尺度后，将投影存为输入 dtype；SiLU 与乘积也
+各自保留该 dtype，二次量化使用 iteration83 的原 dtype 合同，最终
+输出恢复输入 dtype。该合同不等于 CT fake-quant 浮点 Linear，也不等于
+原 FP32 中间态专家；保留所有旧参考及 iteration74 失败。
+
+validation-host-b HOSTnone/隐藏 GPU 的 CPU 参考 **69 passed**（原 58 + 新 11），
+新专家参考用官方 CT 整数码和独立 FP64 整数点积交叉核对存储边界；
+GPU4 **18 passed**（原 12 + 新 6），覆盖 FP32/BF16/FP16 × 无 clamp /
+clamp=0.75 的 eager、graph、空专家、变输入/counts/尺度及重新激活。
+原 relative L2 < 2e-5、cosine > 0.99999 保持不变。CPU 5.49 秒、
+设备 19.28 秒，所有测试相位通过，候选字节前后不变。
+
+证据位于 `external-evidence:iteration84-validation-host-b-native-experts/`。
+该候选仅验证 SiLU 和乘积各自舍入的合同。后续核对发现社区存在融合
+SiLU×up 路径，不能用本轮候选代替融合存储语义；候选保留为字节绑定的
+诊断快照，代码未晋级服务实现。尚未接入正式 scheme/loader、
+dispatch/combine 或整模型；不能据此宣称完整 W4A8 或模型精度通过。
+
+### iteration86：融合激活存储的独立 CPU 参考（2026-11-05）
+
+公开 CPU `int32_native_linear` / `int32_native_expert` 明确整数累加后
+FP32 缩放、按输入 dtype 存储投影，以及 FP32 SiLU×up 后一次转回输入
+dtype 的融合乘积边界。它不同于 iteration84 的两次激活存储，也不同于
+CT fake-quant 浮点 GEMM、原 FP32 中间态参考或社区 tensor-FP8 scheme。
+保留这些参考及原失败记录，不用改参考追认模型通过。
+
+validation-host-b HOSTnone/隐藏 GPU 进程 **69 passed**，207 个测试相位通过，
+CPU 5.74 秒，候选文件前后字节不变，GPU 未初始化。与官方 CT 0.17.0
+整数码和独立 FP64 精确整数点积交叉核对，覆盖三种 dtype、两种 clamp
+及非法 clamp 拒绝。证据及设备候选快照位于
+`external-evidence:iteration86-validation-host-b-fused-native-experts/`。
+
+固定社区源码 `cutlass_w4a8_moe.py` 与 git blob 一致，记录了 normal
+路径的 BF16 intermediate + silu_and_mul 调用和 masked 的融合 FP8
+量化调用；两条路径不同，不能将该源码观察当作原生 INT8 服务等价证据。
+设备候选在 `/tmp` 等待约 301 秒，GPU4 显存与利用率均空闲后启动。
+**18/18 通过**，54 个测试相位全部通过，无 skip/xfail；耗时 15.22 秒，
+候选字节前后不变。包含新增 6 项原 dtype 融合存储专家的 eager/graph、
+空专家、变输入/counts/尺度与重新激活，保持原 relative L2 < 2e-5、
+cosine > 0.99999。正式服务接线、DeepEP combine 与整模型精度仍待验收。
+
+### iteration87：真实权重的融合 BF16 专家合同（2026-11-05）
+
+同一 `layers.0.ffn.experts.0`、5120 → 2304 → 5120，使用
+iteration86 的显式整数执行与融合 BF16 存储。CPU 参考在隐藏 GPU
+进程重新建立，所选 config/index/shard 前后重读字节匹配原前瞻绑定，
+原资产 SHA256 校验一致。GPU4 的 eager、graph 初始、空专家、
+变输入/counts、重新激活 × 两种 clamp 共 **10/10 通过**；
+输出为 BF16，与独立整数参考逐元素一致，max abs / relative L2 均为 0。
+CPU 13.95 秒、设备 29.82 秒，候选字节前后不变。
+
+保留与原 CPU FP32 fake-quant 期望的独立比较：relative L2 为
+**0.0181～0.0259**，说明 dtype/量化执行合同产生了可观差异，不能
+将本轮逐元素通过追认为原 FP32 参考通过或模型精度通过。当前输入仍为
+合成 BF16 值，绑定仅覆盖所选专家资产，不是完整 checkpoint 新验收。
+证据位于 `external-evidence:iteration87-validation-host-b-real-fused-native-expert/`。
+正式 loader、dispatch/combine、真实隐藏态和模型分布验证仍待补齐。
+
+### iteration93～97：validation-host-a 真实加载及显式 INT8 候选接线（2026-11-05）
+
+按用户最新指定切至 validation-host-a `adapter-validation`，使用物理 GPU4；
+分配前 VRAM% 与 HCU% 均为 0。镜像残留的旧 SGLang/sgl_kernel
+包与相应 metadata 已移到容器 `/tmp/adapter-validation-host-a-image-packages95`
+备份，保留恢复清单。测试使用完整 adapter 快照加候选改动，
+不是人工重设 bootstrap 状态或只注入 helper 模块。
+
+新增显式 `HCU_W4A8_MOE=int8` 候选，保留原 regex 匹配及激活量化元数据，
+复用官方 `CompressedTensorsWNA16TritonMoE` 的分配和 raw INT4 转换，
+以独立 marker 接入 DeepEP LL core。默认 W4A16 不变；标准 dispatcher、
+非 BF16、非对称量化、实际零点权重及未验证 runner 参数明确拒绝。
+官方 loader 的单 packed-column 维度存在 stride/view 限制，当前 K/I
+要求至少 16 且为 8 的倍数。iteration93 实际转换逐字节匹配且幂等。
+
+iteration94 用真实 checkpoint config 解析发现：CT 0.17.0 将未指定的
+对称 `zp_dtype` 规范化为 `torch.int8`，原 namespace doubles 未覆盖，
+候选误拒绝。已修复并增加真实 `QuantizationArgs` 回归；
+多符号注册也在全部成功后才发布，第二项注册冲突时回滚记录并可重试。
+iteration96 的 L0 因 catalog 改动后的 tier-matrix 未同步失败，已重新生成，
+保留原失败日志。
+
+iteration97：**66 项 CPU 接缝回归、38 项 CPU 算子、18 项 HCU 原 dtype
+组件均通过**，L0 GREEN（34 条既有警告）。全新进程使用真实 config
+选中候选 scheme，保留无 `"Linear"` 的 regex 桶与激活配置，确认实际
+SGLang 和影子包导入来源。官方 loader 加真实 DeepEP LL dispatch/combine
+数据类型的 **10 项 eager/graph 检查全部通过**，涵盖两种 clamp、
+空专家、变输入/counts/尺度及重新激活；合成 BF16 输出与独立 CPU
+整数参考逐元素一致，topk IDs/weights 对象保留。这里手工构造了
+dispatch output，没有执行真实通信或整模型。
+
+社区固定 commit `baa9befa381511cd4d56f83980951e5a45fffc6d` 的
+10594 个跟踪文件在专项前后逐字节核验，变化与额外源码均为 0。
+真实模型 `text_config.routed_scaling_factor=1.5`，超出目前 None/1
+范围；现代 quant-method 的 apply 入口、inplace 提示、真实 dispatch/combine、
+真实隐藏态与模型分布仍需逐项补齐。原 FP32 专家失败及 iteration87
+相对原 fake-quant 的 1.8%～2.6% 差异保持未通过，不做精度豁免。
+
+### iteration99：诊断汇报不再将跳过计为通过（2026-11-05）
+
+validation-host-a 扩大 ops 诊断实际结果：内核 254 passed / 2 skipped / 2 xfailed，
+FA 53 skipped，AR gate 2 passed / 1 skipped / 1 deselected；RMS、
+GEMM 与 bridge graph 探针通过，RoPE 因默认旧 checkpoint 路径不存在失败，
+原退出码为 1。保留原始日志 gzip；不是全量 adapter 或模型验收。
+
+发现 `_pytest` 仅根据退出码标 PASS，导致全部跳过的 FA 组也显示 ok，
+总 verdict 还会对跳过的组输出 ALL GREEN。现改为：实际通过且没有
+skip/xfail/xpass 才标 PASS；全跳过标 SKIP，混合或缺少通过计数标
+INCOMPLETE。总退出码 0=通过、1=失败、2=验证不完整；无实际通过或
+只有 INFO 同样不能绿。主动 deselected 不影响所选测试的通过判定。
+
+独立 HOSTnone、三种 GPU 可见性均隐藏的进程中，15 项汇报回归及
+38 项 CPU 算子共 **53 passed**，GPU 未初始化；L0 GREEN（34 条既有
+警告），候选字节前后匹配。没有借此重跑或追认原设备套件。
+证据位于 `external-evidence:iteration99-validation-host-a-triage-completeness/`。

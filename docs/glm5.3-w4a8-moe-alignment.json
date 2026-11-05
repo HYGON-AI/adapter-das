@@ -45,9 +45,13 @@
   },
   "model_acceptance": {
     "status": "not accepted",
-    "latest_full_cohort": "P22/D13",
+    "latest_full_cohort": "P24/D14",
     "prefill_failures": 6,
     "aligned_decode_failures": 6,
-    "thresholds_unchanged": true
+    "thresholds_unchanged": true,
+    "capture_exit": 0,
+    "comparison_exit": 1,
+    "all_first_two_IDs_match_native": true,
+    "raw_archive_sha256": "22c2e87e02dea06717e2716d6494d0b440c45b33d138bfdc8c78911d8308283c"
   }
 }

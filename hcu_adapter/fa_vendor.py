@@ -649,38 +649,24 @@ def install():
 
     mode, _src = hcu_env.resolve("HCU_FA_IMPL")
     triton_mode = mode == "triton"
+    if mode == "auto":
+        # auto answers the best validated face: the in-tree triton route
+        # (paged decode/wide windows + ragged varlen prefill; numerics gate
+        # tests/tools/_test_paged_attn_triton.py ALL-PASS on gfx936+gfx938;
+        # L1.5 dense eager+graph green on it, 2026-11-05). The vendor wheel
+        # stays opted out of auto: its gfx936 paged kernel produced
+        # token-soup on live decode (2026-10-12 bw7, gap-listed) --
+        # HCU_FA_IMPL=vendor still forces it for A/B probes.
+        triton_mode = True
     if triton_mode:
         # tier-③ triton route: paged kvcache faces (L=1 decode windows +
-        # L>1 causal extend windows) -> in-tree triton kernels (numerics
-        # gate: tests/tools/_test_paged_attn_triton.py ALL-PASS on
-        # gfx936+gfx938); ragged/varlen faces stay on the emu. Vendor wheel
+        # L>1 causal extend windows + ragged varlen prefill) -> in-tree
+        # triton kernels; contract-exceed faces keep the emu. Vendor wheel
         # untouched (its paged path remains gap-listed).
         _install_triton_decode(_sk_fa, registry)
         return
     vendor_enabled = mode == "vendor"
-    if mode == "emu" or mode == "auto":
-        from sglang.kernels.ops.attention import flash_attention_v3 as _fa3v
-        from sglang.kernels.ops.attention import flash_attention as _fapub
-
-        dense_safe = _preserve_dense_varlen(_fa3v.flash_attn_varlen_func)
-        _fa3v.flash_attn_varlen_func = dense_safe
-        _fapub.fa3_flash_attn_varlen_func = dense_safe
-        for target in (
-            "sglang...flash_attention_v3:flash_attn_varlen_func",
-            "sglang...ops.attention.flash_attention:fa3_flash_attn_varlen_func global",
-        ):
-            registry.register(
-                "flash_attention", dense_safe, target=target,
-                mechanism=registry.MECH_REBIND,
-                detail="upstream FA2 dense fallback; ragged keeps emulation",
-            )
-        if mode == "auto":
-            # gfx936 vendor-wheel paged kernel produces token-soup on the
-            # real decode path (uniform-window A/B passes, live decode
-            # corrupts, 2026-10-12 bw7) -- gap-listed, awaiting DTK fix.
-            # auto therefore answers emu everywhere; HCU_FA_IMPL=vendor
-            # opts the wheel back in for A/B.
-            pass
+    if mode == "emu":
         LOG.warning(
             "HCU adapter: HCU_FA_IMPL=%s -- fa3 attention stays on the "
             "torch emulation (triton decode route available via =triton)", mode

@@ -7,9 +7,8 @@ Design contract (customer-facing):
 1. ONE manual lists every variable (docs/env-vars.md) — no tribal knowledge.
 2. Variables AUTO-ADAPT: platform detection (arch, wheel presence) and
    server args decide the value; a correct deployment needs ZERO env vars.
-3. Explicit env always wins over auto rules, for debugging; every resolved
-   value is logged once at startup with its source (explicit/auto/default),
-   so "what is active right now" is always answerable from the log.
+3. Explicit env always wins over auto rules. Startup logs show configured
+   values and mark automatic rules as deferred; logging must not probe GPUs.
 
 Resolution order: explicit env  >  auto rule (arch/wheel/args probe)  >
 default. Never hard-fail on an unknown value: log and fall back.
@@ -631,8 +630,12 @@ def environment_value(name):
     return os.environ.get(spec["env"], str(spec["default"]))
 
 
-def resolve(name, *, host=None):
-    """-> (value, source) where source in {'explicit','auto','default'}.
+def resolve(name, *, host=None, evaluate_auto=True):
+    """Return a value and its source, or a deferred marker for reporting.
+
+    With evaluate_auto=False, unresolved auto rules return an informational
+    marker instead of probing devices or importing GPU libraries. Only startup
+    reporting should use this mode; consumers keep the default resolution.
 
     The returned value is the EFFECTIVE setting as a string ('1'/'0'/''
     or a short descriptive value for auto rules); consumers map it to
@@ -656,6 +659,8 @@ def resolve(name, *, host=None):
     auto_hosts = spec.get("auto_hosts")
     active_host = host or os.environ.get("_HCU_ADAPTER_ACTIVE_HOST")
     if "auto" in spec and (auto_hosts is None or active_host in (None, "none") or active_host in auto_hosts):
+        if not evaluate_auto:
+            return "pending", "auto-deferred"
         try:
             auto = spec.get("auto_by_host", {}).get(active_host, spec["auto"])
             v = auto()
@@ -673,7 +678,7 @@ def enabled(name):
 
 
 def log_summary():
-    """Startup lines: config file in effect + every resolved var + source."""
+    """Report configuration without executing device-dependent auto rules."""
     from . import hcu_config as _cfg
 
     cfg_line = _cfg.summary_line()
@@ -681,7 +686,7 @@ def log_summary():
         LOG.warning(cfg_line)
     parts = []
     for name in REGISTRY:
-        v, src = resolve(name)
+        v, src = resolve(name, evaluate_auto=False)
         if v in ("", "0"):
             continue  # keep the line short: only non-default-effective vars
         parts.append(f"{name}={v}({src})")

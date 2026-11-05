@@ -253,6 +253,17 @@ REGISTRY = {
                  "prefill chunk 上要 34 GiB 并在 prefill graph 捕获期 OOM"
                  "（S1 Hy4 2026-11-03）；行间独立，分块数值不变",
     },
+    "HCU_HYV4_CT_SCALE": {
+        "env": "HCU_HYV4_CT_SCALE", "default": "1",
+        "about": "HYV4 CT-int8 scale 命名运行时兼容（hyv4_ct_scale_patch.py）："
+                 "v0522 hunyuan_v4(_nextn).py load_weights 无条件把 .weight_"
+                 "scale 改名 .weight_scale_inv（fp8 block 命名），CT W8A8Int8/"
+                 "WNA16 参数叫 .weight_scale → Hy4 Channel-INT4-w4a8 加载期 "
+                 "KeyError(shared_experts.gate_up_proj.weight_scale_inv，S1 "
+                 "2026-11-03)。HYV4 类内 do_load_weights 包装：模型无 *_inv "
+                 "参数时去掉社区追加的 _inv 再交原 mixin；不读写社区源码。"
+                 "上游各平台同病；=0 跳过安装",
+    },
     # custom all-reduce
     "HCU_AITER_AR": {
         "env": "HCU_AITER_AR", "default": "0",

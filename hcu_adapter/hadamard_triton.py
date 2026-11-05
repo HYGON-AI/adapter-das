@@ -108,10 +108,11 @@ def install():
     ):
         setattr(had, nm, fn)
     registry.register(
-        "quantization",
-        "hadamard-transform",
+        "hadamard",
+        impl,
         target="seam:sglang.kernels.ops.quantization.hadamard.hadamard_transform",
         mechanism=registry.MECH_SEAM,
-        detail=f"impl={impl} ({src}); 2^k butterfly, fp32 compute",
+        detail="2^k butterfly, fp32 compute, caller tensor untouched"
+        f" (resolved from {src})",
     )
     LOG.info("HCU adapter: hadamard_transform -> %s (%s)", impl, src)

@@ -2,6 +2,29 @@
 
 该矩阵用于回答“社区 sglang + adapter 是否能在不加载模型权重、不启动服务的条件下，走通五类主要模型行为”。它不是性能测试，也不替代真实模型 L2。
 
+## 当前完整矩阵结果（2026-11-06）
+
+合并上游同步及 FA3、Conv1D、prefill 登记修复后的不可变快照，
+完成五家族一次整轮 **54/54 PASS**：Dense 10、MLA 17、MoE 10、
+Quantization 10、Mamba 7。逐项复核 115 个参数节点、58 个 subtests，
+setup/call/teardown 全部通过，无 skip、xfail、错误或超时。
+同快照的 CPU 组合回归 87 passed，CUDA 未初始化；
+L0 GREEN，31 条已有警告。
+
+社区 SGLang 0.5.22 commit
+`baa9befa381511cd4d56f83980951e5a45fffc6d` 的全部 10594 个跟踪文件
+及额外源码前后审计通过，603 个候选文件摘要保持不变；
+本地另核对归档中的候选文件及当前 kernel/bridge 字节。
+本轮快照不包含随后新增的模型 smoke 显存预算参数，该功能的独立
+验证见 [模型配置验收](l15-model-smoke.md)。组件矩阵通过不证明
+真实模型、独立 FP32 精度、其他配置或全部硬件能力通过。
+
+原始报告、逐节点相位、日志、全部受测候选文件及审计归档为
+`external-evidence:matrix272-complete-raw.json.gz`，
+SHA256 `fb0d986dc83de401e352bb787677ccc241042dde68cf6a2876b15ca53521a55b`。
+报告中的 `snapshot_sha256` 是排序后的文件摘要清单的 SHA256，
+不是 ZIP 摘要；归档同时保留完整清单和文件字节。
+
 ## 固定边界
 
 - 绑定社区 sglang v0.5.22 源码树；

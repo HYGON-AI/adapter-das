@@ -38,6 +38,23 @@ auto rule, never the SGLang source marker. No new equivalent enable variable is
 introduced. Controls and source provenance are exposed by framework-free
 `hcu_adapter.allreduce.effective_sources()`.
 
+Full-model admission also uses the public HcuPlatform.use_custom_allreduce
+method. Official super behavior is retained. On otherwise unsupported HCU it
+adds only explicit environment or registered config selection with an already
+installed healthy, available AITER ABI and an actually supported HCU architecture.
+Default, auto selection, OFF, kill, child veto and missing ABI do not extend that
+platform gate. Fatal/drift checks precede admission. Batch-invariant mode
+is unsupported for selected HCU AITER and refused before registration; a late
+mode change is refused by state/getter/factor readers too. Its communicator
+excludes AITER, and enabling
+the generic gate there would otherwise allocate native C++ CustomAllreduce.
+Unselected batch-invariant configuration keeps the official result. The ordinary
+CLI user disable flag remains authoritative. QuickAllReduce keeps
+its official architecture check and disabled gfx936 result; no communicator or
+architecture predicate is replaced. Direct component initialization bypasses
+the worker's config-to-global-enable step and cannot prove model selection.
+The platform bridge source is included in selected AR compile-factor identity.
+
 Provider-consumed `AITER_AR_MAX_SIZE_MB`, `AITER_AR_TRANSPORT` and
 `AITER_AR_SMALL_MESSAGE` support their defaults and explicit environment inputs.
 The installed provider reads the process environment directly; its public
@@ -156,6 +173,13 @@ Flash and FP8 behavior rather than importing their old implementations. No
 model-load API or Plugin is used by AR itself. Historical90af CPU packaging
 results belong only to90af; new-main source, wheel and installed checks must
 be run separately and do not grant native/model admission.
+
+The platform-admission follow-up replays this same narrow AR slice onto main
+`7b8d380e0a50d028e29144eb3e0f3705a63dda6a`. Main's intervening two L1.5 tool
+changes are retained. Previous423df artifacts and component/model receipts stay
+bound to423df, not this new source/wheel. The first full-model attempt failed
+before ready in HCU Triton device-library discovery; it also exposed the public
+platform veto described above. Neither is a scored AR numerical failure.
 
 HCU/H0/H1, ordinary/fused numerics, changed-input TP2 Graph, same-model A/B
 HumanEval32 and complete native zero-launch bootstrap tracing remain pending.

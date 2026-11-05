@@ -63,6 +63,9 @@ def _check_owner_state():
         raise AllReduceCompatibilityError("AR construction/in-progress state inherited across fork; use spawn")
     if _installed is not None and requested_policy() != _installed[0]:
         raise AllReduceCompatibilityError("AR policy changed after installation; use a fresh process")
+    if (_installed is not None and _installed[0].selected
+            and import_module("vllm.envs").VLLM_BATCH_INVARIANT):
+        raise AllReduceCompatibilityError("selected HCU AITER AR does not support VLLM_BATCH_INVARIANT")
     if _bindings is not None:
         cls, ops, constructor, gate = _bindings
         if cls.__init__ is not constructor or getattr(inspect.getattr_static(
@@ -106,7 +109,8 @@ def _provider_identity():
     identity = allreduce_aiter.provider_identity(
         import_module("aiter"), import_module(PROVIDER), sys.modules
     )
-    sources = (Path(__file__), Path(policy_api.__file__), Path(allreduce_aiter.__file__),
+    sources = (Path(__file__), Path(__file__).with_name("vllm.py"),
+               Path(policy_api.__file__), Path(allreduce_aiter.__file__),
                Path(import_module("hcu_adapter.hcu_env").__file__),
                Path(import_module("hcu_adapter.kill_switch").__file__))
     identity["adapter"] = {str(path.relative_to(Path(__file__).parents[1])):
@@ -130,6 +134,8 @@ def _install(*, require_available=False):
             raise AllReduceCompatibilityError("availability must be required before first installation")
         return _installed[2]
     envs = import_module("vllm.envs")
+    if policy.selected and envs.VLLM_BATCH_INVARIANT:
+        raise AllReduceCompatibilityError("selected HCU AITER AR does not support VLLM_BATCH_INVARIANT")
     factors = getattr(envs, "environment_variables", None)
     _callable(getattr(envs, "compile_factors", None))
     if not isinstance(factors, dict) or envs._is_envs_cache_enabled():

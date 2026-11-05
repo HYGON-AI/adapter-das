@@ -366,6 +366,181 @@ def enable(monkeypatch):
     monkeypatch.setenv("VLLM_ROCM_USE_AITER_CUSTOM_AR", "1")
 
 
+def _cpu_hcu_platform(monkeypatch, architecture="gfx936"):
+    """Explicit import/identity metadata double, never a hardware execution claim."""
+    import vllm.platforms.rocm as rocm
+    monkeypatch.setattr(rocm, "_GCN_ARCH", architecture)
+    monkeypatch.setattr(bridge, "detect_hcu", lambda: bridge.HcuDetection(
+        architecture in bridge.SUPPORTED_HCU_ARCHES, architecture, "CPU identity fixture"))
+    return bridge.HcuPlatform()
+
+
+@pytest.mark.parametrize("case", ["on", "config", "off", "kill", "child-veto", "batch-invariant", "user-disable"])
+def test_real_platform_config_worker_and_communicator_chain(monkeypatch, provider, tmp_path, case):
+    """Regression: CLI config must reach AITER, not just a direct TP constructor.
+
+    Real ParallelConfig, actual GPU worker init function, real global-enable
+    setter and full official CudaCommunicator constructor/dispatch. Only process
+    group establishment, PyNccl native allocation and AITER native provider are
+    CPU doubles. Actual QuickAllReduce rejects supplied gfx936 metadata.
+    """
+    from vllm.config import DeviceConfig, ParallelConfig, VllmConfig, set_current_vllm_config
+    import vllm.config.parallel as parallel_module
+    from vllm.v1.worker import gpu_worker
+    from vllm.distributed.device_communicators import cuda_communicator, quick_all_reduce, pynccl, custom_all_reduce
+    config = VllmConfig(device_config=DeviceConfig("cpu"))
+    enable(monkeypatch)
+    monkeypatch.setenv("VLLM_ROCM_USE_AITER", "0")
+    for name in ("VLLM_ALLREDUCE_USE_SYMM_MEM", "VLLM_ALLREDUCE_USE_FLASHINFER",
+                 "VLLM_ALLREDUCE_USE_FLASHINFER_PCIE_IPC", "VLLM_USE_NCCL_SYMM_MEM"):
+        monkeypatch.setenv(name, "0")
+    monkeypatch.setenv("VLLM_BATCH_INVARIANT", "1" if case == "batch-invariant" else "0")
+    if case == "off": monkeypatch.setenv("HCU_AITER_AR", "0")
+    if case == "kill": monkeypatch.setenv("HCU_DISABLE_OPS", "aiter_ar")
+    if case == "child-veto": monkeypatch.setenv("VLLM_ROCM_USE_AITER_CUSTOM_AR", "0")
+    if case == "config":
+        from hcu_adapter import hcu_config, hcu_env
+        config_file = tmp_path / "hcu.json"
+        config_file.write_text('{"version":1,"ops":{"allreduce":"aiter"}}')
+        monkeypatch.setenv("HCU_CONFIG", str(config_file))
+        monkeypatch.delenv("HCU_AITER_AR")
+        monkeypatch.setattr(hcu_config, "_STATE", dict(loaded=False, path=None, ops={}, overrides={}, hosts={}))
+        assert hcu_env.resolve("HCU_AITER_AR", host="vllm") == ("1", "config")
+    if case == "batch-invariant":
+        with pytest.raises(compat.AllReduceCompatibilityError, match="VLLM_BATCH_INVARIANT"):
+            compat.install()
+        assert not compat.state().installed
+    else:
+        compat.install()
+    platform = _cpu_hcu_platform(monkeypatch)
+    monkeypatch.setattr(parallel_module, "current_platform", platform)
+    monkeypatch.setattr(cuda_communicator, "current_platform", platform)
+    monkeypatch.setattr(quick_all_reduce, "current_platform", platform)
+    parallel = ParallelConfig(tensor_parallel_size=2, distributed_executor_backend="external_launcher",
+                              disable_custom_all_reduce=case == "user-disable")
+    expected = case in ("on", "config")
+    assert parallel.disable_custom_all_reduce is not expected
+    config.parallel_config = parallel
+    # Restore the actual module-global enable flag after the real worker mutates it.
+    monkeypatch.setattr(parallel_state, "_ENABLE_CUSTOM_ALL_REDUCE", parallel_state._ENABLE_CUSTOM_ALL_REDUCE)
+    calls, native_state, _ = provider
+    source, selected_output, fallback_output = (torch.tensor([value]) for value in (2., 7., 11.))
+    native_state["ordinary"] = selected_output
+    boundaries = []
+
+    class Group:
+        def rank(self): return 0
+        def size(self): return 2
+
+    class CpuPyNccl:
+        disabled = False
+        world_size = 2
+
+        def __init__(self, group, device):
+            boundaries.append("pynccl-native-boundary")
+
+        def all_reduce(self, tensor):
+            assert tensor is source
+            boundaries.append("pynccl-fallback")
+            return fallback_output
+
+    def forbid_native(*args, **kwargs):
+        pytest.fail("platform admission reached native C++ CustomAllreduce")
+
+    monkeypatch.setattr(pynccl, "PyNcclCommunicator", CpuPyNccl)
+    monkeypatch.setattr(custom_all_reduce, "CustomAllreduce", forbid_native)
+    # The normal batch-invariant initializer allocates backend state; isolate
+    # that native boundary while retaining its real env gate in communicator.
+    from vllm.model_executor.determinism import batch_invariant
+    monkeypatch.setattr(batch_invariant, "init_batch_invariance", lambda: boundaries.append("batch-native-boundary"))
+    monkeypatch.setattr(gpu_worker, "init_distributed_environment", lambda *a, **kw: boundaries.append("groups-native-boundary"))
+    monkeypatch.setattr(gpu_worker, "ensure_ec_transfer_initialized", lambda c: None)
+    actual = []
+    metadata_calls = []
+
+    def build_group(*args):
+        assert parallel_state._ENABLE_CUSTOM_ALL_REDUCE is expected
+        # A metadata-only property fixture lets the real QR constructor take
+        # its real architecture rejection; no device API/runtime is executed.
+        with monkeypatch.context() as metadata:
+            def properties(device):
+                metadata_calls.append(device)
+                return SimpleNamespace(gcnArchName="gfx936")
+            metadata.setattr(torch.cuda, "get_device_properties", properties)
+            actual.append(CudaCommunicator(Group(), torch.device("cpu"), unique_name="tp:cpu-contract",
+                                          global_ranks=[0, 1], global_world_size=2))
+
+    monkeypatch.setattr(gpu_worker, "ensure_model_parallel_initialized", build_group)
+    with set_current_vllm_config(config):
+        gpu_worker.init_worker_distributed_environment(config, rank=0, backend="gloo")
+    comm, = actual
+    assert comm.use_aiter_allreduce is expected
+    assert comm.ca_comm is None  # Never widen to the rejected native C++ provider.
+    assert metadata_calls == ([0] if expected else [])
+    assert (comm.qr_comm is not None) is expected
+    if comm.qr_comm is not None:
+        assert comm.qr_comm.disabled  # Actual QR gfx936 rejection, no private override.
+    if expected:
+        assert type(comm.aiter_ar_comm) is AiterCustomAllreduce
+        assert comm.all_reduce(source) is selected_output
+        assert calls[-1] == ("ordinary", source)
+    else:
+        assert comm.aiter_ar_comm is None and calls == []
+        # Batch invariant's separate numerical implementation is out of scope;
+        # the constructor above already proves neither custom provider allocates.
+        if case != "batch-invariant":
+            assert comm.all_reduce(source) is fallback_output
+    assert not envs.VLLM_ROCM_USE_AITER and not torch.cuda.is_initialized()
+
+
+@pytest.mark.parametrize("case", ["default", "unsupported-arch", "missing-abi", "late-policy", "late-batch-invariant", "owner-fatal", "host-fatal"])
+def test_platform_extension_requires_healthy_explicit_installed_abi(monkeypatch, provider, case):
+    platform = _cpu_hcu_platform(monkeypatch)
+    if case == "default":
+        assert not platform.use_custom_allreduce()
+        assert not compat.state().installed
+        return
+    enable(monkeypatch)
+    if case == "missing-abi":
+        monkeypatch.delattr(ops_module.rocm_aiter_ops, "register_custom_allreduce_ops")
+        with pytest.raises(compat.AllReduceCompatibilityError, match="public Custom AR"):
+            compat.install()
+        assert not platform.use_custom_allreduce()
+        return
+    if case == "unsupported-arch":
+        compat.install()
+        platform = _cpu_hcu_platform(monkeypatch, "gfx999")
+        assert not platform.use_custom_allreduce()
+        return
+    compat.install()
+    if case == "late-policy":
+        monkeypatch.setenv("VLLM_ROCM_USE_AITER_CUSTOM_AR", "0")
+        error = compat.AllReduceCompatibilityError
+    elif case == "late-batch-invariant":
+        monkeypatch.setenv("VLLM_BATCH_INVARIANT", "1")
+        with pytest.raises(compat.AllReduceCompatibilityError, match="VLLM_BATCH_INVARIANT"):
+            ops_module.rocm_aiter_ops.is_custom_all_reduce_enabled()
+        assert "invalid" in json.loads(compat.effective_compile_factor())["implementation"]
+        error = compat.AllReduceCompatibilityError
+    elif case == "owner-fatal":
+        monkeypatch.setattr(compat, "_commit_failure", "CPU sticky fatal fixture")
+        error = ExtensionCommitError
+    else:
+        actions = bridge.ProcessLocalActions()
+        monkeypatch.setattr(bridge, "_RUNTIME_ACTIONS", actions)
+        with pytest.raises(RuntimeError):
+            actions.run_once("vllm-runtime", lambda: (_ for _ in ()).throw(RuntimeError("CPU host fatal fixture")))
+        error = bridge.LatchedVllmRuntimeError
+    with pytest.raises(error):
+        platform.use_custom_allreduce()
+
+
+def test_platform_keeps_official_supported_arch_behavior(monkeypatch):
+    platform = _cpu_hcu_platform(monkeypatch, "gfx942")
+    assert platform.use_custom_allreduce()  # Actual official super predicate.
+    assert not compat.state().installed  # Does not activate Adapter AR.
+
+
 @pytest.fixture
 def identity_records(monkeypatch, tmp_path, provider):
     # Public package/native module records and bytes are CPU doubles. No native

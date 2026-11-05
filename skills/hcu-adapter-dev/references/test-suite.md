@@ -903,3 +903,19 @@ max total tokens16384、默认 warmup/overlap 和 eager/graph 等差异。
 未执行原配方的 HTTP、工具/推理解析器和系统设置。
 完整日志、各 rank 初始化记录、模式比较、默认配置对照、参数与
 源码/权重审计保存在仓库外。此轮不外推 TP4/TP8、EP 或其他模型。
+
+### Conv1D decode 测试必须注册为 pytest 用例
+
+`test_conv1d_update_emu.py` 原先在模块顶层分配 GPU、修改环境和
+`sys.path`、执行断言，却没有 pytest 测试函数。现改为显式 CPU/CUDA
+两项参数化用例；导入和收集不得初始化 CUDA，或修改 Torch RNG、
+环境和导入路径。独立 CPU FP64 标量卷积参考检查 BF16 输出，
+保持 cosine ≥ 0.9999，并增加最大绝对误差 ≤ 0.02 的实际断言。
+使用非连续、重排的缓存槽位，逐元素核对更新后的完整缓存，覆盖
+未选中槽位禁写，并检查输入、权重、bias 和槽位索引未被改写。
+
+远端隐藏 GPU 的收集检查通过，两项均被发现；CPU 单项通过且 CUDA
+未初始化。独立空闲 HCU 上运行整个文件 **2/2 PASS**，无 skip、
+xfail 或错误；L0 GREEN（31 条已有警告）。此项只验证 Torch
+emulator 的 eager 输出与状态，不包含 graph、fork/vendor 档或真实模型。
+L1.5 manifest 未变，仍为 51 个逻辑 case。原始证据保存在仓库外。

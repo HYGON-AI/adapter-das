@@ -1873,3 +1873,45 @@ setup/call/teardown 通过，无 skip/xfail、收集错误或超时。
 `external-evidence:matrix257-full261-fa264-complete-raw.json.gz`，
 SHA256 `47707911280677faf2fae4ce97f8ef64d39038f1078e4c8530a0eedd2f87622a`。
 上述矩阵和组件证据不代表多模型启动或原 BF16 FP32 V1 精度通过。
+
+### 同步后混合架构及 CT-FP8 完整 profile 复验（2026-11-06）
+
+在合并 Conv1D、FA3 和 prefill 登记修复的不可变快照上，分别运行
+真实 Qwen3.5-2B-Base 与 Qwen3-0.6B-Channel-FP8。两者均保持
+TP1、默认 BF16，完整 accuracy profile 的 eager/graph 生成通过：
+短中英文、512/2048 token、缓存复用及变输入，各三批双请求。
+每模型六对请求的完整输入/输出 ID、所选及全部报告的 top-20
+概率逐位一致。社区 0.5.22 commit
+`baa9befa381511cd4d56f83980951e5a45fffc6d` 的 10594 个跟踪文件
+及额外源码前后审计通过，候选 603 文件摘要不变，权重资产在
+controller、worker 和参考执行间绑定一致。
+
+独立隐藏 GPU 的 CPU FP32 eager 使用 Torch 2.11.0、
+Transformers 5.12.1。Qwen3.5 使用官方
+`Qwen3_5ForConditionalGeneration` 的 Torch fallback，绑定 10 项
+资产；96 个位置 top1 96/96、greedy regret 0，所选 logprob
+最大差 0.069363、top20 最大差 **0.362125**、top20+tail JSD
+0.001246、tail mass 误差 0.013135、missed mass 0.001279。
+原 V1 **FAIL**，只有 top20 logprob 指标越界；历史短输入探针的
+通过不能替代本轮完整 profile。
+
+CT-FP8 绑定 9 项资产，官方 compressed-tensors 0.17.0
+`ct-fp8-token-channel` 参考逐个核对 507 个 tensor、196 个
+Linear，并在五次不同输入 forward 观察全部逐层激活 QDQ。
+96 个位置 top1 96/96、regret 0，所选最大差 **0.235903**、
+top20 最大差 **2.673436**、top20+tail JSD **0.048732**、
+tail mass 误差 **0.056121**、missed mass 0.003061。
+原 V1 仍为 **FAIL**；本段指标取本轮原始报告，不沿用历史数值。
+
+Cookbook 仍固定 `40adc4d30ec2640e3391cfd78759bd3598e95f71`，
+分别参考 `docs/model-deployment/sglang/qwen3.5.md` 的 27B TP2
+家族条目与 `docs/model-deployment/sglang/qwen3.md` 的 0.6B BF16
+单卡条目；没有本轮 2B-Base 或 Channel-FP8 的同名精确配方。
+实际 Engine API、Triton attention、page1、KV auto、mem0.25、
+context4096/max total tokens16384、eager/graph；混合模型使用
+mamba extra_buffer。没有执行图像、NEXTN、HTTP 或解析器验证。
+
+原始报告、配方差异、各模式完整概率、终结后比较绑定及源码/权重
+审计归档为 `external-evidence:models269-270-complete-raw.json.gz`，
+SHA256 `81875e6c89696b1f97d6527f302660bcfb3a549eb22f0159131b841def5a97c4`。
+这补齐同步后两条真实运行链的证据，不构成多模型精度验收通过。

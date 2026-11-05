@@ -961,5 +961,14 @@ SHA256 `0c02ce30d66b4cc28c257b7ae31f3d906fa65f96a7ab70009127b4730a1ca3b3`。
 引用上述已独立通过的真实路由测试，而不是仅调用底层 Triton kernel。
 清单当前共 54 个逻辑 case，Dense 为 10 个；新增三项展开为
 8+2+1 个参数节点。新增契约已包含在 FA3 25 PASS 中，清单与 CPU
-算子组合 70 PASS、L0 GREEN。合并版本的正式 Dense 10 项与全量
-adapter 回归另行执行；旧完整 51 项结果不作为新完整 54 项通过。
+算子组合 70 PASS、L0 GREEN。合并 FA3、Conv1D 和 prefill 登记修复
+的不可变快照正式 Dense **10/10 PASS**，实际 40 个参数节点、
+18 个 subtest，所有相位通过，无 skip/xfail、收集错误或超时。
+社区 10594 个跟踪文件及额外源码前后审计通过，603 个候选文件
+摘要全部保持不变。首次不带 Git 元数据的快照在执行用例前被
+编排器拒绝，原失败记录完整保留；只在另一份带 Git 元数据的
+快照补跑，没有修改并行全量回归使用的目录。
+证据 `external-evidence:dense266-268-complete-raw.json.gz`，
+SHA256 `71cbc0c5e9e521a595988a3c4bd8463e29fd4574dd7362cd0a871bb52a8d9d8c`。
+全量 adapter 回归另行执行；旧完整 51 项与本次 Dense 10 项不拼为
+新完整 54 项通过。

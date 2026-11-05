@@ -241,7 +241,10 @@ plugin 的 `mem_cache.common._req_radix_key` REPLACE hook 按 fork 语义调
 given`。L1.5 叠加格（Engine worker 路径）三轮全绿未触发该调用（worker 请求流的
 差异未深究）；launch_server 的 scheduler `_touch_waiting_prefixes` 路径首遇即炸。
 **归属 plugin 仓修复**（hook 签名适配官方树），与镜像部署无关——镜像文档记录到此，
-修复后随 plugin 版本升级销项。
+修复后随 plugin 版本升级销项。**2026-11-05 追记**：修复（sglang-plugin-das#17，两层
+——`_req_radix_key` 签名分发 + `match_kv_cache` 按官方 `MatchPrefixParams` 字段过滤）
+已在本环境热替换实证：叠加态 118 s 起服、`/generate` input_ids ×2 绿、进程存活；
+正式销项随 plugin wheel 版本升级。
 
 ## 6. [VERIFY-26.10] 定案汇总（2026-11-05 bw47/lizhg_base2610 实测）
 

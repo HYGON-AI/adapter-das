@@ -52,6 +52,13 @@ SHCA/DTK 环境的通用安装方案。
 `--dsa-topk-backend torch`。Ninja 使用镜像已有 wheel 内的原生二进制，
 Triton/Torch 编译缓存默认在各容器本地。
 
+配方通过 plugin 的 `SGLANG_HCU_GLM_CT_BF16_ROUTER=1` 选择原生 BF16
+gate 投影，通过 `SGLANG_LIGHTOP_TOPK=1` 选择已有的公共 LightOp 专家路由。
+前者只覆盖 GLM DSA compressed-tensors 的 BF16 gate，FP32 权重优先；
+后者在可用的静态 bias、归一化分组路由分支生效。二者在 plugin 中默认关闭，
+需使用包含对应支持的 plugin 版本。组件对照与完整模型验收分别记账，见
+[MoE 对齐记录](../../../docs/glm5.3-w4a8-moe-alignment.json)。
+
 指定底座及 plugin 已能识别 DeepEP 的 vendor `quant_type` API；配方设置
 `HCU_DEEPEP_BRIDGE=0`，关闭面向旧 SGLang 的 `use_fp8` wrapper，
 避免其隐藏原生签名并将 W4A8 INT8 误判为 FP8。CT 配置、checkpoint

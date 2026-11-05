@@ -15,6 +15,8 @@ export SGLANG_PLUGINS=hcu SGLANG_USE_AITER=0 SGLANG_ROCM_USE_AITER_MOE=0
 # Select the plugin's qualified native RoPE and public W8A8 paths.
 export SGLANG_HCU_USE_LIGHTOP_ROPE=1
 export SGLANG_HCU_W8A8_USE_LIGHTOP=1
+# Match the native BF16 router projection and LightOp expert selection.
+export SGLANG_HCU_GLM_CT_BF16_ROUTER=1 SGLANG_LIGHTOP_TOPK=1
 # Match the native residual RMSNorm's FP32 sum and final BF16 rounding.
 export HCU_FUSED_ADD_RMS_IMPL=lightop
 # Override the legacy adapter default; the plugin provides native LightOp Top-K.

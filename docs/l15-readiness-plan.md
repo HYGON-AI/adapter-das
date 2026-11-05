@@ -1973,3 +1973,58 @@ teacher forcing，不证明独立 greedy 生成或增量 KV 行为。
 SHA256 `ca96b73af4070b174bb4309dc04e4c459ec25beb36f3717861b06c303990a832`。
 概率 tensor 留在仓库外的远端证据目录，归档保存其大小和 SHA256，
 不宣称压缩归档内包含这些 tensor。
+
+### 真实 BF16 Qwen3-30B-A3B MoE 验收（2026-11-06）
+
+使用完整 48 层、128 专家的真实非量化 checkpoint，TP1、BF16、
+静态显存预算 0.7，完成原完整 accuracy profile 的 eager/graph
+加载、启动及生成。25 项 checkpoint 资产在控制器、两个 worker 和
+独立参考间绑定一致；社区 10594 个跟踪文件及额外源码前后审计、
+603 个候选文件摘要检查通过。没有截层、修改模型配置或改写社区文件。
+
+独立 CPU FP32 Transformers `Qwen3MoeForCausalLM` eager 参考
+完成全部 96 个位置，top1 为 **94/96**，greedy regret 最大
+0.136753（仍在原 0.15 门槛内）。原 V1 **FAIL**：所选 logprob
+最大误差 **0.386688**、top20 logprob 最大误差 **2.897985**、
+top20+tail JSD **0.036908**，分别超过原 0.15、0.15、0.002。
+tail mass 误差 0.018060、missed mass 0.005652 均在原门槛内。
+模型执行成功与精度通过分别记录，不将控制器正常终结记作模型验收通过。
+
+六对 eager/graph 请求的输出 token IDs 全部相同，但概率不一致。
+按完整相同历史对齐 48 个预测位置，所选 logprob 最大差
+**0.360927**，共同报告 top20 token 的最大差 **2.375**；
+每个位置共同 top20 数量至少 17。六组请求均从首个生成位置就可见
+概率差异，不能只归因于后续 decode，也不把未报告 token 当作零误差。
+
+Cookbook 固定 `40adc4d30ec2640e3391cfd78759bd3598e95f71`，
+参考 `docs/model-deployment/sglang/qwen3.md` 的 30B-A3B 单卡条目。
+该条目表格标 BF16，示例命令实际指定 `float16`，保留这一差异。
+本轮使用社区 0.5.22 Engine、BF16、Triton attention、page1、
+mem0.7、context4096/max tokens16384 和 eager/graph；
+示例为 SGLang 0.5.12、FA3、page64、mem0.9、关闭 Graph。
+没有执行 HTTP、解析器、系统设置或多卡/EP 验证，不宣称原配方等价通过。
+
+完整报告、原始日志、实际配方、六个受测工具文件和最终审计绑定归档为
+`external-evidence:moe276-complete-raw.json.gz`，
+SHA256 `91501fcd3130802066ca888bd52f8924222d21fee3ef181c86e38416c6b2d8cb`。
+归档另提供真实文件摘要清单的 SHA256；控制器内
+`memory274-validated-snapshot` 只是描述性标签，不是摘要。
+
+### MoE prefill Graph 单变量对照（2026-11-06）
+
+保持上述 BF16 TP1 模型与完整请求，仅通过社区公开参数
+`disable_prefill_cuda_graph=True` 关闭 prefill Graph，保留 full
+decode Graph。实际 server info 验证两阶段配置；启动与生成通过，
+checkpoint 前后绑定、社区源码前后及 603 个候选文件审计通过。
+
+与原 eager、原 graph 各对齐 48 个相同历史位置，输出 token 仍全部
+相同，但概率没有对齐。对原 eager，所选最大差 **0.212463**、
+共同 top20 最大差 **2.787537**；对原 graph，分别为 **0.440398**、
+**3.875**。首个生成位置的差异也仍存在。该对照尚不能区分跨进程
+变化和执行模式的贡献，不能据此确定根因或将关闭 prefill Graph
+设为默认修复，也没有为该配置新增独立 FP32 精度通过结论。
+
+原始 worker、完整模式对照、实际执行脚本及审计归档为
+`external-evidence:moe280-complete-raw.json.gz`，
+SHA256 `2ef5861277d6b0c2f7824f513f906370cd7d24d4bb21db09ad6ede7016fa92dd`。
+本地从归档原始生成报告独立重算全部 12 项对照，与远端结果完全一致。

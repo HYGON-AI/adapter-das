@@ -78,3 +78,15 @@ CPU FP32 参考仍为 **原 V1 FAIL**：96/96 位置 top1 一致，所选 logpro
 
 完整日志、实际参数、模式/旧版对照及最终审计绑定保存在仓库外
 `external-evidence:tp259`。此结果仅覆盖该模型的 BF16 TP2 配置。
+
+### 同步后默认 TP1 兼容性复验
+
+同一快照省略 `--tp-size`，完成真实 Qwen3-0.6B BF16 的完整
+accuracy profile eager/graph 生成。实际预检一张设备，worker、
+server info 和 scheduler 均为 TP1；社区源码及 checkpoint 前后
+字节审计通过。12 组请求的输入、输出 token IDs、所选及完整报告
+top20 概率，全部与引入 TP 参数前的原单卡对照逐位一致。
+
+此项确认默认单卡行为保持一致，没有重新执行 CPU FP32 精度参考，
+不新增精度通过结论。报告、原始日志、配方差异和原对照绑定保存在
+仓库外 `external-evidence:tp262`。

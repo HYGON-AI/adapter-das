@@ -919,3 +919,22 @@ max total tokens16384、默认 warmup/overlap 和 eager/graph 等差异。
 xfail 或错误；L0 GREEN（31 条已有警告）。此项只验证 Torch
 emulator 的 eager 输出与状态，不包含 graph、fork/vendor 档或真实模型。
 L1.5 manifest 未变，仍为 51 个逻辑 case。原始证据保存在仓库外。
+
+### FA3 paged 路由须恢复 packed 输出布局及 out 缓冲区
+
+三维 packed Q 仅为调用 Triton 临时转成 `[B,L,H,D]`；decode 和
+uniform wide-window 返回时须恢复 `[B*L,H,D]` 输出及 `[B*L,H]` FP32
+LSE。显式四维调用保留原 Triton 布局，底层 kernel 接口不变。
+decode 的 `out=` 必须写入并返回原对象；不能忽略缓冲区或以广播
+掩盖形状错误。数值对拍须先断言形状，再计算误差。
+
+新增 10 项契约在修复前复现 6 FAIL / 4 PASS，覆盖单 token、
+三 token、packed/四维、带/不带 LSE 及非连续 out。修复后整个
+FA3 文件 **25 PASS**，包含既有四项失败和变 Q/页表/长度的三次
+Graph replay；输出与 LSE 均检查独立 dense CPU 参考。CP 探针
+三个上下文拆分场景通过；隐藏 GPU 的 CPU 算子 38 PASS、L0 GREEN
+（31 条既有警告）。社区 10594 个跟踪文件及额外源码的前后完整性
+检查通过，候选源码字节不变。证据为仓库外
+`external-evidence:matrix257-full261-fa264-complete-raw.json.gz`，
+SHA256 `47707911280677faf2fae4ce97f8ef64d39038f1078e4c8530a0eedd2f87622a`。
+本项不代替修复后的全量 adapter 或真实模型精度验收。

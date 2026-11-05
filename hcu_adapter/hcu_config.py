@@ -59,6 +59,20 @@ class HcuConfigError(RuntimeError):
 # backends   selectable backend -> {status, note}
 
 BACKEND_CATALOG = {
+    "cuda_graph": {
+        "var": None,
+        "summary": "HIP driver guard for breakable prefill graph capture",
+        "backends": {
+            "prefill-bcg-driver-truth": {
+                "status": "candidate",
+                "note": "Breakable prefill uses the upstream eager runner on HIP; "
+                        "draft prefill returns no runner, other backends delegate "
+                        "unchanged. Decode FULL graphs are outside this gate. "
+                        "Registration/dispatch contracts covered; model qualification "
+                        "and hardware-specific graph support remain separate.",
+            },
+        },
+    },
     "vllm_sparse_indexer": {
         "var": "HCU_VLLM_SPARSE_INDEXER_IMPL",
         "summary": "vLLM 0.33 C4 sparse indexer through public OOT and official helpers",

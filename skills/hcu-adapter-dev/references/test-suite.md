@@ -938,3 +938,18 @@ Graph replay；输出与 LSE 均检查独立 dense CPU 参考。CP 探针
 `external-evidence:matrix257-full261-fa264-complete-raw.json.gz`，
 SHA256 `47707911280677faf2fae4ce97f8ef64d39038f1078e4c8530a0eedd2f87622a`。
 本项不代替修复后的全量 adapter 或真实模型精度验收。
+
+### Prefill BCG 的注册与函数发布必须一致
+
+`prefill_bcg_gate` 原先遗漏 `cuda_graph` catalog 条目，并在登记前
+替换两个宿主命名空间，导致登记报错时留下未报告的有效绑定。
+现补 catalog/UI/档位矩阵，先登记再发布函数。离线回归覆盖
+draft/force 两个开关、其他 backend 原样委托、非 HIP 无操作、
+重复安装和登记失败时两个命名空间均不变。新增 8 项在修复前
+7 FAIL / 1 PASS；修复后连同 registry/bootstrap 和 CPU 算子共
+82 PASS，隐藏 GPU 且 CUDA 未初始化；L0 GREEN（31 条既有警告）。
+真实社区宿主启动另确认两处别名和 registry 一致、重复安装不变，
+社区源码前后完整性检查通过。该启动探针未执行模型或 capture，
+不作为硬件 BCG 支持或模型资格证据。
+原始证据 `external-evidence:bcg265-complete-raw.json.gz`，
+SHA256 `0c02ce30d66b4cc28c257b7ae31f3d906fa65f96a7ab70009127b4730a1ca3b3`。

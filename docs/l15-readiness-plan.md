@@ -1845,3 +1845,31 @@ INCOMPLETE。总退出码 0=通过、1=失败、2=验证不完整；无实际通
 38 项 CPU 算子共 **53 passed**，GPU 未初始化；L0 GREEN（34 条既有
 警告），候选字节前后匹配。没有借此重跑或追认原设备套件。
 证据位于 `external-evidence:iteration99-validation-host-a-triage-completeness/`。
+
+### 上游同步后的完整矩阵及全量回归（2026-11-06）
+
+固定同步候选 `d237c09` 对应的不可变运行快照，完整执行 51 项
+L1.5 矩阵：Dense/MLA/MoE/Quantization/Mamba 为 7/17/10/10/7，
+全部通过。实际 104 个参数节点、58 个 subtest，所有
+setup/call/teardown 通过，无 skip/xfail、收集错误或超时。
+前后社区 10594 个跟踪文件及额外源码审计通过；终结后核对候选
+602 个快照文件摘要，全部匹配。这是一次完整 51 项运行，
+不是先前 50 项与独立新增用例的拼接。
+
+同一旧快照的全量 kernels/adapter/vendor（排除 stress）结果为
+1541 passed、51 failed、137 errors、79 skipped、2 xfailed、
+1 deselected。按实际堆栈分类，47 个失败及 137 个 setup 错误
+属于暂缓处理的 vLLM；4 个非 vLLM 失败均位于 FA3 paged 路由，
+其 packed 输出布局及 decode out 修复已另经完整 FA3 25 项验证，
+不能倒推本轮全量变绿。Conv1D pytest 收集修复也不在该旧快照中。
+
+本轮 ops triage 同样未通过：kernel 子集为 4 failed / 300 passed /
+2 skipped / 2 xfailed，RoPE 探针缺少默认 checkpoint；FA 场景组
+53 skipped，AR gate 2 passed / 1 skipped / 1 deselected。
+这些缺少验证的项不能记为通过。全量前后社区源码审计通过，
+候选字节保持不变；后续须在修复版本验证实际受影响路径。
+
+完整原始报告、逐项相位、日志、源码审计和后置摘要绑定保存在
+`external-evidence:matrix257-full261-fa264-complete-raw.json.gz`，
+SHA256 `47707911280677faf2fae4ce97f8ef64d39038f1078e4c8530a0eedd2f87622a`。
+上述矩阵和组件证据不代表多模型启动或原 BF16 FP32 V1 精度通过。

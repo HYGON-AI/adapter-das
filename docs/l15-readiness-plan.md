@@ -2407,3 +2407,41 @@ tail 质量误差 **0.005268764**、missed mass **0.000107828**。
 `external-evidence:vl327-complete-raw.json.gz`，
 SHA256 `bb29c78955f45fada7cab5c63a2d90024a47e08ab1c526cfe96f12412f5766f6`。
 本地核对全部 40 个文件摘要及固定官方源文件的 Git blob。
+
+### 真实 30B MoE 显式 FP32 配置诊断终结（2026-11-06）
+
+保留完整 Qwen3-30B-A3B checkpoint、TP1、固定 accuracy 请求与
+eager/graph 配置，仅显式传入社区 `dtype=float32`，显存比例设为
+0.9 以容纳权重。两模式的六组生成及四类完整概率字段逐位一致，
+48 个预测历史对齐。默认 BF16 与原 V1 阈值未改；该实验是显式配置
+诊断，不是 BF16 验收或新的严格 FP32 数值策略。
+
+独立 CPU FP32 参考的 12 行、96 个 teacher-forced 位置终结：
+top1 **96/96**、regret **0**，所选 token 最大误差 **0.175325274**、
+top20 最大误差 **1.724304199**、JSD **0.007823711**，
+tail 质量误差 **0.002368215**、missed mass **0.000108224**。
+沿用原 V1 作诊断时，前三项超限，结果仍为 FAIL；
+所选/JSD 最差请求为 changed-2048，top20 最差为 short-zh。
+不能认为仅改变公开 dtype 配置就已经消除剩余数值差异。
+
+同卡 BF16、显存比例 0.9 的控制组仅 eager 完成；graph worker
+在模型权重分配时发生 OOM，随后确认该组设备资源已被占用。
+保留原始失败和日志，不将它当作完整的同卡两模式对照。
+已完成 FP32 生成另以独立 CPU 任务对拍，原失败控制器未重启。
+两次终结的社区源码及 603 个受测文件摘要检查均通过，
+CPU 参考绑定与 HCU 执行的 25 项 checkpoint 资产一致。
+
+进一步只读核对社区
+`python/sglang/srt/layers/moe/moe_runner/triton_utils/fused_moe.py`
+发现，该 runner 将 `compute_type` 选为 BF16（BF16 输入）或
+FP16（其余输入）。尚未对本次真实模型的实际调用绑定此分支，
+不能仅凭 server dtype 声称每个内部 GEMM 都使用 FP32；
+后续须验证实际 runner、输入 dtype 和计算 dtype，再定位组件误差。
+
+完整 FP32 生成、原失败 BF16 控制组、CPU 参考、受测工具、
+上述社区 runner 与终结审计归档为
+`external-evidence:moe317-334-complete-raw.json.gz`，
+SHA256 `ee6fa84340770f586f15b854c7c5d211fa7a735832e438b1eef4de6fb7a3b30c`。
+本地核对全部 39 个文件摘要、六组完整模式字段、所选 token 误差
+及行最大值/阈值判定。该 CPU 参考未保存完整概率张量，
+不将这些检查称为独立重算 JSD。

@@ -2229,3 +2229,32 @@ SHA256 `37ac6843379a5defdf56e6de714ebe9b827a8a34e0fe61b3a84fcff83be9127f`。
 CPU 参考报告，归档没有保存可独立重算该分布的完整 CPU 概率张量。
 早于终结审计的跨模式报告保留原 pending 标记，另以最终绑定关联
 全部源码、权重与候选审计，不改写旧报告。
+
+### softmax 修复后的全量 adapter 回归（2026-11-06）
+
+以 `9b3c4eb` 的完整 603 文件快照重跑
+`pytest tests/kernels tests/adapter tests/vendor -k "not stress"`，
+结果为 **1692 passed / 47 failed / 137 errors / 79 skipped /
+2 xfailed / 1 deselected**。逐个核对 XML，184 个失败/错误全部属于
+暂缓处理的 vLLM：包括以 vLLM bridge 为宿主的 model mutation 测试；
+**非 vLLM 失败/错误为 0**。跳过、预期失败和未执行项均不计通过，
+本轮不是全量门禁全绿，也没有覆盖 stress。
+
+单独执行 `run_triage.py --stage ops`：RoPE、RMSNorm、BF16 GEMM、
+bridge Graph 四组通过；kernel 子组 336 passed / 2 skipped /
+2 xfailed，vendor FA 53 skipped，AR gate 2 passed / 1 skipped /
+1 deselected。没有失败组，但仍为 **INCOMPLETE**，退出码 2。
+没有把不可用的 vendor 路径当成数值通过，也没有为减少跳过而解除守卫。
+源码前后、全部候选文件摘要审计通过；CPU 契约/矩阵工具 70 PASS，
+L0 GREEN（31 条既有警告）。
+
+本轮 GPU 回归快照早于独立的 language_config 工具修复；与当前受测
+运行时代码、MoE gate 测试及 ops 诊断入口逐字节一致。其后的差异为
+该工具/对应回归及文档，工具改动另有上述 254 项 CPU 证据，
+不把新测试计入这轮旧快照的全量计数。
+
+完整测试 XML、失败清单、ops 日志、实际控制器、关键受测代码和终结
+审计归档为 `external-evidence:full304-complete-raw.json.gz`，
+SHA256 `8eb9a96a71967152b2e323a2789fec83ec74a7e15ac03a2c11f60e41072aebd3`。
+本地核对全部 21 个归档文件摘要，独立重算 XML 各状态计数、
+184 项宿主分类和三组未完整验证的 ops 结果。

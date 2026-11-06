@@ -7,7 +7,38 @@
 当前清单扩为 **58 case**：Dense 10、MLA 17、MoE 14、
 Quantization 10、Mamba 7。新增四项路由并列分数契约，覆盖
 softmax、sigmoid、sqrtsoftplus、分组选择、共享专家及变输入 graph
-replay；其中含 CPU 与 HCU 参数节点。新清单的整轮结果仍待验证，
+replay；其中含 CPU 与 HCU 参数节点。
+
+新清单首次五家族整轮结果为 **56/58 PASS，2 FAIL**：
+Dense 10/10、MLA 15/17、MoE 14/14、Quantization 10/10、
+Mamba 7/7。207 个 pytest 主节点及其 setup/call/teardown
+报告通过，但 58 个 subtests 中 **55 PASS、3 FAIL**；
+严格 runner 因此返回非零，不能将主节点计数称为整轮通过。
+两个失败 case 为：
+
+- `mla-dsv4-q-rope-large-prefill`：65536 行的两个 dtype 子测试
+  分配显存失败，日志显示剩余显存不足；其余四个子测试通过。
+- `mla-dsv41-low-ratio-compress`：ratio-1 子测试的 latent 数值
+  不匹配，ratio-2 通过；不能仅凭同轮存在 OOM 将数值失败归为资源问题。
+
+整轮社区源码前后审计与 603 个受测文件摘要核对通过；
+完整报告、逐子测试结果、日志、受测源码及审计归档为
+`external-evidence:matrix340-complete-raw.json.gz`，
+SHA256 `2a743c57de0be6329f1cd5026ad0be6accc70296722705df2cde460e997fc9a2`。
+本地逐一核对 674 个归档文件摘要，并按原 exact nodeid 重算严格
+case 判定。L0 与同快照 CPU 算子/清单组合回归通过；
+没有在本轮重跑全部 adapter 测试。
+
+另一个空闲设备上的两项 exact case 复测均通过，包括原 65536 行
+形状和全部 **8 个 subtests**。额外采样保留实际 compressor 输入与
+kernel 返回 latent，ratio-1/2 原参考断言均通过；ratio-1 的实际
+kernel 输入与重算 wkv 相同，index store 未改变返回 latent。
+这些结果尚未解释原数值失败，不据此修改生产代码、放宽断言或将
+原 56/58 改成通过。复测、采样、原始操作数与源码审计归档为
+`external-evidence:compress351-355-complete-raw.json.gz`，
+SHA256 `e59bd9d5d99b370e9373fa4ad68f5ab16b528f3496b886d367a08b3d7661217a`；
+本地核对全部 22 个文件摘要和两项 case 的严格相位/子测试结果。
+
 以下 54 项结果仅对应当时的清单与受测快照。
 
 合并上游同步及 FA3、Conv1D、prefill 登记修复后的不可变快照，

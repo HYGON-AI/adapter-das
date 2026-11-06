@@ -3072,3 +3072,16 @@ CPU 任务正常终结；checkpoint 15 项资产、官方参考源码、603 个 
 两组重复比较的全部 **48 个**位置，logits processor 输出的原始 logits 摘要也不同。另从保存的红/蓝图各 24 份 FP32 原始 logits 独立归一化，所选及 top20 logprob 与服务返回值的最大差不超过 **1.17e-6**。因此这些样本的最终概率差异已经体现在采样前 logits，不能仅解释为返回概率的格式或归一化误差；同步观测仍不能作为完全无扰动的证明。后续需要捕获首个 MoE 的实际输入、路由分数、专家 ID/权重和专家输出，区分路由变化、专家计算与输出衔接。
 
 社区源码、15 项 checkpoint 资产、603 个快照文件、当前 473 个 Python 文件及输入摘要前后审计通过，任务正常终结。完整归档 `external-evidence:vl687-complete-raw.json.gz`，SHA256 `89cba6cbc36babaaea56bc8f83f4c8cb99d17c0c029d42cf5d8c8ba6a7f702da`，**9752 个文件**；独立比较、源接口核对和该任务资源审计补充归档 `external-evidence:vl689-decoder-trace-supplement.json.gz`，SHA256 `26f42c402a1fe17990123b22e5011eb5d7e4edc2a1986017e727008bc1549fe4`，**17 个文件**。本轮只缩小重复差异的位置，主 CPU FP32 参考及既有整模型 V1 失败继续保留。
+
+
+### VL2 首个 MoE 的专家集合与排列差异（2026-11-06）
+
+在相同 BF16/TP1/Triton/eager 的完整模型观测中，增加零基第 1 层 MoE 的 gate、TopK、routed experts 和 shared experts 计算前/后边界，共保存 **9660 条**记录。重复红图及同图 base64 的 prefill 输入、gate logits 和 shared-expert 输出分别逐位一致；首次输出差异位于 TopK，随后 routed experts 与下一层输入出现差异。逐行比较实际 **437×6** 路由结果后，两个比较分别有 **39/55 行**排列变化，但 **437/437 行专家集合全部相同**，没有越界或重复专家 ID。按专家 ID 对齐后的权重最大差仅 **2.980232239e-8**；不能将原始 ID/权重摘要不同解释为选错专家。
+
+使用保存的真实输入和同 checkpoint 的 FP32 correction bias，在相同 adapter/社区环境中直接回放实际 grouped-TopK 派发。该回放的模块标志为 HIP、非 CUDA、未启用 AITER，模拟 uniform/round-robin 路由与 JIT grouped-TopK 开关均为 false；完整模型服务配置也未启用 EPLB/waterfill。checkpoint bias 的 72 个值全部为 **4.125**，独立标量排名与实际专家集合一致，所有行第 6/7 名最小分差为 **3.337860107e-6**，没有边界并列。该形状的结果不支持非二次幂 padding、随机模拟路由或排名并列的归因。
+
+实际派发、编译 native 和未编译 native 各 **32 次**回放均出现 **32 种**完整排列，专家集合不变。另一次对照回放也复现此现象；只在内存中的独立函数副本将 TopK 的排序参数设为 true，保留原编译装饰器、分数、专家数、归一化和模型精度后，**32 次**排列及权重逐位一致，所选集合仍与原始记录相同。这仅说明固定顺序能稳定此边界；尚未证明整模型重复概率差由此完全引起，更未证明原 CPU FP32 V1 精度失败已解决。生产代码和社区磁盘文件均未修改，整模型排序干预另行验证。
+
+完整模型任务正常结束，源码、checkpoint、603 个快照文件、当前 473 个 Python 文件及输入审计通过；两个最小回放进程均已终结。初次私有 AST 提取遗漏编译装饰器依赖，在执行 TopK 前失败，保留后改用真实导入函数完成回放。标准库独立读取原始张量，复核专家集合、排名、对齐权重及全部五组各 32 次回放的排列统计，不导入 Torch，不以此替代整模型重放。
+
+完整观测归档 `external-evidence:vl703-complete-raw.json.gz`，SHA256 `b13c15be347b91f891cb5f0fde57094af4a73e6b0a7a7f37fd4fcfa6ade1eba7`，**11247 个文件**；回放与独立专家集合验证补充归档 `external-evidence:vl710-topk-supplement.json.gz`，SHA256 `b8856910c59c7ecab402582d0d4fbae428bbf963d5a8acce713bcf32fdf47aaf`，**46 个文件**；回放统计独立验证归档 `external-evidence:vl712-replay-verification.json.gz`，SHA256 `c4d50528ade042a8ee34bd2b2530437411ba8724133903cbadd1935c1ba46e68`，**3 个文件**。上述定位不授予整模型、模型家族或配置矩阵验收，既有 V1 失败继续保留。

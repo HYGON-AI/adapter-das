@@ -2340,3 +2340,34 @@ commit `40adc4d30ec2640e3391cfd78759bd3598e95f71`。核对该版本
 SHA256 `1ee41b2d557217855a32d4fd313b5104a8f1a73e36f7361b749ce519c7f6cf8a`。
 本地逐一核对 654 个归档文件的摘要、603 个源码文件清单，以及
 六组输出与四类完整概率字段的实际对应关系。
+
+### 非 softmax 与分组路由的并列选择契约（2026-11-06）
+
+继续核对社区实现发现，sigmoid AOT/JIT CUDA kernel 同样明确以
+较小专家 ID 打破并列；社区 Triton router 对 sigmoid、sqrtsoftplus
+及分组选择也采用较小专家/组 ID 优先。原影子实现只有 softmax
+采用稳定排序，其余路径及组选择仍用无序 `torch.topk`，不能保证
+该契约。此处是独立组件缺陷，尚未证明它就是上述真实 MLA 概率差异的原因。
+
+将所有 scoring 的专家选择与分组选择统一为稳定降序排序。
+不改激活、bias-free 权重、共享槽位、归一化/缩放顺序、
+默认模型 dtype 或 V1 门槛。新增独立 Python 标量激活/排序参考，
+覆盖 72 个专家的非二次幂形状、FP32/BF16、strided 输入、bias、
+grouped routing、共享专家与 renormalize，以及三次重复和变输入
+graph replay。修复前隐藏 GPU 的回归为 **32 FAIL、8 PASS**；
+修复后真实 HCU gate 文件 **94/94 PASS**，包括原 softmax 回归及
+12 个变输入 graph 参数节点。额外双流回归 10 PASS、8 项社区源码
+组合未在该进程启用；另在显式选择真实社区源码的干净 CPU 进程中，
+双流与矩阵清单校验合计 **50 PASS**，无 skip/error。
+
+前后源码审计、受测候选文件摘要和 L0 均通过。负向/正向日志、
+逐节点 XML、完整正向受测代码及社区契约来源归档为
+`external-evidence:gate331-332-complete-raw.json.gz`，
+SHA256 `117af23c0766f2272e1f9306a1e6df106c5ce42308eef13e91afc757765cfb95`。
+本地核对全部 629 个文件摘要，并独立验证负向 32 个失败均来自
+新增并列选择断言，正向 94 个 gate 节点无 skip/failure/error。
+社区 CUDA kernel 本轮仅核对源码，未在 NVIDIA 设备执行。
+
+将 softmax/非 softmax 的并列和 graph 契约分别注册为四个 L1.5
+exact nodeid，当前清单为 **58 case**（MoE 14）。新清单的完整
+整轮运行另行验证，不把此前 54/54 结果改写成 58/58。

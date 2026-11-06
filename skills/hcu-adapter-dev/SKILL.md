@@ -107,6 +107,11 @@ GPU 全套已加载宿主时，以独立进程复测，不能放宽生产工具�
 必须匹配 HCU 绑定字节，逐个检查全部加载 tensor 与完整 Linear 量化参数，
 并观察每层实际激活 QDQ；只反量化权重不足以建立参考。保留原精度策略，
 greedy 一致不能豁免分布 FAIL，不能绕过社区 CT 对整模型 FP32 的拒绝。
+MoE router 的有限分数并列须遵循社区较小专家 ID 优先规则，分组选择
+同样以较小组 ID 优先；覆盖 softmax、sigmoid、sqrtsoftplus，
+不能用无序 `torch.topk` 的任意赢家作为参考。bias 只参与排序，
+共享专家、renormalize 与 routed scaling 的原顺序保持不变；
+修复须配独立标量参考及变输入 graph replay，不据此宣布整模型精度通过。
 
 1. **同名 ≠ 同语义**：每个垫片必须对拍参考实现（cos/rel 断言），不能只测
    "能跑不崩"。案例：rope GPT-J cache 恒为半分 [cos|sin] 布局（fbc540c）。

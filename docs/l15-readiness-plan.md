@@ -2445,3 +2445,30 @@ SHA256 `ee6fa84340770f586f15b854c7c5d211fa7a735832e438b1eef4de6fb7a3b30c`。
 本地核对全部 39 个文件摘要、六组完整模式字段、所选 token 误差
 及行最大值/阈值判定。该 CPU 参考未保存完整概率张量，
 不将这些检查称为独立重算 JSD。
+
+### 全 scoring 并列修复后的真实 MLA 生成复验（2026-11-06）
+
+在包含全 scoring/分组稳定路由修复与最新 JIT 输入适配的快照上，
+重新执行完整 DeepSeek-VL2 BF16、TP1、Triton attention、
+显存比例 0.7 的 accuracy 请求。沿用上述固定 cookbook 版本及
+配方差异说明，不改 checkpoint 或社区源码。Eager 和 decode graph
+两模式均完成六组真实生成；server info 的 prefill graph backend
+为 `None`，不据此声称执行了 prefill graph。
+每个 worker 结束后及整轮前后的社区源码审计通过，
+15 项 checkpoint 资产绑定一致，603 个受测文件摘要不变。
+
+六组输出 token 全部一致，48 个预测历史对齐；四类完整返回概率
+仅 short-en 逐位相同，其余五组仍有差异。模式间所选 token 的
+最大 logprob 差为 **0.047582716**，共同报告类别的最大差为
+**0.84375**。此处是模式一致性诊断，不能与独立参考误差混用，
+也不能据此认为并列修复已解决真实 MLA 的精度问题。
+本轮独立 CPU FP32 对拍另行执行，尚无最终 V1 验收结论。
+
+完整生成、加载/模式配置、配方记录、受测源码及终结审计归档为
+`external-evidence:mla344-complete-raw.json.gz`，
+SHA256 `5e8cbe849bf9335023e02fb3b87451d8804b573316c42c4f821884aea0fae95e`。
+本地核对全部 654 个文件摘要，并按相同预测历史重新计算模式差异。
+独立参考接收原始生成报告的完整字节，SHA256 为
+`ded504c53d850ed06a914056d56d7b7570532aa95f799d62d5a133d8c37dbd65`；
+参考执行须重新核对实际 checkpoint 字节，不能改写报告路径或绑定
+来代替资产一致性检查。

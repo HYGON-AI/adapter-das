@@ -2924,3 +2924,12 @@ SHA256 `4eddd045a003836059f4ced587a7058f62a90e3ffb75f3939907a6000a8ccf0a`，
 目标 decode 的物理 KV 索引和历史缓存尾行由观察器直接核验。以独立 FP32-RoPE、分阶段 BF16 的历史参考对齐实际缓存：英文 K **14334/14336**、V **14332/14336**，中文 K **13824/13824**、V **13820/13824**。这与此前只对最终缓存做的比较一致；实际边界进一步显示，当前 decode 的 K/V 生成和目标 KV 索引读写没有出现批次行错位或尾行写错。剩余 2 个英文 K 和 8 个 V 元素的差异仍需获取历史每一步的实际投影输入才能精确归因，不能据此修改生产代码。
 
 真实 GPU 操作数、控制器/观察器、源码和 checkpoint 审计以及逐字段比较脚本归档为 `external-evidence:moe508-complete-raw.json.gz`，SHA256 `aff71c46aeac25d0daac4c0294f69bf18fb993443cab9df0b71e21bfc30d49f8`，核对全部 30 个归档文件。追加的逐字段独立比较和链接摘要归档为 `external-evidence:moe513-actual-history-boundaries-supplement.json.gz`，SHA256 `11f5d749ff34c2c2792ee142dcdb8f1b1ef74cc9ab7917367ddc92884db670a7`，核对全部 32 个文件。该证据只覆盖首层及这四个 decode 步，不宣称整模型功能或精度验收完成。
+
+
+### Prefill K/V 与 decode 历史缓存逐位链接（2026-11-06）
+
+利用同一批次的真实 prefill 和目标 decode 操作数，按两条请求的实际序列长度，把 prefill 产生的前 24/23 行 K/V 与目标 decode 读取的历史缓存前 24/23 行逐行对齐。两条请求合计 47 行，K 和 V 均 **24064/24064** 逐位匹配；每个请求分别为 K/V **12288/12288** 和 **11776/11776**。这直接证明本次观察中的 prefill 写缓存、物理索引映射和目标 decode 读缓存之间没有发生行错位或尾行替换。
+
+因此此前目标历史缓存相对独立 CPU staged 参考的 2 个英文 K 与 8 个 V 元素差异，不来自已采集路径中的 cache write/read 连接。剩余问题收敛为 HCU 实际 prefill 算术与 CPU staged 参考的舍入边界，或尚未采集的历史计算阶段；不据此修改 adapter kernel 或放宽 V1 门槛。
+
+逐位链接脚本和结果保存于 `external-evidence:moe516-prefill-cache-link-supplement.json.gz`，SHA256 `76d763187944c8d175faacd8fd94781ca87153e6bcbe6948ccb7810d5b8ce4a5`，核对全部 32 个文件，并绑定真实 GPU 操作数归档摘要。

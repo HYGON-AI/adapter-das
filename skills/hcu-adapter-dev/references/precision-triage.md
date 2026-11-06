@@ -58,6 +58,11 @@ SHA256 `099aaba347fee83e29af326ad8a43a2ed60ac01609af5f67888d229c8bc6fc86`。
   通过，不构成新增模型精度结论。依赖包和运行环境另行留存于仓库外。
 - **一次只变一个变量**：换镜像/换栈/换旗标都会移动基线，先同栈复现再隔离
   （--disable-cuda-graph 首测被镜像变量骗过一次）。
+- **稳定性与独立精度分别判定**：真实 30B MoE 的 softmax 并列选择修复后，
+  同 Engine 重复及 Eager/Graph 的完整返回概率均逐位一致，原 CPU FP32 V1
+  仍失败，详见 `docs/l15-readiness-plan.md`。不能继续用重复分叉解释
+  已稳定结果，也不能把 CPU BF16 诊断或 greedy 一致当作原分布门禁通过。
+  只保存聚合误差的历史报告不能独立重算完整分布，应明确证据边界。
 - **先确认计算开关实际改变输出**：真实 Qwen3 短双语 HF GPU BF16
   诊断中，原始流及两种 fused residual 分子约定分别切换
   `allow_bf16_reduced_precision_reduction`，三组完整概率张量均逐位一致。

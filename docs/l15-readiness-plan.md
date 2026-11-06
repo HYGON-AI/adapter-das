@@ -2308,3 +2308,35 @@ SHA256 `072971bb4013bf714366f160039072014708f17b578d8f48b385074ef0d05cde`。
 本地检查全部 18 个文件摘要、各请求序列与原报告的对应、四项 FP32
 指标逐行一致，以及 outlier 的实际标签和三方标量差。报告没有保存
 完整 CPU 概率张量，不将标量复核称为独立重算整个合并分布。
+
+### 真实 MLA 复合 checkpoint 文本启动终结（2026-11-06）
+
+在未经文件改写的社区 SGLang 0.5.22 上，使用完整 DeepSeek-VL2
+checkpoint 目录运行 BF16、TP1、triton attention、显存比例 0.7 的
+accuracy profile；没有提取语言权重或改写配置。eager 与 decode full
+graph 两种模式均完成六个请求，覆盖双语短输入、512/2048 token、
+复用和变输入，启动及生成通过。实际 graph 模式的 prefill backend
+为 disabled，不能据此声称 prefill graph 已验收。
+
+两个模式的六组输出 token IDs 相同，48 个输出预测历史全部对齐；
+但只有 short-zh 的四类完整概率字段逐位一致，其余五组存在差异。
+同历史下所选 token logprob 最大差 **0.044533819**，
+共同 top20 token 的 logprob 最大差 **0.468563080**。生成一致不能
+替代独立精度参考，当前未建立该 checkpoint 的 CPU FP32 V1 结论，
+也未执行图像请求或验收视觉计算路径。
+
+配方参考固定为 `HYGON-AI/inference-cookbook-das`
+commit `40adc4d30ec2640e3391cfd78759bd3598e95f71`。核对该版本
+32 篇 SGLang 配方，未找到 DeepSeek-VL2 专用配方；
+`deepseek-v3.md` 仅作 MLA/MoE 家族背景，其 W8A8、TP8/16
+配置不能视为本次 BF16 TP1 的同配方验证。
+
+控制器终结，社区源码前后与每个 worker 结束后的审计通过；
+15 项 checkpoint 资产字节绑定一致，603 个受测候选文件摘要不变。
+本次使用的受测快照早于最新上游 JIT 合入，不将结果外推为最新
+提交的完整 GPU 回归。完整生成、逐请求模式比较、配方检索输入、
+受测源码与终结审计归档为
+`external-evidence:mla314-complete-raw.json.gz`，
+SHA256 `1ee41b2d557217855a32d4fd313b5104a8f1a73e36f7361b749ce519c7f6cf8a`。
+本地逐一核对 654 个归档文件的摘要、603 个源码文件清单，以及
+六组输出与四类完整概率字段的实际对应关系。

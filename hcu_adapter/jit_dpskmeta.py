@@ -149,10 +149,20 @@ _SELF_HEAL_ABSENT = {
     #   needle 缺、marker(无缩进 bind 形)也缺 → 响亮跳过;6sp 公共
     #   needle 先行替换后 bind 形仍残留 = 真漂移,§3 门 raise。
     "deepseek_v4/topk_v2.cuh": {
+        # Community baa9bef uses scalar coarse_bin_lower_bound calls:
+        # the vector-returning helper and its decomposition are both gone.
+        "\n      const auto [v_lo, v_hi] = impl::coarse_bin_bounds<kHistBits>(threshold_bin);":
+            "impl::coarse_bin_bounds<",
         "\n        const auto [v_lo, v_hi] = impl::coarse_bin_bounds<kHistBits>(threshold_bin);":
             "const auto [v_lo, v_hi] = impl::coarse_bin_bounds<kHistBits>(threshold_bin);",
     },
     "sgl_kernel/deepseek_v4/topk_impl.cuh": {
+        "\n  const auto [v_lo, v_hi] = to_fp32(keys);":
+            "const auto [v_lo, v_hi] = to_fp32(",
+        "\n  const auto [u_lo, u_hi] = to_fp32(keys - 0x00010001u);":
+            "const auto [u_lo, u_hi] = to_fp32(",
+        "\n      const auto [v_lo, v_hi] = coarse_bin_bounds<kHistBits>(threshold_bin);":
+            "coarse_bin_bounds<",
         "\n        const auto [v_lo, v_hi] = coarse_bin_bounds<kHistBits>(threshold_bin);":
             "const auto [v_lo, v_hi] = coarse_bin_bounds<kHistBits>(threshold_bin);",
         "\n        const auto [v_lo, v_hi] = coarse_bin_bounds<kCoarseBits>(threshold_bin);":

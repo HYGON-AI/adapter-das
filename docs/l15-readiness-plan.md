@@ -2371,3 +2371,39 @@ SHA256 `117af23c0766f2272e1f9306a1e6df106c5ce42308eef13e91afc757765cfb95`。
 将 softmax/非 softmax 的并列和 graph 契约分别注册为四个 L1.5
 exact nodeid，当前清单为 **58 case**（MoE 14）。新清单的完整
 整轮运行另行验证，不把此前 54/54 结果改写成 58/58。
+
+### 真实 MLA 的官方代码独立 CPU FP32 参考（2026-11-06）
+
+对上述终结的 DeepSeek-VL2 原始 BF16 生成，补齐独立参考：
+固定 `deepseek-ai/DeepSeek-VL2`
+commit `ef9f91e2b6426536b83294c11742c27be66361b1`，
+核对 11 个官方文件的 Git blob 与 SHA256，未改写参考模型源码。
+在隔离的 Transformers 4.38.2 环境中，通过官方完整
+`DeepseekVLV2ForCausalLM` wrapper 加载八个分片，保留视觉配置和
+参数；缺失、多余、形状不匹配及加载错误列表均为空。
+逐一核对全部 **6973 个 checkpoint tensor** 的原始值与 CPU FP32
+加载值，执行真实 MLA eager attention。没有提取语言权重或绕开完整
+checkpoint 加载；仅执行纯文本，未验收图像或视觉 forward。
+
+本次沿用 CPU PyTorch 2.11，区别于官方依赖的 torch 2.0.1；
+未安装仅视觉 forward 需要的 xformers。这些差异和完整版本记录
+保存在原始证据中，不将本次环境称为官方已验证的依赖组合。
+参考运行隐藏全部 GPU，未安装宿主桥；共享环境包不变，
+参考源文件、社区源码与受测 adapter 文件前后摘要检查通过。
+
+完整两种模式、12 行和 96 个 teacher-forced 位置的原 V1
+结果为 **FAIL**：top1 **96/96**、greedy regret **0**，
+所选 token logprob 最大误差 **0.079785109**，
+top20 最大误差 **0.865669250**、合并分布 JSD **0.001434714**，
+tail 质量误差 **0.005268764**、missed mass **0.000107828**。
+仅 top20 最大误差超过原 **0.15** 门槛，其余五项在限内；
+不能以 top1 全对或 JSD 通过豁免该失败。该生成快照早于非 softmax
+并列修复，不代表修复后真实模型的最终结论。
+
+保存五份去重后的完整参考概率张量，并在本地用独立标量实现，
+对实际 HCU 所报类别重新计算全部六项指标；所选/top20 最大误差
+重算差为零，JSD 与质量项差不超过 `3.34e-16`。
+参考源码、加载审计、完整概率、原始 HCU 生成及终结审计归档为
+`external-evidence:vl327-complete-raw.json.gz`，
+SHA256 `bb29c78955f45fada7cab5c63a2d90024a47e08ab1c526cfe96f12412f5766f6`。
+本地核对全部 40 个文件摘要及固定官方源文件的 Git blob。

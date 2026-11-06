@@ -2258,3 +2258,23 @@ L0 GREEN（31 条既有警告）。
 SHA256 `8eb9a96a71967152b2e323a2789fec83ec74a7e15ac03a2c11f60e41072aebd3`。
 本地核对全部 21 个归档文件摘要，独立重算 XML 各状态计数、
 184 项宿主分类和三组未完整验证的 ops 结果。
+
+### softmax 修复后的完整 L1.5 矩阵（2026-11-06）
+
+对与上述全量回归相同的 `9b3c4eb` 完整候选快照，在独立目录和设备
+执行五家族矩阵，**54/54 PASS**：Dense 10、MLA 17、MoE 10、
+量化 10、Mamba 7。共 115 个参数节点、58 个 subtest；逐项核对
+目标 nodeid、setup/call/teardown 三相及 subtest，全部真实通过，
+无 collection error、skip、xfail 或缺少 call 相位。
+没有把参数节点、子断言和逻辑场景累加成新的 case 数。
+
+CPU 契约/矩阵工具 70 PASS，L0 GREEN（31 条既有警告）。
+社区源码前后审计、603 个候选文件摘要检查通过。该结果闭合了
+softmax 修复后的完整分层回归，仍不代表真实权重模型精度验收通过；
+language_config 工具改动的快照边界与上述全量回归相同，另有 CPU 证据。
+
+全部受测候选源码、54 项原始相位报告、矩阵/控制器和终结审计归档为
+`external-evidence:matrix302-complete-raw.json.gz`，
+SHA256 `526e2c3b56c160775aa9a9a67a6e5dc2001cd8bcff38ed0a65db80fdcd4ff764`。
+本地核对全部 603 个受测源码文件摘要，并独立复核 54 个目标的唯一
+覆盖、115 个完整相位节点和 58 个 subtest，以及前后相同的源码审计。

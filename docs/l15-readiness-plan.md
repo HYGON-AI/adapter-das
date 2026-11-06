@@ -2085,3 +2085,56 @@ SHA256 `4cc832b77fec2f473893bada3eb959d306cc88ffcd1936f75498065d239101f9`。
 结果完全一致；tensor 比较与 metadata/专家配对复核在隐藏 GPU
 的远端 CPU 进程执行。早于终结审计的 metadata 报告保留其原始
 pending 标记，归档同时包含实际终结状态及最终审计，不改写旧报告。
+
+### MoE softmax 并列专家选择修复（2026-11-06）
+
+继续使用相同真实 30B BF16 模型和 2048-token 请求，保存前两层
+attention、MLP 及其嵌套投影、gate/top-k 的全部有效行和残差快照，
+三轮共 96 份实际样本。两组相邻轮各有 8 个完整历史相同的位置，
+已采集的 batch metadata 全部一致。第 0 层 attention 全部采样值、
+MLP 输入和 gate logits 逐位相同；差异首先出现在 top-k，再进入
+MLP 输出及下一层 attention。两组 prefill 的专家集合分别有
+8 行和 6 行不同，全部是相同 BF16 logits 下的精确并列。
+各轮选择均是数学上合法的 top8，所选权重相对独立 FP64 参考的
+最大误差为 `4.09e-8`，但合法 top8 不代表满足社区的并列选择契约。
+
+该完整行实验的源码、checkpoint 前后及 603 个候选文件审计通过。
+原始输出、全部 96 份 tensor 样本、观察器 CPU 预检及逐行参考归档为
+`external-evidence:moe288-complete-raw.json.gz`，
+SHA256 `3786d4c3c3892540e72f3605ae93472172879d2ad76396bf942334633d0f546c`。
+本地检查全部归档文件摘要并从原始生成重算三项概率对照，与远端一致。
+CPU clone 的同步影响仍不能排除，不将该观察器实验代替模型精度验收。
+
+对原形状真实 logits 的独立 HCU 重放，通过 Python 调用观察实查到
+社区 `fused_topk` → 社区 `topk_softmax` → adapter 影子算子。
+该进程的 `_is_cuda=False`、`_is_hip=True`、`_use_aiter=False`；
+不能因模块源码存在 CUDA 分支就断言原请求使用社区 Triton router。
+旧影子算子与实际 consumer 连续 12 次重放，专家集合均不稳定，
+直接调用社区 Triton router 的 12 次则完全一致。
+
+社区 power-of-two AOT CUDA softmax kernel 和 Triton router 都明确
+要求分数降序、并列时选择较小专家 ID。影子 softmax 改用稳定降序排序
+恢复这一规则，覆盖 destination-passing `topk_softmax` 和
+`moe_fused_gate(scoring_func="softmax")`，不改变 sigmoid 路径、
+gate dtype、生产 BF16 默认或原模型精度门槛。
+
+新增独立标量排序/概率参考回归，覆盖 FP32/BF16、两个入口、
+renormalize 开关、非连续输入以及变输入 Graph。修复前 CPU
+**8 FAIL**、HCU **12 FAIL**，均无收集错误或跳过；修复后 CPU
+算子与并列合同 **46 PASS**、HCU gate 文件 **22 PASS**。
+原形状真实 logits 在三个入口各重放 12 次，修复后的实际 consumer
+与影子算子的全部专家 ID 均与社区 Triton 完全一致，重复运行的
+全部 ID/权重也逐位一致；对社区的权重最大差为 `5.9604645e-8`。
+受影响的正式 MoE L1.5 子集 **10/10 PASS**，包含完整 pytest
+相位及 subtest 检查；源码前后、603 个候选文件摘要检查通过，
+L0 GREEN（31 条既有警告）。没有将这次子集计数当作修复后的
+完整 54 项或全量 adapter 重跑。
+
+修复前后原始测试 XML、真实算子重放、实际执行脚本、受测代码、
+社区参考源码与最终审计归档为
+`external-evidence:moe292-295-complete-raw.json.gz`，
+SHA256 `0fa7f210bcd261a2cb321d483711c0479d8db5faabe1bfe282549f6954a5baea`。
+本地独立核对全部文件摘要、XML 失败/通过计数及十项严格相位结果。
+提交中的测试模块说明文字在采样后修正，全部测试函数体与受测文件
+AST 一致；生产算子文件逐字节一致。真实模型的修复后完整原 V1
+验收与同 Engine 重复验证另行执行，尚不据组件修复追认模型精度通过。

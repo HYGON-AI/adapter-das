@@ -84,6 +84,14 @@ CPU doubles 不代替全新进程的真实 bootstrap、官方加载和 DeepEP LL
 
 ## 四质量维度
 
+MoE softmax 并列回归见 `tests/kernels/test_moe_gate.py`：CPU 与 HCU
+分别覆盖 FP32/BF16、两个公开入口、是否 renormalize、非连续输入、
+top-k 边界及内部并列。独立 Python 标量 oracle 按分数降序、专家 ID
+升序选取，不能继续以任意 `torch.topk` 结果作金标；设备端另覆盖
+同地址变输入 Graph。该规则由社区 power-of-two AOT CUDA 及
+Triton router 源码约定，真实 logits 重放还须核对实际调用路径和
+完整专家 ID/对应权重，组件稳定不能替代整模型 FP32 分布验收。
+
 vLLM mHC 安装态生命周期探针为 `tests/tools/_probe_vllm_mhc_lifecycle.py`，
 其 CPU 身份 double 与真实 native/GPU 门禁分开。官方 Torch 复用仍须数值、
 同地址变输入 Graph、长/短/空批次和 layer/e2e golden。capture 不执行 Graph；

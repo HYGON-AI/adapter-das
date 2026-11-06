@@ -123,6 +123,14 @@ SHA256 `099aaba347fee83e29af326ad8a43a2ed60ac01609af5f67888d229c8bc6fc86`。
   等价。实际 token/位置、形状及物理缓存映射一致只排除已采字段的差异，
   不证明 KV 内容或具体内核正确。真实串行 MoE 观察证据见
   `docs/l15-readiness-plan.md`。
+- **实查 MoE router 的运行时消费者与并列规则**：模块源码中存在
+  `_is_cuda` 分支不证明真实请求进入它。真实 BF16 MoE 的完整行观察与
+  独立算子重放发现，当前进程通过社区 `topk_softmax` 调用影子算子；
+  旧 `torch.topk(sorted=False)` 在完全相同 logits 的并列边界选择不同
+  专家。社区 power-of-two AOT CUDA 和 Triton softmax router 明确使用
+  降序分数、并列时较小专家 ID。影子 softmax 使用稳定降序排序恢复
+  该规则，不给 logits 加 epsilon、不改 gate dtype。按来源记录实际
+  Python 调用链并在原形状重放，不能只由静态源码推断选型。
 - **层名和 token 行必须实查**：DSV4 的 `_next_layer` 模块引用会影响
   `named_modules()` 去重后的规范名称，固定的 `model.layers.N.mlp`
   可能匹配不到实际存在的层。可用覆盖嵌套路径的模式发现模块，再按实际

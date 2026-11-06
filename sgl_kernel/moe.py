@@ -45,12 +45,21 @@ def _finish_gate_slots(
     num_fused_shared_experts: int,
     renormalize: bool,
     routed_scaling_factor: float,
+    stable_order: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Shared tail of every gate op: routed top-k -> shared slots -> renorm ->
     scale (order mirrors _router_triton_kernel exactly)."""
     num_experts = biased.shape[1]
     k_routed = topk - max(0, num_fused_shared_experts)
-    _, ids = torch.topk(biased, k=k_routed, dim=-1, sorted=False)
+    if stable_order:
+        if k_routed < 0 or k_routed > num_experts:
+            raise RuntimeError("selected index k out of range")
+        # Community softmax routers emit descending scores and choose the
+        # lowest expert ID on ties. HIP torch.topk may select different tied
+        # experts on repeated calls, changing the model's expert mixture.
+        ids = torch.argsort(biased, dim=-1, descending=True, stable=True)[:, :k_routed]
+    else:
+        _, ids = torch.topk(biased, k=k_routed, dim=-1, sorted=False)
     weights = activated.gather(1, ids).to(torch.float32)
 
     routed_sum = weights.sum(dim=-1, keepdim=True, dtype=torch.float32)
@@ -115,6 +124,7 @@ def topk_softmax(
         num_fused_shared_experts=0,
         renormalize=renormalize,
         routed_scaling_factor=0.0,
+        stable_order=True,
     )
     _write_topk_out(topk_weights, topk_ids, weights, ids)
 
@@ -243,6 +253,7 @@ def moe_fused_gate(scores: torch.Tensor, bias: Optional[torch.Tensor], *args, **
         num_fused_shared_experts=num_shared,
         renormalize=renormalize,
         routed_scaling_factor=rsf if apply_scale else 0.0,
+        stable_order=key == "softmax",
     )
     return weights.to(torch.float32), ids.to(torch.int32)
 

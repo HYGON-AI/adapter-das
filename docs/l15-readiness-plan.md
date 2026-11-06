@@ -2498,3 +2498,29 @@ missed mass **0.000107828**。top20 最大误差与 JSD 分别超过原
 `external-evidence:vl356-complete-raw.json.gz`，
 SHA256 `20f6bd225659d498aeb892c2ded6c4d478db2017ea140c84c66f66f6b9a44673`；
 本地核对全部 40 个归档文件摘要及官方源码 Git blob。
+
+### 真实 MoE 的 FP32 存储与内部计算路径观察（2026-11-06）
+
+在完整 Qwen3-30B-A3B、显式 FP32、TP1、Triton attention、
+显存比例 0.9、eager 的短请求中，通过社区公开 forward hooks
+观察首层 MLP，并记录原社区函数的调用元数据。先未启用观察器
+预热，再分别执行未观察和观察的两 token 生成；输出 ID 与四类
+完整返回概率字段逐位一致。观察器不改输入、权重或计算函数。
+
+实际捕获 prefill `[24, 2048]` 和 decode `[1, 2048]` 两次
+MLP 调用，输入和输出均为 FP32 存储。两次均经原社区
+`_fused_moe_kernel_sequence`，四次实际
+`invoke_fused_moe_kernel` 的 `compute_type` 均为 **FP16**，
+而 hidden states、w1、w2 的存储类型为 FP32。这与上述社区
+runner 的分支一致，证明公开 `dtype=float32` 不能代表该路径的
+每次内部 GEMM 都用 FP32。该观察只覆盖本次首层短请求，不是
+对历史 accuracy 请求或全部层的追溯采样；也尚未独立验证实际
+GEMM 输出的舍入误差，不能据此认定 adapter 错误或解释全部
+BF16 分布偏差。默认 dtype 与原 CPU FP32 V1 门槛保持不变。
+
+25 项 checkpoint 资产、社区源码前后审计与 603 个受测文件摘要
+均通过。完整调用元数据、控制生成、源码与权重绑定归档为
+`external-evidence:moe364-complete-raw.json.gz`，
+SHA256 `0a316febfcdb3a2599b090a23adfef98b63ccc309ee2d6e3c3055e22d2635d1e`；
+本地核对全部 626 个文件摘要与控制组完整概率字段。本项仅为
+计算路径归因证据，模型精度验收仍未通过。

@@ -104,6 +104,13 @@ SHA256 `099aaba347fee83e29af326ad8a43a2ed60ac01609af5f67888d229c8bc6fc86`。
   dtype 或放宽原精度门，来强制跨模式逐位一致。
 - **金标在 fp32/torch 侧**：NCCL 也在被测链路里，不能当参考；AR 黄金
   参考 = all_gather 后 fp32 精确和。
+- **存储 dtype 不等于 GEMM 计算 dtype**：真实 Qwen3 MoE 的显式 FP32
+  短请求中，首层 prefill/decode 的 FP32 hidden states 与专家权重
+  实际传入社区 Triton GEMM 时，四次 `compute_type` 均为 FP16。
+  须绑定实际调用及未观察控制输出，再按原内核的输入转换、累加、
+  路由权重和输出舍入顺序做独立参考；不能只凭 server dtype 判断
+  全计算链 FP32，也不能修改社区默认 dtype 来代替精度定位。
+  该首层观察不外推全层或历史请求，详见 `docs/l15-readiness-plan.md`。
 - **量化参考保留激活 QDQ**：CT channel-FP8 的 CPU 参考必须同时包含
   动态 token-FP8 输入量化；只反量化权重会改变模型。显式参考入口逐个核对
   绑定权重和真实逐层 QDQ 调用，默认拒绝其他量化格式。原分布门失败仍须

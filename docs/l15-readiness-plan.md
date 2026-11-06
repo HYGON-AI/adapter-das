@@ -2913,3 +2913,14 @@ SHA256 `4eddd045a003836059f4ced587a7058f62a90e3ffb75f3939907a6000a8ccf0a`，
 核对全部 11 个文件摘要，并绑定此前实际 HCU 与官方完整 CPU
 参考归档摘要。下一步需观察历史实际投影边界，定位剩余元素，
 再沿后续 attention/MLP 检查误差传播。
+
+
+### 实际历史投影边界与 decode KV 写入核对（2026-11-06）
+
+在同一双语批次、默认 BF16、TP1、Triton attention 和 `disable_cuda_graph` 条件下，重新启动真实权重模型，观察第 0 层从 prefill 到目标位置的 **1 次 prefill + 4 次 decode**。观察组和控制组的输出 ID 及四类完整概率字段逐位一致；社区 pristine 源码前后审计、候选文件摘要和 checkpoint 25 项资产审计全部通过，GPU 任务终态正常且未留下自有进程。
+
+保存每一步实际输入、QKV 投影、Q/K 归一化、RoPE 后 Q/K/V 及实际 RoPE 缓存。prefill 记录 47 行，四个 decode 各记录两行；token、position、请求顺序与控制输出逐行绑定。实际 decode 的 normalized K 在四步均 **1024/1024** 匹配独立 FP32-RoPE 历史参考，RoPE 后 K 也均 **1024/1024** 匹配。实际 V 在四步分别为 **1024/1024、1023/1024、1024/1024、1024/1024**；差异为单个极小舍入残差。Q 的差异保留在少量元素，最大绝对差不超过 **0.015625**；RoPE 缓存自身与 CPU FP32 三角函数的差异约为 `1e-6`，不能把 CPU 三角函数当作硬件逐指令复制。
+
+目标 decode 的物理 KV 索引和历史缓存尾行由观察器直接核验。以独立 FP32-RoPE、分阶段 BF16 的历史参考对齐实际缓存：英文 K **14334/14336**、V **14332/14336**，中文 K **13824/13824**、V **13820/13824**。这与此前只对最终缓存做的比较一致；实际边界进一步显示，当前 decode 的 K/V 生成和目标 KV 索引读写没有出现批次行错位或尾行写错。剩余 2 个英文 K 和 8 个 V 元素的差异仍需获取历史每一步的实际投影输入才能精确归因，不能据此修改生产代码。
+
+真实 GPU 操作数、控制器/观察器、源码和 checkpoint 审计以及逐字段比较脚本归档为 `external-evidence:moe508-complete-raw.json.gz`，SHA256 `aff71c46aeac25d0daac4c0294f69bf18fb993443cab9df0b71e21bfc30d49f8`，核对全部 30 个归档文件。追加的逐字段独立比较和链接摘要归档为 `external-evidence:moe513-actual-history-boundaries-supplement.json.gz`，SHA256 `11f5d749ff34c2c2792ee142dcdb8f1b1ef74cc9ab7917367ddc92884db670a7`，核对全部 32 个文件。该证据只覆盖首层及这四个 decode 步，不宣称整模型功能或精度验收完成。

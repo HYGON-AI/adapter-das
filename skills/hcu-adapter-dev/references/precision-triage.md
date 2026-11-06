@@ -192,3 +192,4 @@ SHA256 `099aaba347fee83e29af326ad8a43a2ed60ac01609af5f67888d229c8bc6fc86`。
   形状、非连续状态视图）但 serving 中 Berlin 锚点确定性翻转；emu/fork
   启动二分 + 干净重启复现可实锤"内核在服务上下文特有"。任何内核替换默认
   不启用，e2e 锚点门过了才转默认。
+- **必须比较真实 decode 边界**：完整 prompt 的 CPU 参考与 HCU decode 输入不能直接跨执行模式比较。观察真实 prefill 加四步 decode 后，四步 normalized K 和 RoPE 后 K 均逐位匹配 staged FP32-RoPE 参考；目标缓存的中英文 K/V 分别为 14334/14336、14332/14336 和 13824/13824、13820/13824。先核对 token/position、物理 KV 索引、尾行写入和实际 QKV 边界；少量历史元素残差不足以证明 KV cache 错位，也不足以证明整模型精度通过。

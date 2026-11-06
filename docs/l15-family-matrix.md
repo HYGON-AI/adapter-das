@@ -39,6 +39,17 @@ kernel 输入与重算 wkv 相同，index store 未改变返回 latent。
 SHA256 `e59bd9d5d99b370e9373fa4ad68f5ab16b528f3496b886d367a08b3d7661217a`；
 本地核对全部 22 个文件摘要和两项 case 的严格相位/子测试结果。
 
+进一步在空闲设备上，不启用操作数观察器，连续执行社区原始
+`test_matches_the_unfused_chain` **8 次**，每次仍覆盖 ratio 1/2
+和原始数值、缓存字节断言。8 次均通过，无 failure/error/skip；
+社区源码前后审计与 603 个受测文件摘要不变。此结果排除了本次
+复测对张量采样同步的依赖，但仍未复现或解释原整轮的数值失败，
+也不覆盖其他 case、变输入或 graph，不修改原 56/58 结论。
+完整日志、原始测试、受测代码与审计归档为
+`external-evidence:compress383-complete-raw.json.gz`，
+SHA256 `8e0cfa9f8b7bd50e7288c52949308a24e77c435cb88f1cbc5f9833944b845c0a`；
+本地核对全部 615 个文件摘要和八次运行的最终判定。
+
 以下 54 项结果仅对应当时的清单与受测快照。
 
 合并上游同步及 FA3、Conv1D、prefill 登记修复后的不可变快照，

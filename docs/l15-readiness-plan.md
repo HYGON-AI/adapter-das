@@ -2164,3 +2164,32 @@ top1 或共同 token 的交集。社区源码前后、checkpoint 绑定及
 SHA256 `efdc117767d2996b1be6c1dd9493fbb89c61c39061c085d7b5a9755323402a1c`。
 本地从归档重算全部 18 项对照，与远端一致，并直接核对六请求的
 四类完整概率列表和输出 IDs；受测模型工具文件与本地逐字节一致。
+
+### 真实 MLA 复合配置解析（2026-11-06）
+
+现有完整 DeepSeek-VL2 checkpoint 的原始配置没有外层 architectures，
+语言部分保存在 `language_config`。社区官方配置加载器可直接解析，
+补出 `DeepseekVL2ForCausalLM`；官方文本配置为 BF16、30 层、
+32 attention heads、72 routed experts、top6、词表 129280，启用 MLA。
+这属于配置诊断，不是模型启动或精度通过。
+
+验收工具此前只读取 `text_config`，会错误使用外层词表或拒绝合法的
+语言 token，也会遗漏内层量化信息。现在支持 `language_config`，
+与社区一致在两者同时存在时优先选择它；所选嵌套配置非法时明确拒绝，
+不回退到外层元数据。带视觉配置的参考仍选择公开条件生成 AutoModel
+入口，不把复合 checkpoint 当成普通 CausalLM，也不提取语言权重、
+改写配置或放宽原精度策略。
+
+回归修复前 **7 FAIL / 8 PASS**，无 error/skip；修复后连同模型
+smoke、CPU 参考与 dtype 探针回归 **254 PASS**，无 error/skip。
+源码前后和全部候选文件摘要检查通过，L0 GREEN（31 条既有警告）。
+真实配置的词表与社区加载结果一致，未初始化 CUDA，原配置字节不变。
+社区导入可注册该配置类，但当前 Transformers 条件生成模型映射
+不包含该类；配置解析不代表独立参考支持该模型。真实 MLA 的启动、
+生成与原 V1 精度验收仍未闭合。
+
+修复前后测试 XML、受测代码、真实配置诊断、社区配置解析源码和
+最终审计归档为 `external-evidence:checkpoint307-309-complete-raw.json.gz`，
+SHA256 `58f427a0de8c355d2f3cd6c4f332c5e0123e6774527fd4e162923d5bc46c11da`。
+本地独立检查全部 40 个文件的摘要、XML 计数和官方/工具词表对照，
+受测生产工具与回归文件和提交逐字节一致。

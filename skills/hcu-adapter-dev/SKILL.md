@@ -62,7 +62,9 @@ checkpoint 哈希结束还须重新读取资产字节确认一致；同 tick 的
 必须匹配 HCU 权重字节并执行完整 eager/graph，不能把合并分布称为
 全词表散度，也不能外推为其他模型/长度通过。聊天模板明确请求 list，
 并在 Engine 前校验 token IDs，避免 Transformers 返回映射时误传字符串 key。
-复合 checkpoint 的文本词表从 text_config 获取，不能读外层/视觉词表；
+复合 checkpoint 的文本词表从 language_config / text_config 获取，
+两者同时存在时按社区优先 language_config，不能读外层/视觉词表；
+同一解析用于文本量化元数据，错误的嵌套类型必须拒绝，不能回退外层。
 独立参考通过公开条件生成 AutoModel 入口加载并记录实际类。Qwen3.5 的
 纯文本验证不外推为图像/NEXTN/量化或多卡通过，家族 cookbook 配方与
 较小 checkpoint 的参数差异必须单独记录。

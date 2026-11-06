@@ -2278,3 +2278,33 @@ language_config 工具改动的快照边界与上述全量回归相同，另有 
 SHA256 `526e2c3b56c160775aa9a9a67a6e5dc2001cd8bcff38ed0a65db80fdcd4ff764`。
 本地核对全部 603 个受测源码文件摘要，并独立复核 54 个目标的唯一
 覆盖、115 个完整相位节点和 58 个 subtest，以及前后相同的源码审计。
+
+### 修复后真实 MoE CPU dtype 诊断（2026-11-06）
+
+对上述修复后 30B 的同一绑定生成序列，在隐藏 GPU、HOSTnone 的新进程，
+分别从完整 checkpoint 独立加载官方 CPU FP32、CPU BF16 模型；
+两者均为 Transformers eager、2 threads，BF16 包含 BF16 输出层。
+全部 12 行、96 个 teacher-forced 位置完成诊断，未改生产 dtype 或 V1。
+
+HCU/CPU FP32 的四项 top20+tail 指标逐行与终结精度报告完全一致。
+CPU BF16/CPU FP32 的 top20 最大 logprob 差 **3.132858276**、
+合并分布 JSD **0.025420719**；HCU BF16/CPU BF16 则分别为
+**3.25**、**0.020817186**，tail 质量误差最大 **0.031491076**。
+CPU 自身 dtype 差异存在，但 CPU BF16 不是等价的 SGLang 基线，
+HCU 与它之间也仍有差异，不能将剩余精度问题全部归因 dtype。
+CPU dtype 对照以 CPU BF16 的 top20 为类别锚，另两组以 HCU top20
+为锚，不能将各组最大值直接相减当作误差分解。
+
+HCU/CPU FP32 最差 top20 项位于 short-zh、零起算输出位置 4、
+HCU rank17、token399：三方 logprob 分别为 HCU **-13.375206947**、
+CPU FP32 **-17.028526306**、CPU BF16 **-15.375051498**。
+该项用于后续定位，不是具体算子错误的证明。两次 CPU 加载的旋转
+频率与原始频率 buffer 均为 FP32，形状和字节摘要相同；
+源码前后、完整 checkpoint 绑定及 603 个候选文件摘要检查通过。
+
+诊断、原始绑定生成/精度报告、实际控制器和受测工具归档为
+`external-evidence:moe311-complete-raw.json.gz`，
+SHA256 `072971bb4013bf714366f160039072014708f17b578d8f48b385074ef0d05cde`。
+本地检查全部 18 个文件摘要、各请求序列与原报告的对应、四项 FP32
+指标逐行一致，以及 outlier 的实际标签和三方标量差。报告没有保存
+完整 CPU 概率张量，不将标量复核称为独立重算整个合并分布。

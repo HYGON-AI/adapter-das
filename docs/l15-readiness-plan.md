@@ -2705,3 +2705,45 @@ SHA256 `2ff3b3c2ee591c2270097615994d6ad73a97f050a68678520278603bb46155aa`；
 `external-evidence:moe425-independent-summary.json`、
 `external-evidence:moe433-batch-component-comparison.json`。
 默认 dtype、社区源码及原 CPU FP32 V1 门槛不变。
+
+### 官方 CPU FP32 层边界参考与 gate 局部变量核对（2026-11-06）
+
+在隐藏所有 GPU、禁用 adapter host 的独立进程中，以官方
+Transformers 5.12.1、PyTorch 2.11.0、CPU FP32、eager attention、
+八线程加载同一完整 checkpoint。两条短请求分别输入完整
+prompt 加八个已生成 token，关闭 KV cache，采集零基输出位置 4
+对应的全部 48 层 MLP 输入/输出、gate logits/权重/专家 ID、
+attention 输入/输出及层输出。checkpoint 前后字节匹配，
+实际官方模型源码另存并核对摘要。CPU 参考是完整序列计算，
+HCU 是缓存 decode，不能把它们称为相同执行实现。
+
+与上述双行 HCU 的三层实际采样对齐，英文的三层专家 ID 全部
+相同；中文第 0、24 层全部相同，第 47 层仅重合 7/8 个专家。
+中文 MLP 输入最大差依次为 **0.004982293、0.075684631、
+0.668693423**，MLP 输出最大差为 **0.000282519、0.009505281、
+0.849285126**。本次独立 CPU 计算的 token399 logprob 为
+**-17.028533936**，与既有参考相差约 `7.63e-6`，未声称逐位
+重复历史 CPU 执行。只对输出位置 4 的完整 CPU 概率及实际 HCU
+top20 核对，英文/中文最大 top20 logprob 误差分别为
+**0.606075287/3.971648216**，仍超过 0.15；这不替代六请求、
+两模式完整 V1。
+
+对中文三层 gate 单独改变输入和输出转换，保持实际 gate 权重，
+以 FP64 乘积分别检查 CPU 实际输入、CPU 输入转 BF16、HCU
+实际输入，并分别保留原始乘积或补 FP32→BF16 输出转换。
+第 47 层的 CPU 输入即使补上述两次 BF16 转换，仍选专家 122；
+HCU 实际输入的未舍入乘积已经将专家 7 排在 122 前，差约
+**0.004548693**。补输出转换后两者 logits 均为 **-3.953125**，
+较小 ID 规则继续选 7，与实际路由一致。因此这个采样点的
+专家差异不能仅归因最终 gate 输出舍入；输入隐藏状态的差异
+已经改变了两者顺序。尚未定位此前哪个算子或层产生主导差异，
+也未将这一局部检查宣称为整模型误差归因。
+
+原始 48 层 CPU 张量、官方源码、三层 HCU 输入、比较脚本与
+gate 变量检查归档为 `external-evidence:moe436-complete-raw.json.gz`，
+SHA256 `42dd1931bded9f819511c03377220bdcf1bc1f16501f32a3c3b8ae611f9a459e`；
+本地核对全部 24 个文件摘要。无 Torch 标量实现另从实际存储
+重算三层八种 gate 检查及两条请求全部三层边界 max/RMS，
+结果差小于 `1e-12`，保存为
+`external-evidence:moe442-independent-summary.json`。
+下一步需补齐 HCU 全部层边界，沿相同预测历史定位差异传播。

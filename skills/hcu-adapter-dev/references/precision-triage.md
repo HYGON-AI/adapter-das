@@ -168,6 +168,14 @@ SHA256 `099aaba347fee83e29af326ad8a43a2ed60ac01609af5f67888d229c8bc6fc86`。
   以及 `HcState` 的物化残差与待执行 post。入口状态可能被 `release`
   清空，须在消费前独立保存；观察器不能通过主动物化状态改变执行路径。
 - **分布级断言**：bf16 噪声会重排 top1，判定用 cos/top-k 集合/文本锚点。
+- **attention 参考需保留指数权重转换位置**：grouped decode 的社区
+  内核可在 P·V 前将 `exp(score-max)` 转为 V dtype，同时以未转换的
+  FP32 权重求分母；直接用理想 softmax 或将归一化概率转 BF16 都不等价。
+  先核对实际 dispatch、平台分支、KV 历史、split 元数据与有效 tile。
+  实际双行 BF16 首层样本中，保留该转换位置的数学参考重现全部
+  8192 个 context 元素，而理想参考转换后仅匹配 6296 个。
+  这只是该层、该步、实际缓存的局部证据，不证明历史缓存生成、
+  硬件指令序列或整模型精度通过；详见 `docs/l15-readiness-plan.md`。
 - **短序列 DSA 注意**：kv_len ≤ index_topk 走 k_only 快速路径，MQA emu
   根本不被调、logits 全零是设计内——别在这里白排查。
 - **搬内核先对拍"入参语义"再对拍数值**（2026-10-16 vendoring sglang-das

@@ -2800,3 +2800,62 @@ SHA256 `e9ac3c18a1e41f9b5f35a33676db0a88d73f6d18e2a21b540edde666b3961b62`；
 `external-evidence:moe451-independent-summary.json`。
 下一步应分解早期 attention 的实际投影、Q/K 归一化、RoPE
 和缓存读写计算，不能以当前 gate 局部匹配替代整链验收。
+
+### 首层实际 attention 操作数与指数权重转换（2026-11-06）
+
+沿用上述双语两行批次、默认 BF16 和输出位置 4，只观察第 0 层
+attention 一次 decode。保存实际输入、投影权重及 QKV 投影输出，
+在原地 Q/K 归一化和 RoPE 前分别采样，另保存实际 backend 使用的
+Q/K/V、物理 KV 索引、被引用的历史缓存、context 和输出投影。
+按 token、positions、序列长度绑定两行；当前 K/V 与各请求历史缓存
+尾行逐位相同，投影输入/context/模块输出链逐位相同。
+本次 QK 归一化与 RoPE 未融合。观察/控制的输出 ID 和四类完整
+概率逐位一致，且与前述全层控制一致。源码前后完整性、
+603 个受测文件和 25 项 checkpoint 资产审计通过。
+
+以实际操作数计算独立 CPU FP64 参考，再作 FP32→BF16 转换：
+QKV 投影 **10239/10240** 个元素匹配，最大绝对差
+**1.9073486328125e-6**；Q/K 归一化分别 **8192/8192**、
+**1024/1024**，Q/K RoPE 分别 **8192/8192**、**1024/1024**，
+输出投影 **4096/4096** 全部匹配。V 与原始投影对应部分也逐位相同。
+按实际历史缓存长度 **28/27** 作理想 softmax attention，
+context 转换后仅 **6296/8192** 个元素匹配，最大绝对差
+**0.000244140625**。无 Torch 标量实现从原始存储独立重算全部
+16 项 FP64/转换后 max、RMS 与匹配数，与张量参考之差小于
+`1e-12`；额外 FP32 算术变体单独保留，不混称为此 16 项复核。
+
+进一步检查固定社区 commit 的
+`python/sglang/kernels/ops/attention/decode_attention.py`：
+grouped stage1 的普通分支先计算 `exp(score - max)`，在 P·V
+前将该指数权重转为 V 的 dtype，分母仍使用未转换的 FP32 权重
+求和。源码还保留 gfx1250 的不同分支，不能将普通分支泛化为所有
+硬件行为。实际 split 元数据为 **7/7**、上限 **8**；
+`MIN_BLOCK_KV=32` 使这两个短请求各只有一个非空 split，
+不涉及多个非空 split 的合并误差。
+
+用实际 Q 和历史 K/V 构造对应的数学变体：FP64 QK 乘积转 FP32、
+FP32 scale/指数运算，指数权重转 BF16，分母使用未转换权重，
+P·V 与求和以 FP64 计算，最后转 FP32→BF16，context
+**8192/8192** 逐位匹配。远端隐藏 GPU 的 CPU Torch 与独立
+无 Torch 标量实现均得到该结果；同样 score 下不转换指数权重时，
+仅 **6295/8192** 匹配。仅保持 FP64 score 再转指数权重时
+**8189/8192** 匹配；将归一化后的概率转 BF16 是另一种数学变体，
+不能替代上述内核转换位置。
+
+这将本次首层 context 对理想参考的残差收敛到与社区计算顺序一致
+的局部解释，没有据此修改内核或放宽验收。它使用实际历史缓存，
+尚未独立验证此前每步 K/V 的生成，也未模拟 MFMA 累加顺序、
+硬件指数近似或多 split 归约；不能由输出匹配反推每条设备指令。
+原整模型 V1 失败仍保留，下一步应对齐历史缓存的生成，并沿后续
+attention/MLP 边界检查误差传播。
+
+实际张量、观察器、CPU 参考、受测代码与审计归档为
+`external-evidence:moe462-complete-raw.json.gz`，
+SHA256 `20114160b250b0492c94542ee7e62ff781e855c78064bbe4476afd089c9d8ceb`，
+本地核对全部 636 个文件摘要。独立标量复核为
+`external-evidence:moe465-independent-summary.json`。
+社区内核原始字节、两种实现的变体脚本与结果另存
+`external-evidence:moe473-context-reference-supplement.json.gz`，
+SHA256 `5e38259b9988798bd2dbca9381a4a908819a641f4508abaa9d5e66108ba49d08`，
+核对全部 11 个文件摘要。该内核字节与上述社区 commit 一致，
+SHA256 `7ccbaaf523930e2f46b512e5218ed00e20de366703947b9e1ff42a22652d70e7`。

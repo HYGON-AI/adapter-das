@@ -2933,3 +2933,12 @@ SHA256 `4eddd045a003836059f4ced587a7058f62a90e3ffb75f3939907a6000a8ccf0a`，
 因此此前目标历史缓存相对独立 CPU staged 参考的 2 个英文 K 与 8 个 V 元素差异，不来自已采集路径中的 cache write/read 连接。剩余问题收敛为 HCU 实际 prefill 算术与 CPU staged 参考的舍入边界，或尚未采集的历史计算阶段；不据此修改 adapter kernel 或放宽 V1 门槛。
 
 逐位链接脚本和结果保存于 `external-evidence:moe516-prefill-cache-link-supplement.json.gz`，SHA256 `76d763187944c8d175faacd8fd94781ca87153e6bcbe6948ccb7810d5b8ce4a5`，核对全部 32 个文件，并绑定真实 GPU 操作数归档摘要。
+
+
+### 历史 KV 残差坐标归因（2026-11-06）
+
+对真实 GPU508 的 prefill 和四个 decode 边界逐字段列出与 staged FP32-RoPE/BF16 参考的差异坐标。英文 K 的两个差异全部位于 prefill 的 token 行 **4/7**、KV head/dim **(1,84)/(3,44)**，并与目标历史缓存的两个 K 差异逐项相同。英文 V 的四个差异全部位于 prefill 行 **1/5/9/10**；中文 V 的三个差异全部位于 prefill 行 **1/5/9**，另有一个差异来自第 2 个 decode。四个 decode 的 K 均无差异，目标 decode 的 K/V 结论因此可进一步收敛到少数历史 token 的算术舍入。
+
+这组坐标与 prefill/cache 逐位链接结果相互印证：差异在 prefill 实际输出产生，并原样进入历史缓存；没有证据指向 attention softmax、KV 物理索引、cache 写入或 decode 读取路径。该结论仍是实际操作数与独立 staged 参考之间的局部数值归因，尚未模拟 HCU GEMM/归一化每条指令，也不替代整模型 V1。
+
+坐标脚本和结果保存于 `external-evidence:moe519-residual-coordinate-supplement.json.gz`，SHA256 `4c636775bf4632d89915ecdb9d2c07eab84a5ed673ba9f419c23742fe755619f`，核对全部 32 个文件。

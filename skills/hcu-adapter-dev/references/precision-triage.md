@@ -194,3 +194,4 @@ SHA256 `099aaba347fee83e29af326ad8a43a2ed60ac01609af5f67888d229c8bc6fc86`。
   不启用，e2e 锚点门过了才转默认。
 - **必须比较真实 decode 边界**：完整 prompt 的 CPU 参考与 HCU decode 输入不能直接跨执行模式比较。观察真实 prefill 加四步 decode 后，四步 normalized K 和 RoPE 后 K 均逐位匹配 staged FP32-RoPE 参考；目标缓存的中英文 K/V 分别为 14334/14336、14332/14336 和 13824/13824、13820/13824。先核对 token/position、物理 KV 索引、尾行写入和实际 QKV 边界；少量历史元素残差不足以证明 KV cache 错位，也不足以证明整模型精度通过。
 - **先验证 prefill/cache 链接再归因**：同一真实批次中，prefill 产生的 47 行 K/V 与目标 decode 读取的历史缓存前 47 行可以逐位对齐；若 K/V 均 24064/24064 匹配，少量历史差异不能归因于 cache write/read 索引错位，应继续比较算术边界。
+- **按坐标追踪历史残差**：若实际 prefill K/V 与目标 cache 前缀逐位匹配，再将 staged 参考差异坐标映射到 prefill 行，才能区分历史算术舍入与 cache 路径问题。当前样本的英文 2 个 K、英文 4 个 V、中文 3 个 V 均来自 prefill；中文另 1 个 V 来自第二个 decode，四步 decode 的 K 全部匹配。

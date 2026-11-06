@@ -3015,3 +3015,12 @@ checkpoint **25 项**资产前后指纹、受测快照 **603 个文件**、官�
 初次私有探针虽然完成六组生成，但两个 hook 使用相同文件名，且错误要求重复图片重新执行视觉层，因此保留为探针失败。修正日志唯一性及新图/复用请求断言后，隐藏 GPU 的观测器预检验证四个独立记录、张量归档与输入/输出不变；真实复测正常终结。两轮社区源码、15 项 checkpoint 资产、603 个快照文件与当前 473 个 Python 文件前后核对通过，全部自有进程终结并释放设备。
 
 完整成功归档 `external-evidence:vl604-complete-raw.json.gz`，SHA256 `7608ef371122ebbeb3c9e660e9c52bca05e9cab3b421b3f0f62c22dd6d2cebd1`，**650 个文件**；失败探针归档 `external-evidence:vl599-complete-raw.json.gz`，SHA256 `209f979ddfa8f7472c670ad252b29dd0676d32d837036e02a4aa2fca4b80b14b`，**639 个文件**。标准库独立验证全部摘要、两轮 12 请求/288 位置、固定样例、重复概率差和视觉记录；补充归档 `external-evidence:vl608-image-functional-supplement.json.gz`，SHA256 `1f932b357fa1aaaaa96b921ce6215068d3a0ec464b0a2a31b466edde9822fb7e`，**13 个文件**。本轮只补齐上述样例的 eager 图像功能证据；视觉独立 CPU FP32、图像请求 graph 验收及既有整模型 V1 失败仍未闭合，没有生产代码修改或整模型通过结论。
+
+
+### VL2 图像请求的实际 decode graph（2026-11-06）
+
+对上述同一完整 checkpoint、相同图片字节及六组请求，保留 BF16、TP1、Triton attention 和显存比例 0.7，启用 decode graph 并限制最大 batch 为 2。六组请求及四组固定颜色/形状检查完成，实际捕获 batch 1/2；服务报告的 decode graph 分配字段为 **0.266**，eager 为 **0**。本轮没有验收 prefill graph。
+
+eager/graph 的 **144/144** 个输出 token 相同，四组新图的视觉编码器末层及投影层，共 **8 组**输入/输出摘要全部相同；但六组请求的所选概率与 top20 均非逐位一致。相同历史下，所选 token logprob 最大差 **0.056288540**，共同 top20 最大差 **1.34375**；只取各请求首个 EOS 前位置时，共同 top20 最大差仍为 **0.562137127**。这些是两种设备执行模式间的诊断差异，不是独立 CPU FP32 V1 结果；一致的视觉边界不足以唯一定位后续差异，且 eager 自身重复请求也存在概率变化，不能单独归因于 graph。
+
+控制器与 worker 正常终结，社区源码、15 项 checkpoint 资产、603 个快照文件及当前 473 个 Python 文件审计通过，graph 任务释放设备。完整归档 `external-evidence:vl610-complete-raw.json.gz`，SHA256 `24c9205786b0f45bfa9737be5a218d6e2204d719e9633a81de9d1b6538a4d1eb`，**650 个文件**；标准库独立复核两模式的完整概率、实际分配、同历史比较和视觉摘要，补充归档 `external-evidence:vl617-image-graph-supplement.json.gz`，SHA256 `568c6d8a65385ce8bd5e11616d98ce2f2936ea36bef522b45111021b269bbd14`，**7 个文件**。上述样例的 decode graph 图像功能证据已补齐；视觉独立精度参考、重复概率差与原整模型 V1 失败仍保留。

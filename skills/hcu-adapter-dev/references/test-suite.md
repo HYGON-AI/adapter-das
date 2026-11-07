@@ -97,6 +97,15 @@ FP16/BF16各覆盖中间维度3072的2/47行，以及VL2 Dense中间维度12288�
 前后哨兵及三组同地址新输入的eager/Graph逐位一致检查。扩大形状不放宽
 原容差，也不代表Dense两次GEMM、残差或整模型验收。
 
+完整Dense模块专项见 `tests/kernels/test_original_dense_mlp.py`：直接构造
+社区 `DeepseekV2MLP` 的公开replicated模式，hidden2560/intermediate12288，
+覆盖FP16/BF16、单行decode/437行prefill。CPU FP32参考保留gate/up、
+融合SiLU乘积及down投影的dtype存储；三个新输入分别检查eager/Graph逐位
+一致、输入存储不变，以及相对L2/cosine/归一化最大误差。replicated
+linear仍读取分配上下文，须用公开 `get_parallel().override(tp_group=None)`
+限定单测作用域，不能改写社区forward绕过该读取。合成权重模块通过不
+代表真实checkpoint、TP通信、残差链或模型分布验收。
+
 ## 四质量维度
 
 MoE softmax 并列回归见 `tests/kernels/test_moe_gate.py`：CPU 与 HCU

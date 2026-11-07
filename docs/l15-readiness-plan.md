@@ -3245,3 +3245,9 @@ HCU专项pytest **4.20秒**，含导入及源码摘要核对的子进程阶段 *
 全部460行上，红/蓝实际第1层attention输出相对串联参考的相对L2为 **0.228884%/0.225033%**，attention后归一化为 **0.159457%/0.159149%**。官方gate得到的专家集合分别有 **5/460、8/460行**不同，全部位于prefill；最后prompt行与23次decode组成的24个输出位置集合未变化。集合相同不证明输入、路由权重或最终模型输出相同；本轮也未比较传播后的完整专家链、后续decoder或整模型分布，不能将局部变化外推为整模型失败的唯一原因。
 
 隐藏设备的CPU过程 **21.55秒**正常结束；不导入Torch的独立标准库验证 **38.93秒**，重算 **48组**指标和全部集合变化行，复核实际/传播边界，并抽样计算 **48个FP64 gate点积**，与CPU FP32最大差 **2.00293e-7**。输入、所用checkpoint资产与候选运行时摘要不变，自有进程均退出；未独立重放完整attention/norm计算。原始归档 `external-evidence:vl1028-two-layer-chain-raw.json.gz`，SHA256 `6063e6bb255a8706af50fcae8ecacbf6a085ff068df497230ff3382782b8d9ef`，**8个文件、124351083字节**；验证补充 `external-evidence:vl1029-chain-verification.json.gz`，SHA256 `fa5217563489d924f19f91e2d7a1b380a47238f9ce7748b214a401b410d40178`，**6个文件**。本地核对归档内文件摘要，并将验证器加载的全部张量绑定到本轮或此前已验证归档。原BF16默认、FP32 V1阈值和整体验收未完成状态保持。
+
+### 社区 Dense MLP 完整模块回归（2026-11-07）
+
+新增 `tests/kernels/test_original_dense_mlp.py`，直接执行未改写的社区 `DeepseekV2MLP`，补齐融合激活专项之外的gate/up投影→激活→down投影组合。使用公开replicated模式、hidden2560/intermediate12288和合成权重，覆盖FP16/BF16、单行decode及437行prefill，共 **4 passed**。独立CPU FP32参考在每个中间存储边界转回受测dtype；BF16要求relative L2 `<1e-2`、cosine `>0.9999`、按参考最大绝对值归一化的最大误差 `<2e-2`，FP16分别为 `<2e-3`、`>0.999998`、`<3e-3`。每个节点执行三组新输入，要求eager/Graph输出逐位一致、输出随输入变化、完整输入存储未变。
+
+首次四个节点在计算断言前因缺少 `tp_group` 分配上下文失败；replicated模式虽不执行通信，社区RowParallelLinear仍读取该上下文。夹具改为公开 `get_parallel().override(tp_group=None)`，作用域结束恢复原状态，没有改生产代码或社区forward。复测pytest **19.21秒**，含导入及源码摘要检查的子进程阶段 **65.42秒**；7502个社区Python文件前后摘要相同，全部10594个跟踪文件及额外源码完整性审计通过。归档 `external-evidence:vl1044-dense-regression.json.gz`，SHA256 `166d4dfa7ab4a19a68133314bc00ab6f5f45aed3d2c9111fae208f54bed50276`，**17个文件、1085241字节**，保留初次失败；本地核对全部摘要、当前测试字节、最终4个无失败/错误/跳过JUnit节点及源码审计。该专项由kernels段收集，未新增家族manifest case；合成权重、单卡replicated模块不替代真实权重、残差、TP通信、原整模型V1或多模型验收。

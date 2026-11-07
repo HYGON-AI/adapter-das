@@ -106,6 +106,14 @@ linear仍读取分配上下文，须用公开 `get_parallel().override(tp_group=
 限定单测作用域，不能改写社区forward绕过该读取。合成权重模块通过不
 代表真实checkpoint、TP通信、残差链或模型分布验收。
 
+VL2实际形状的routed专家专项见 `tests/kernels/test_original_moe_experts.py`：
+直接执行社区 `fused_experts_impl`，使用72专家、hidden2560/intermediate1536、
+top6、BF16和1/437行。CPU FP32参考分别保留gate/up、融合激活、
+路由加权down的BF16存储，以及槽位求和后乘2的顺序。三组输入同时改变
+激活、专家ID和归一化权重，检查eager/Graph逐位一致及所有输入存储不变；
+始终未选中的专家权重填NaN，验证空专家与padding隔离。此专项提供合成
+权重的专家计算链证据，不执行gate、共享专家、TP通信或完整模型。
+
 ## 四质量维度
 
 MoE softmax 并列回归见 `tests/kernels/test_moe_gate.py`：CPU 与 HCU

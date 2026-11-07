@@ -3261,3 +3261,9 @@ HCU专项pytest **4.20秒**，含导入及源码摘要核对的子进程阶段 *
 CPU worker **225.73秒**，含启动的控制器总时长 **231.89秒**；完整checkpoint前后字节审计、官方参考源码、候选与输入摘要通过，自有进程终结。不导入Torch的标准库验证 **62.37秒**，重算 **120组**指标，复核全部原始MoE字段、传播输入和专家集合，并抽查 **81920个位置**的combine和共享相加输出及 **384个**FP64投影/激活/路由加权值。抽样BF16最大差为0 ULP，down的CPU FP32与FP64最大差 **1.48933e-8**；32条采样记录的权重行另从checkpoint重新读取并逐项绑定，所用分片前后摘要相同。抽样不替代全部设备GEMM、gate或剩余decoder验证。
 
 原始归档 `external-evidence:vl1043-staged-moe-raw.json.gz`，SHA256 `bfa68eef6cfb20fee47134d72ca50345886001263591c9ea9914ced2b75d30ff`，**13个文件、277073444字节**；完整验证补充 `external-evidence:vl1053-moe-verification-complete.json.gz`，SHA256 `ef894e512a060c7b97aa9e3e68fb01fb3e1625a489d34942acc387cbadb3ecfd`，**17个文件、749389字节**。本地核对归档及文件摘要，将验证器加载的7个张量文件全部绑定到本轮或此前不可变归档。本轮未新增生产修复；BF16默认、原整模型FP32 V1失败、多模型及配置验收未完成状态保持。
+
+### VL2 实际形状的 routed 专家链回归（2026-11-07）
+
+现有小形状MoE链之外，新增 `tests/kernels/test_original_moe_experts.py`，直接调用社区 `fused_experts_impl`，覆盖72专家、hidden2560/intermediate1536、top6及BF16的单行decode/437行prefill，共 **2 passed，pytest 11.37秒**。独立CPU FP32参考在gate/up、融合SiLU乘积、乘路由权重后的down投影分别存BF16，六个槽位以FP32顺序求和、乘2再存BF16；要求relative L2 `<1e-2`、cosine `>0.9999`、按参考最大绝对值归一化的最大误差 `<2e-2`。三组新输入同时改变激活、专家ID和权重，eager与Graph输出逐位一致，完整激活存储、路由ID和权重均未改变。一个始终未选中的专家填NaN，输出须有限，覆盖空专家与padding隔离。
+
+含导入及两轮完整源码审计的子进程阶段 **78.69秒**。7502个社区Python文件前后摘要相同，全部10594个跟踪文件及额外源码按原社区commit审计通过；受测adapter快照摘要不变。归档 `external-evidence:vl1060-moe-regression.json.gz`，SHA256 `17f030306447170d53c1d4169938cdf1fb2e4d6951bb94d8afb70de3195cf332`，**11个文件、537937字节**；本地核对全部文件摘要、当前测试字节、两个无失败/错误/跳过的JUnit节点及源码审计，并保留最初在pytest前因私有脚本缺少测试路径赋值而失败的脚本。测试由kernels段收集，不增加家族manifest计数；合成专家链不执行gate、共享分支、TP通信或模型生成，原整模型FP32 V1失败、多模型/配置验收未完成状态保持。

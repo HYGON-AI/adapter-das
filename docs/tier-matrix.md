@@ -42,7 +42,7 @@ vLLM official dense FP8 fallback via public linear registration
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| official-triton | validated gfx936 only: official TritonFP8Scale |
+| official-triton | validated gfx936 and gfx938: official TritonFP |
 
 路由变量：（auto）
 

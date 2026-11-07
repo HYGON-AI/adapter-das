@@ -3183,3 +3183,14 @@ CPU 参考边界实际已包含 layer 1 attention；一次重复挂钩的私有 
 任务 **27.30 秒**正常结束，自有进程已退出。标准库独立读取匹配张量，重算三种比较、五个行范围、两张图共 **30 组**指标，并逐元素核对实际输入/输出及原 FP32 输入/输出与此前原始归档一致。该复核没有独立重实现 attention 的 GEMM、RoPE、归一化或 softmax；同输入对照仍跨越 BF16 增量路径与 FP32 完整 causal 路径，因此不能将剩余局部偏差直接认定为某个 kernel 错误，也不能替代整模型 V1 验收。
 
 原始单层对照归档 `external-evidence:vl914-fixed-input-attention-raw.json.gz`，SHA256 `891d4bf36f3c040e6d35a9b94fdea6bba0991d72f5867c5ad2f56aabf962eb23`，**11 个文件、38417043 字节**；独立标量复核归档 `external-evidence:vl916-attention-scalar-verification.json.gz`，SHA256 `db14bbd97202945db46377402aa323f7722e5b631bea00f1acd9bbfcdf21cd9d`，**2 个文件**。下一步继续拆分实际 MLA 投影、RoPE 与缓存/attention 累加边界；原整模型 FP32 V1 失败、默认 BF16 和原阈值继续保留。
+
+
+### VL2 实际 MLA 子模块与同输入组件对照（2026-11-07）
+
+在相同 BF16/TP1/Triton eager 配置下，观察目标层的 Q/KV 投影、KV 归一化、RoPE、attention 上下文和输出投影；子模块观察仅在目标父层调用内生效，避免共享模块混入其他层。六个图像请求阶段各实际调用 **1 次 MHA prefill、23 次吸收式 MQA decode**，`kv_b_proj` 每阶段只调用 1 次，其余 Q/KV-a/归一化/RoPE/输出投影各 24 次。该绕过来自社区吸收式路径，不要求 decode 调用 `kv_b_proj`。六组图像请求及两次无标记控制的全部输出 ID、所选概率和 Top20 概率与此前运行逐位一致；源码、checkpoint、候选文件和输入审计通过，真实任务 **385.52 秒**正常结束。
+
+隐藏设备的独立 CPU 进程逐项核对运行时全部 5 个 attention 权重与原 checkpoint，并验证 `w_kc/w_vc` 等于 KV-b 权重的原切分/转置；实际使用的配置、索引和权重分片前后哈希一致。对每个组件固定其实际输入，计算 FP32 参考及其 BF16 舍入对照；投影参考将 437 行 prefill 与 23 行 decode 拼接，GEMM 形状与实际单步 decode 不同。RoPE 将等价的交错/半分坐标排列对齐后比较，不能直接比较两种布局的原始数组。Q/KV-a/输出投影、KV 归一化和 RoPE 的全部 460 行相对 L2 约 **0.154%–0.167%**，参考舍入 BF16 后均降至 **0.00572% 以下**。decode 的 Q/V 吸收矩阵乘法相对其同输入 FP32 结果舍入 BF16 后的差异均在 **0.000572% 以下**；这些局部数值不替代模型精度门禁。
+
+展开 MHA prefill 的实际上下文相对同输入 FP32 参考，相对 L2 为 **0.176568%/0.176508%**，参考仅在最终舍入 BF16 后仍为 **0.138653%/0.139481%**。吸收式 MQA 的 23 行 decode 为 **0.174813%/0.175231%**，最终舍入后为 **0.131971%/0.133819%**。decode 参考按捕获的当前压缩 KV 与旋转后 K 拼接语义历史，逐项确认当前 K/V 对应，但没有独立读取物理缓存，故不能排除缓存或唯一归因累加内核。社区 Triton 源码含中间概率转 V dtype 的路径；本轮未绑定实际 kernel 分块与精度参数，不能把上述残差全部解释为该舍入，也不能据此改默认计算。
+
+CPU 对照 **24.71 秒**正常结束，两任务自有进程均退出。标准库独立重算 **116 组**指标、核对 BF16 舍入位模式，将实际投影/归一化/上下文重新绑定到原始子模块捕获，并抽样复算 **512 个 FP64 投影点积**；抽样 FP32 参考与 FP64 最大差 **4.01684e-7**，未独立重放全部 GEMM、RoPE 或 attention softmax。原始归档 `external-evidence:vl937-mla-components-raw.json.gz`，SHA256 `9cb94248797416b8ccad37134364c1e667be71c37667cbd650a614b5ab8097e4`，**1443 个文件、377983704 字节**；验证补充归档 `external-evidence:vl940-mla-components-verification.json.gz`，SHA256 `04afaeb5f9b8e60e14645604d9c1d84cfadf7383b40bc414955359a2c6401cb7`，**8 个文件**。本轮无生产代码改动，原整模型 FP32 V1 仍失败；下一步绑定实际 attention kernel 的中间精度、分块及物理缓存证据，继续区分社区计算语义与 adapter 偏差。

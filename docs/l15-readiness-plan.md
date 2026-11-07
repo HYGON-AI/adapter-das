@@ -3113,3 +3113,14 @@ CPU 任务正常终结；checkpoint 15 项资产、官方参考源码、603 个 
 远端另执行 `tests/kernels tests/adapter tests/vendor -k "not stress"`，结果 **1738 passed、47 failed、137 errors、137 skipped、2 xfailed、1 deselected**。逐项 XML 分诊将全部失败/错误定位到 vLLM 测试组（含依赖 vLLM 环境的 model-mutation）：缺失目标源码环境、当前安装版接口差异、设备已初始化断言和子进程超时等，按当前用户范围保留，不称全量通过。ops 分诊四组通过；Triton 组 **409 passed、1 skipped、2 xfailed**、FA 场景组 **53 skipped**、AR 组 **2 passed、1 skipped、1 deselected**，仍记 incomplete。L0 与 diff 检查通过，已有 31 项裸环境变量警告保留。
 
 组件和失败实现归档 `external-evidence:moe744-components-raw.json.gz`，SHA256 `1b90a952b236c4ef17ed0e2e36944082df06728bd30ce27ca9785b8ffd1d61fe`，**3062 个文件**；正式模型两模式和广泛回归归档 `external-evidence:vl749-models-raw.json.gz`，SHA256 `cc1e4c87126c148e9f6bb3422d3c06f419c1f64adbbbd162a587bc1c86515602`，**11826 个文件**；独立复核、分诊及快关补充归档 `external-evidence:moe758-stable-routing-supplement.json.gz`，SHA256 `692f4655f7bd86a05d384f99164da1f3a0218817f8707f55275ba04758b51fb2`，**35 个文件**。本功能关闭已复现的 TopK 排列不稳定问题，整模型 FP32 精度、多模型及其余配置矩阵验收继续推进。
+
+
+### VL2 输出层的固定隐藏状态分解（2026-11-07）
+
+对正式稳定排序桥的 eager 红/蓝图各 24 个输出位置，复用实际采样前 BF16 隐藏状态与原始 logits，在隐藏设备、未导入 SGLang 的独立 CPU 进程，用同 checkpoint 的 `language.lm_head.weight` 做完整 FP32 输出层乘积，再以 FP64 归一化；另保存该乘积舍入到 BF16 的合成对照。实际 head 不与输入 embedding 绑定。本诊断没有重跑完整语言模型，也没有改变生产默认 BF16 或启用 FP32 head。
+
+两图共 **6205440 个**实际 logits 均可由 BF16 精确表示，其中 **6204611 个**与 FP32 head 乘积舍入 BF16 后逐位相同；其余最大差 **0.03125**。对实际 Top20/输出 ID 的并集，保存对应权重并使用独立标量 FP64 点积复核 **10344 个**结果，逐项误差为 **0**；FP32 与 FP64 子集最大差为 **7.95813e-6**。该子集检查不代表完整词表 FP64 GEMM 验证。
+
+实际输出相对固定隐藏状态的 FP32 head，最大所选 logprob 差 **0.036620530**、Top20 差 **0.094825149**、Top20/tail JSD **0.000237545**，局部比较在原阈值内。将该 FP32 head 结果与主 FP32 组合参考比较，Top20 差仍为 **0.610455771**、JSD **0.002234099**；与固定 HCU 图文输入的 FP32 语言参考比较，Top20 差仍为 **0.508096525**。因此输出层 BF16 舍入不足以解释剩余整模型偏差，需继续检查 decoder；尚不能唯一归因某个 attention、MoE 或累加内核。局部通过不替代原整模型 V1 失败。
+
+独立标准库验证不导入 Torch，重算全部 FP64 子集点积、完整词表归一化、BF16 舍入位模式和四组原 V1 比较的六项指标，结果与报告一致。checkpoint 前后字节审计及输入摘要检查通过，CPU 任务正常结束，进程已释放；没有新增 GPU 运行或生产代码改动。原始分解归档 `external-evidence:vl769-head-raw.json.gz`，SHA256 `32ce423dc23f7951dedb1a7a6c44e9dc57f059b849d9fe6e1755503fcad721bf`，**11 个文件**；契约、独立复核及资源审计补充归档 `external-evidence:vl772-head-verification-supplement.json.gz`，SHA256 `90160450e2af2e9011154615bcd7bdaed0a031644a03db0d789de59ba82d3374`，**20 个文件**。精度默认值、原门槛及整体验收未完成状态保持原样。

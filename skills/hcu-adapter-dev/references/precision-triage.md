@@ -50,6 +50,13 @@ SHA256 `099aaba347fee83e29af326ad8a43a2ed60ac01609af5f67888d229c8bc6fc86`。
 
 ## 方法论要点（历史沉淀）
 
+- **融合归一化区分方差、分子与乘权重前的存储边界**：社区默认
+  fused-add RMSNorm 以未舍入 FP32 和计算方差，却以激活 dtype 的残差
+  作分子；显式 `cast_x_before_out_mul=True` 使用未舍入和作分子，并在
+  乘权重前舍入归一化结果。这两个合同不能互换。参考须直接核对绑定
+  版本的 JIT 源码，再以能区分舍入模式的输入执行真实社区入口、普通/
+  Gemma、FP16/BF16、跨 tile 尾部及变输入 Graph。历史冻结候选的正确
+  合同不能替新组合背书；最新组合的独立回归也不能倒推解释旧模型失败。
 - **绑定 checkpoint 内的模型代码**：`tools.checkpoint_files` 除权重与配置，
   还递归绑定本地 `.py` 字节，覆盖 `trust_remote_code` 使用的配置、
   tokenizer、模型及相对导入 helper；指纹过程不执行这些代码。

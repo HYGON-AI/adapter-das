@@ -25,6 +25,18 @@ selector、实际 fork 格式化窗口均需断言。public registry clear/forei
 目标：**adapter API 全绿 ⇒ 官方 sglang 在 HCU 上无大问题**。为此每个出口
 API 必须覆盖四个质量维度，缺一不可（每个维度都有历史 bug 背书）：
 
+融合残差 RMSNorm 的存储边界回归见 `tests/kernels/test_layernorm.py`：
+默认路径用未舍入的 FP32 `input + residual` 计算方差，以转回激活 dtype
+的 residual 作为分子；不能将两者都替换为未舍入和。显式
+`cast_x_before_out_mul=True` 则保留 FP32 和作为分子，在乘权重前将归一化
+结果转回激活 dtype。两种模式须分别经过真实社区接口，并用能区分两种
+结果的输入对拍独立 CPU FP64 参考。默认直接算子的 16 个参数节点覆盖
+普通/Gemma、Torch/Triton、FP16/BF16 及 hidden 128/12289；社区普通
+fused-add 入口的 8 个参数节点覆盖两个显式存储模式、两种 dtype 和两种
+宽度。大宽度包含多 tile 与 masked tail，三个同地址新输入分别检查
+eager/Graph 输出、残差及权重，原精确断言不变。
+该专项不代替整模型精度门，也不将可选 LightOp 的跳过算作设备通过。
+
 CT-FP8 CPU 参考回归见 `test_checkpoint_quantization_reference.py`：
 真实小型 Qwen3 safetensors、官方加载器、独立 Linear QDQ 数学对拍、
 逐个 tensor 核对及实际逐层 QDQ 观察；缺层 QDQ、错误反量化、

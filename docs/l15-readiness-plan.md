@@ -3415,3 +3415,36 @@ CPU子进程 **51.48秒**，含审计控制器 **65.90秒**正常结束；加载
 补强 `tests/kernels/test_sglang_mla_decode.py`：保留33/437/460三个参数节点、独立CPU dense-softmax及连续V对照，增加有效分段有限、128槽位scratch中的全部未用部分保持NaN、eager与Graph输出逐位一致的断言。在同地址改变Q、缓存和物理索引后，固定split7执行 **448→449→448**，有效分段随之 **7→5→7**。原数值容差不变，真实HCU运行 **3/3 PASS**，pytest **0.49秒**、含bootstrap子进程 **37.81秒**、含前后审计控制器 **52.78秒**；不增加L1.5家族manifest计数。
 
 完整采样、原始中间值、分析/复核代码及实际受测文件归档 `external-evidence:vl1158-stage1-observation-graph-boundary.tar.gz`，SHA256 `0f11efaedc2a4b590fb086562f471263e4fbbb989371335488f39c92db0dbf33`，**49个文件、66398291字节**。本地核对全部成员大小/摘要、执行脚本、仓内测试的受测字节及gzip完整性，并将 **87条输入边** 与本轮及既有原始归档绑定。社区源码、冻结候选与输入前后审计通过，全部自有进程退出。本轮未重跑整模型或完成生产精度修复；BF16默认、原主图像FP32 V1的Top20 **0.604931366 > 0.15**、JSD **0.002448766 > 0.002**及失败状态不变。此有界阶段定位已完成，下一步回到多模型、必要配置和当前版本的验收缺口，不能用继续枚举局部ULP代替完整目标。
+### fused-add RMSNorm 的社区存储语义修复（2026-11-07）
+
+在当前合并候选上重新执行五家族 58 项矩阵，结果为 **57/58 PASS**：
+Dense 9/10、MLA 17/17、MoE 14/14、Quantization 10/10、Mamba 7/7。
+唯一失败是 `dense-fused-add-norm-graph` 的 4 个 Triton 参数节点；
+对应 4 个 Torch 节点通过。失败差异集中在 residual 分子提前舍入与未舍入
+FP32 和的区别，最大绝对差为 FP16 **0.00048828125**、BF16
+**0.00390625**；不是测试框架或资源失败。历史两项 MLA 失败用例在本轮
+均通过，附加压缩 MLA 专项为 **3/3 PASS**。
+
+对照绑定的社区 `fused_add_rmsnorm.cuh` 后，adapter Triton 实现恢复社区
+默认合同：方差使用未舍入 FP32 `input + residual`，归一化分子使用写回
+激活 dtype 后的 residual。社区显式 `cast_x_before_out_mul=True` 分支仍
+使用未舍入 FP32 和作为分子，并在乘权重前舍入归一化结果。生产修改只在
+`sgl_kernel/layernorm.py`，没有修改社区 SGLang 文件；测试在
+`tests/kernels/test_layernorm.py` 增加了 16 个直接算子参数节点和 8 个
+社区入口参数节点，覆盖普通/Gemma、Torch/Triton、FP16/BF16、宽度 128/
+12289、多 tile masked tail、eager/Graph 和三轮变输入。
+
+修复候选的 HCU layernorm 文件为 **45/45 PASS**，Dense 家族为 **10/10
+PASS**；CPU 组合为 **76 passed、1 skipped、38 deselected**，L0 GREEN。
+当前修复版和社区源码前后完整性审计均通过，632 个候选文件摘要及输入摘要
+保持不变，所有自有进程已退出。不可变归档
+`external-evidence:adapter-norm1168-storage-contract.tar.gz` 的 SHA256
+为 `46277fd348c6b1b217479cd65fac323801d1c07f6de3b35fe90fea90571096cf`，
+本地独立核对 **1374** 个成员、成员大小/SHA256、gzip CRC、受测生产/测试
+字节及报告中的 58/10 项严格判定。
+
+该修复只关闭了当前版本的 fused-add RMSNorm 组件差距，尚未重新运行真实
+模型，也没有改变默认 BF16、原 FP32 V1 阈值或旧 VL2 整模型失败结论：
+Top20 最大差 **0.604931366 > 0.15**，Top20/tail JSD
+**0.002448766 > 0.002**。多模型真实权重、必要配置和整模型精度验收继续
+未完成。

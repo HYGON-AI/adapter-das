@@ -297,6 +297,7 @@ def test_dpskmeta_drifted_construct_still_raises(tmp_path):
         jit_dpskmeta._apply(root, lambda *a, **k: None)
 
 
+
 def _functions(root, tree):
     import pathlib
     resolver_text = """def resolve_sources(files):

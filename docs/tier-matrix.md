@@ -54,6 +54,13 @@ DTK mapped CPU allocation exposed as a device tensor
 | 档位 | 状态 / 备注 |
 |---|---|
 | dtk | candidate INT8/BF16/FP8 live-ID Graph replay p |
+## cuda_graph
+
+HIP driver guard for breakable prefill graph capture
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| prefill-bcg-driver-truth | candidate Breakable prefill uses the upstream  |
 
 路由变量：（auto）
 
@@ -426,6 +433,16 @@ W4A16 fused MoE experts (moe_wna16 AWQ/GPTQ-int4 line)
 | deepgemm | candidate R-05 bridge 2026-10-19: DTK deepgemm |
 
 路由变量：`HCU_W4A16_MOE_IMPL`
+
+## ct_channel_w4a8_components
+
+Channel INT4 / token INT8 components and explicit BF16 DeepEP LL route candidate; model acceptance pending
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate w4a8_int8_triton: masked absmax/127. |
+
+路由变量：（auto）
 
 ## int8_linear_gemm
 

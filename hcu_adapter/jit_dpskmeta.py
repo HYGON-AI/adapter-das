@@ -31,10 +31,11 @@ in earlier needles, except where noted):
 
 Every needle was derived from the live boot/capture chain or the
 `dsv4_syntax_check.sh` preflight driver (wrapper-include + hipcc
--fsyntax-only over the whole family), nmz16 2026-10-20. gfx950-only files
+-fsyntax-only over the whole family), validation-host-16 2026-10-20. gfx950-only files
 (mxfp8_gemv_gfx95 static_asserts by design) and wo_a_fused (Hopper cluster
 PTX; wo_a takes the HIP streaming-dequant path instead) are intentionally
 NOT patched.
+
 
 Text-patch discipline per jit_ptgq: needle missing in an existing file
 raises loud (upstream changed); file absent skips quietly. Superseded REPLs
@@ -129,6 +130,7 @@ _SELF_HEAL_ABSENT = {
     "deepseek_v4/topk_bf16_small.cuh": {
         '  asm volatile("mov.u32 %0, %%laneid;" : "=r"(lane_id));': "%%laneid",
     },
+
 }
 
 
@@ -172,7 +174,7 @@ _PATCHES = {
         ),
         # template-body float2 binds (syntax preflight cannot see these;
         # they detonate at kernel instantiation — main_q_norm_rope module,
-        # nmz16 2026-10-20)
+        # validation-host-16 2026-10-20)
         (
             "  const auto [x_real, x_imag] = cast<fp32x2_t>(elem);",
             "  const fp32x2_t _re = cast<fp32x2_t>(elem);  // HCU: float2 bind\n"

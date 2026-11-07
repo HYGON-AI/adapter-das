@@ -21,6 +21,14 @@ facade 的运行时桥替代磁盘补丁；不可重新引入 common.py 写回�
 `moe_dualstream_gate` 同样已迁移为保留函数对象的运行时分支适配；
 仅作用于 MoE forward 的私有 capture predicate，不能改全局 capture 状态
 或临时改实例的 alt_stream；保留 skip_shared_experts 与 DeepEP 等分支。
+`moe_topk_order` 核对 native grouped router 两处 sorted 关键字操作数，
+仅在 GPU 私有函数副本改变对应常量，CPU 保留原副本，字节码指令不变。
+在原权重归一化之前固定专家槽位，不能事后重排已归一化的权重、全局
+替换 `torch.topk` 或用私有 Torch facade 绕过真实 compiler guard。
+保留 compiled wrapper 及原函数已有别名；Torch 的
+`_torchdynamo_orig_callable` 仍可能是带 `__wrapped__` 的包装，须定位真正
+原函数，并保留其参数名、参数数量和默认值。回归必须覆盖已预热编译入口、
+新进程和变输入 graph；局部重复一致不替代 CPU FP32 整模型精度门禁。
 `spec_h2d_pin` 通过原函数私有 Torch facade 分配 pinned KV-lens，
 保留函数对象与已有别名，不写回 eagle_utils.py。不能以固定 ring 深度
 推测 DMA 已结束；使用 Torch 管理的 pinned 分配并验证多流异步复制。

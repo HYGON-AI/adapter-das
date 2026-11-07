@@ -338,6 +338,16 @@ REGISTRY = {
                  "不以固定 ring 深度推测 DMA 完成。pin 不可用时告警并"
                  "回退社区 pageable 行为；=0 关闭安装。",
     },
+    "HCU_MOE_STABLE_TOPK": {
+        "env": "HCU_MOE_STABLE_TOPK", "default": "1",
+        "about": "原生 grouped-TopK 在 HIP 上按分数排序后归一化，"
+                 "避免未排序专家槽位的随机排列改变 MoE 有限精度累加。"
+                 "仅核对并改变 GPU 私有副本的两处 sorted 参数常量，"
+                 "保留编译入口和已有别名，不改写社区源码；"
+                 "不改变分组、选择规则、分数、共享专家或缩放；"
+                 "平局仍遵守社区未指定 ID/顺序的 TopK 契约。"
+                 "=0 在新进程中保留社区原生未排序路径。",
+    },
     "HCU_MOE_ALIGN_FUSED": {
         "env": "HCU_MOE_ALIGN_FUSED", "default": "2048",
         "about": "moe_align_block_size 小形状融合档：topk lanes<=N 时用"

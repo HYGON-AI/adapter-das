@@ -3098,3 +3098,18 @@ CPU 任务正常终结；checkpoint 15 项资产、官方参考源码、603 个 
 任务正常终结；社区源码、checkpoint、603 个快照文件、当前 473 个 Python 文件及输入摘要审计通过，自有进程均终结。标准库独立重算四组概率比较的全部原策略指标和判定，并验证重复结果、实际调用次数与边界记录。初次比较探针仅因私有脚本导入位置错误提前失败，修正后复用原参考完成，没有重跑或修改 CPU 参考模型。
 
 完整归档 `external-evidence:vl719-complete-raw.json.gz`，SHA256 `fbbe48494c49fbc4fe93dd66471ddba57594ef6e583b958e5d728a50855c185a`，**11248 个文件**；独立验证与资源审计补充归档 `external-evidence:vl722-sorted-model-supplement.json.gz`，SHA256 `a654bb1ff242bc59d466048f524205ce9a8b6713c2fcc8aa0d00cad0fc9e45f0`，**18 个文件**。下一步将已验证的稳定排序收敛为保留函数别名、可验证源码完整性和配置边界的 adapter 修复，再回归真实模型；原整模型精度失败仍需继续定位。
+
+
+### 原生 grouped TopK 稳定排序的正式运行时修复（2026-11-07）
+
+新增 `hcu_adapter.moe_topk_order`，由 SGLang 宿主桥在启动期安装，默认启用 `HCU_MOE_STABLE_TOPK`，新进程设为 `0` 可关闭。原生 grouped router 的两处 `sorted` 关键字操作数经指令与签名核对后，仅在 GPU 私有函数副本改变对应布尔常量；原指令、Torch 模块、编译入口和已有函数别名均保留，CPU 调用原副本，其他路由内核不受此桥影响。排序发生在原归一化之前，保留分组、偏置、激活分数、共享专家与缩放；平局 ID/顺序继续遵守社区未指定的 TopK 契约。没有新增社区磁盘写回。
+
+实现过程中，真实 Torch 构建的额外包装、预热缓存对通用可变参转发的不兼容，以及私有 Torch facade 的 compiler guard 失败均已保留为失败证据。最终方案保留所有包装和原参数帧，改用上述窄常量适配。远端隐藏设备的 CPU 契约与基础算子 **46 passed**；设备专项 **17/17 passed**，覆盖 FP32/FP16/BF16、单组/多组、偏置选择与权重隔离、归一化/缩放、平局合法性、已有别名、预热编译、新解释器和变输入 graph。真实社区已编译 router 的 **32 次**回放与原排序诊断的 ID/权重全部逐位一致，标准库独立读取原始输出复核通过。快关另在真实 SGLang 导入路径验证桥未安装；隐藏设备的初次导入因社区 capability 探测失败，未冒称快关成功。
+
+完整 DeepSeek-VL2 checkpoint 在正式桥、BF16/TP1/Triton 配置下完成 eager 与 decode graph 两轮，各六组图像请求和两次无标记控制。两轮各自的重复文件、base64 及控制请求 **24/24** 个 ID、所选概率和 Top20 概率均逐位一致；两模式的八组结果也全部一致。graph 实际捕获 batch 1/2，报告 decode graph 分配 **0.243**，eager 为 **0**；不代表 prefill graph 验收。eager 的重复文件/base64 共 **3216 组**输入/kwargs/输出边界全部相同，两轮固定颜色/形状检查通过。默认精度、采样和原 V1 门槛不变。
+
+按相同 checkpoint、图片、实际首层嵌入及完整输出历史复用原 CPU FP32 组合参考，正式桥的主参考最大所选 logprob 差 **0.115541225**、Top20 差 **0.604931366**、Top20/tail JSD **0.002448766**；固定实际 HCU 输入诊断 Top20 差 **0.547583222**。标准库独立重算原 V1 指标和判定均仍为失败，未以一致性修复替代数值验收。两轮社区源码、checkpoint、605 个候选文件及 475 个 Python 文件审计通过，自有模型与组件进程终结；提交前仅有环境变量说明文字更新，与受测行为源码逐项绑定。
+
+远端另执行 `tests/kernels tests/adapter tests/vendor -k "not stress"`，结果 **1738 passed、47 failed、137 errors、137 skipped、2 xfailed、1 deselected**。逐项 XML 分诊将全部失败/错误定位到 vLLM 测试组（含依赖 vLLM 环境的 model-mutation）：缺失目标源码环境、当前安装版接口差异、设备已初始化断言和子进程超时等，按当前用户范围保留，不称全量通过。ops 分诊四组通过；Triton 组 **409 passed、1 skipped、2 xfailed**、FA 场景组 **53 skipped**、AR 组 **2 passed、1 skipped、1 deselected**，仍记 incomplete。L0 与 diff 检查通过，已有 31 项裸环境变量警告保留。
+
+组件和失败实现归档 `external-evidence:moe744-components-raw.json.gz`，SHA256 `1b90a952b236c4ef17ed0e2e36944082df06728bd30ce27ca9785b8ffd1d61fe`，**3062 个文件**；正式模型两模式和广泛回归归档 `external-evidence:vl749-models-raw.json.gz`，SHA256 `cc1e4c87126c148e9f6bb3422d3c06f419c1f64adbbbd162a587bc1c86515602`，**11826 个文件**；独立复核、分诊及快关补充归档 `external-evidence:moe758-stable-routing-supplement.json.gz`，SHA256 `692f4655f7bd86a05d384f99164da1f3a0218817f8707f55275ba04758b51fb2`，**35 个文件**。本功能关闭已复现的 TopK 排列不稳定问题，整模型 FP32 精度、多模型及其余配置矩阵验收继续推进。

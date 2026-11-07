@@ -3035,6 +3035,18 @@ def install() -> None:
                 "HCU adapter: speculative pinned metadata not installed", exc_info=True,
             )
 
+        # Native routing needs stable expert slots before its weight sum.
+        # Keep the compiled entry and cached aliases; never rewrite source.
+        try:
+            from hcu_adapter import moe_topk_order
+
+            moe_topk_order.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: native grouped TopK order bridge not installed",
+                exc_info=True,
+            )
+
         # Install the model-method binding only after operator/vendor bridges
         # are ready. This imports the community class and retains existing
         # aliases of forward; no early model scan or disk patch is needed.

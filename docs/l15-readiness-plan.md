@@ -3172,3 +3172,14 @@ CPU 参考边界实际已包含 layer 1 attention；一次重复挂钩的私有 
 另核对两次运行的 checkpoint 清单及 HCU 前后字节审计，重新哈希 CPU 参考绑定的 **6 个输入文件**；两图各 24 个输出 token 历史一致，进入语言模型首层的 437 行实际嵌入摘要一致。这里按首层输入绑定，不能将 logits processor 返回的 `mm_input_embeds` 字段直接当作同一捕获边界。该比较跨越 CPU FP32 固定历史与 HCU BF16 增量路径，只作定位证据，不构成整模型精度验收。
 
 完整归档 `external-evidence:vl851-attention-raw.json.gz`，SHA256 `7b1076328717e4613bab607cbdff70aae35d64df8f367e6854638b6108b1a1c0`，**368390554 字节、252 个文件**；数值独立重算与历史/输入绑定补充归档 `external-evidence:vl908-attention-verification-supplement.json.gz`，SHA256 `913e340aa8054b02344a48025073bc59d7da12e5c3523e8109d9c2b68a09efd3`，**19 个文件**。历史 `vl852` 报告的指标复核声明以本次明确范围为准。原整模型 FP32 V1 失败、BF16 默认和原阈值继续保留，下一步沿 layer 1 attention 的输入来源与 MLA/KV 边界继续定位。
+
+
+### VL2 layer 1 attention 的同输入 FP32 对照（2026-11-07）
+
+在隐藏设备的独立 CPU 进程中，仅实例化官方 `DeepseekV2Attention`，按解析后的配置确认 `q_lora_rank=None`、32 个 head、KV rank 512、非旋转/旋转 head dim 为 128/64。从原 checkpoint 严格加载本层全部 **5 个**权重张量并逐项比对；实际使用的配置、索引和单个权重分片前后 SHA256 均匹配已有绑定，官方源码与输入文件保持一致。本次没有重跑完整模型或 HCU 路径。
+
+先使用此前保存的官方 FP32 输入、位置与 causal mask，单层输出与两图完整 **461 行**的原 decoder attention 输出逐位一致。再把前 460 行替换为实际 HCU 捕获输入转 FP32，保留被 causal mask 屏蔽的第 461 行以维持原 GEMM 形状，比较前 437 行 prefill 与后 23 行 decode。实际 HCU 输出相对同输入官方 FP32 输出，全部 460 行的相对 L2 为 **0.347483%/0.348261%**，24 个实际输出位置为 **0.345256%/0.373406%**；固定官方 attention，仅改变输入计算流产生的输出相对 L2 为 **0.223379%/0.222311%**。原不同计算流全部行比较仍为 **0.419594%/0.423582%**；这些误差指标的参考分母不同，不能直接相减作为贡献比例。
+
+任务 **27.30 秒**正常结束，自有进程已退出。标准库独立读取匹配张量，重算三种比较、五个行范围、两张图共 **30 组**指标，并逐元素核对实际输入/输出及原 FP32 输入/输出与此前原始归档一致。该复核没有独立重实现 attention 的 GEMM、RoPE、归一化或 softmax；同输入对照仍跨越 BF16 增量路径与 FP32 完整 causal 路径，因此不能将剩余局部偏差直接认定为某个 kernel 错误，也不能替代整模型 V1 验收。
+
+原始单层对照归档 `external-evidence:vl914-fixed-input-attention-raw.json.gz`，SHA256 `891d4bf36f3c040e6d35a9b94fdea6bba0991d72f5867c5ad2f56aabf962eb23`，**11 个文件、38417043 字节**；独立标量复核归档 `external-evidence:vl916-attention-scalar-verification.json.gz`，SHA256 `db14bbd97202945db46377402aa323f7722e5b631bea00f1acd9bbfcdf21cd9d`，**2 个文件**。下一步继续拆分实际 MLA 投影、RoPE 与缓存/attention 累加边界；原整模型 FP32 V1 失败、默认 BF16 和原阈值继续保留。

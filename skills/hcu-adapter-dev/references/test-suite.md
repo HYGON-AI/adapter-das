@@ -90,6 +90,13 @@ V 行间距576、非连续物理索引，长度33/437/460与split7的空尾分�
 Q、缓存、索引、有效长度和split数。该组件测试由kernels段自动收集，
 不增加家族manifest计数，也不替代整模型精度验收。
 
+社区融合SiLU存储边界专项见 `tests/kernels/test_original_silu.py`：
+FP16/BF16各覆盖中间维度3072的2/47行，以及VL2 Dense中间维度12288的
+单行decode/437行prefill。独立CPU FP64参考在最终dtype存储前给出FP32
+算术误差区间，并要求提前存储激活的负控被拒绝；保留输入不变、输出
+前后哨兵及三组同地址新输入的eager/Graph逐位一致检查。扩大形状不放宽
+原容差，也不代表Dense两次GEMM、残差或整模型验收。
+
 ## 四质量维度
 
 MoE softmax 并列回归见 `tests/kernels/test_moe_gate.py`：CPU 与 HCU

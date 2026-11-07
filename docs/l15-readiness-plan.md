@@ -3165,8 +3165,10 @@ CPU 任务正常终结；checkpoint 15 项资产、官方参考源码、603 个 
 
 在相同真实 BF16/TP1/Triton 配置下，对红/蓝图各 24 个位置补采 `language_model.model.layers.1.self_attn` 的实际输入和输出；六个请求阶段共保存 **144** 组摘要，其中红、蓝、重复文件和 base64 四阶段的 **96** 组保存完整张量。模型生成、稳定排序桥、重复请求一致性、源码和输入审计均通过，真实任务 **383.11 秒**正常结束；没有修改社区源码或 adapter 生产代码。
 
-使用此前同 checkpoint、同实际 HCU 图文嵌入和固定输出历史的 CPU FP32 官方 decoder 边界作为诊断参考，比较 layer 1 attention 的 prompt 全 **437 行**及后续 **23 行**。红/蓝 attention 输入相对 L2 为 **0.296172%/0.294548%**，attention 输出相对 L2 为 **0.419594%/0.423582%**；最后一个 prompt 行 attention 输出为 **0.484630%/0.672258%**，后续 23 行为 **0.401428%/0.440971%**。输入误差在 attention 前已存在，attention 输出继续产生同量级差异，仍不能唯一归因于 MLA、RoPE、KV cache、残差或某个 HCU kernel。
+使用此前同 checkpoint、同实际 HCU 图文嵌入和固定输出历史的 CPU FP32 官方 decoder 边界作为诊断参考，比较 layer 1 attention 的 **437 行 prefill + 23 行 decode，共 460 行**。红/蓝 attention 输入相对 L2 为 **0.296172%/0.294548%**，attention 输出相对 L2 为 **0.419594%/0.423582%**，这两组数值均为全部 460 行，旧报告字段 `prompt` 的命名不准确。单独 437 行 prefill 的输入为 **0.295681%/0.294045%**、输出为 **0.421564%/0.421548%**；24 个实际输出位置的 attention 输出为 **0.403794%/0.448351%**，最后一个 prompt 行为 **0.484630%/0.672258%**，后续 23 行为 **0.401428%/0.440971%**。输入误差在 attention 前已存在，attention 输出继续产生同量级差异，仍不能唯一归因于 MLA、RoPE、KV cache、残差或某个 HCU kernel。
 
-CPU 参考边界实际已包含 layer 1 attention；一次重复挂钩的私有 CPU 探针在模型执行前拒绝，保留为工具错误证据，未计入成功任务，也没有重跑 GPU。标准库独立验证完整 attention 归档 **252 个文件**的摘要哈希和两组比较指标通过；该比较跨越 CPU FP32 固定历史与 HCU BF16 增量路径，只作定位证据，不构成整模型精度验收。
+CPU 参考边界实际已包含 layer 1 attention；一次重复挂钩的私有 CPU 探针在模型 forward 期间触发重复捕获断言，保留为工具错误证据，未计入成功任务，也没有重跑 GPU。初次独立检查仅验证完整归档 **252 个文件**的哈希和指标范围，并未独立重算数值。后续标准库读取原始 HCU/CPU 张量，核对连续位置 0–459，分别重算两图输入/输出的全部 460 行、prefill 437 行、实际输出 24 行、最后 prompt 行与 decode 23 行，共 **20 组**最大差、RMS、相对 L2、余弦及精确相等计数；旧报告对应数值均一致，全程未导入 Torch。
 
-完整归档 `external-evidence:vl851-attention-raw.json.gz`，SHA256 `7b1076328717e4613bab607cbdff70aae35d64df8f367e6854638b6108b1a1c0`，**368390554 字节、252 个文件**；独立复核 `vl852-independent-attention.json` 通过。原整模型 FP32 V1 失败、BF16 默认和原阈值继续保留，下一步沿 layer 1 attention 的输入来源与 MLA/KV 边界继续定位。
+另核对两次运行的 checkpoint 清单及 HCU 前后字节审计，重新哈希 CPU 参考绑定的 **6 个输入文件**；两图各 24 个输出 token 历史一致，进入语言模型首层的 437 行实际嵌入摘要一致。这里按首层输入绑定，不能将 logits processor 返回的 `mm_input_embeds` 字段直接当作同一捕获边界。该比较跨越 CPU FP32 固定历史与 HCU BF16 增量路径，只作定位证据，不构成整模型精度验收。
+
+完整归档 `external-evidence:vl851-attention-raw.json.gz`，SHA256 `7b1076328717e4613bab607cbdff70aae35d64df8f367e6854638b6108b1a1c0`，**368390554 字节、252 个文件**；数值独立重算与历史/输入绑定补充归档 `external-evidence:vl908-attention-verification-supplement.json.gz`，SHA256 `913e340aa8054b02344a48025073bc59d7da12e5c3523e8109d9c2b68a09efd3`，**19 个文件**。历史 `vl852` 报告的指标复核声明以本次明确范围为准。原整模型 FP32 V1 失败、BF16 默认和原阈值继续保留，下一步沿 layer 1 attention 的输入来源与 MLA/KV 边界继续定位。

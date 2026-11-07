@@ -82,6 +82,14 @@ graph 回归还须改变输入/counts/尺度，并保持原数值门槛。CPU �
 CPU doubles 不代替全新进程的真实 bootstrap、官方加载和 DeepEP LL ABI
 设备回归；手工构造 dispatch output 也不代替真实通信或整模型精度。
 
+社区默认 Triton MLA decode 的压缩缓存专项见
+`tests/kernels/test_sglang_mla_decode.py`：32 heads、K576/V512 共享存储、
+V 行间距576、非连续物理索引，长度33/437/460与split7的空尾分片；
+未引用缓存及scratch以NaN填充。对拍独立CPU FP32 dense softmax，
+另要求连续V与原视图输出逐位一致；Graph先replay基线，再同地址改变
+Q、缓存、索引、有效长度和split数。该组件测试由kernels段自动收集，
+不增加家族manifest计数，也不替代整模型精度验收。
+
 ## 四质量维度
 
 MoE softmax 并列回归见 `tests/kernels/test_moe_gate.py`：CPU 与 HCU

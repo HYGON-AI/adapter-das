@@ -85,9 +85,11 @@ CPU doubles 不代替全新进程的真实 bootstrap、官方加载和 DeepEP LL
 社区默认 Triton MLA decode 的压缩缓存专项见
 `tests/kernels/test_sglang_mla_decode.py`：32 heads、K576/V512 共享存储、
 V 行间距576、非连续物理索引，长度33/437/460与split7的空尾分片；
-未引用缓存及scratch以NaN填充。对拍独立CPU FP32 dense softmax，
-另要求连续V与原视图输出逐位一致；Graph先replay基线，再同地址改变
-Q、缓存、索引、有效长度和split数。该组件测试由kernels段自动收集，
+未引用缓存及scratch以NaN填充，并断言有效分段有限、未用槽位仍为NaN。
+对拍独立CPU FP32 dense softmax，另要求连续V与原视图、eager与Graph
+输出逐位一致；Graph先replay基线，再同地址改变Q、缓存、索引、
+有效长度和split数。额外固定split7执行448→449→448，覆盖分段宽度
+64↔96、有效分段7↔5的双向切换。该组件测试由kernels段自动收集，
 不增加家族manifest计数，也不替代整模型精度验收。
 
 社区融合SiLU存储边界专项见 `tests/kernels/test_original_silu.py`：

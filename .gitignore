@@ -19,4 +19,6 @@ nul
 # dual-dist build artifacts (packaging/build.sh)
 /dist/
 /build/
+packaging/*/build/
+packaging/*/dist/
 *.egg-info/

@@ -97,7 +97,9 @@ def install():
 
     skipped = _cutedsl_unavailable()
     if skipped is not None:
-        LOG.info("HCU adapter: gdn CuTeDSL fallback skipped -- %s", skipped)
+        # WARNING, not INFO: this runs during adapter bootstrap, before SGLang
+        # configures logging, where INFO records are dropped outright.
+        LOG.warning("HCU adapter: gdn CuTeDSL fallback skipped -- %s", skipped)
         return
 
     from sglang.kernels.ops.attention import cutedsl_gdn_mtp_ring as cute

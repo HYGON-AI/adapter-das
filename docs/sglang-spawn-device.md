@@ -12,7 +12,8 @@ yielded logical device, and exports a private parent-scoped, one-use device hint
 The spawned interpreter consumes that hint and selects its GPU before either the
 common or SGLang bridge runs. The hint is restored on every parent context exit;
 non-spawn helpers ignore it. The contextmanager generator retains its identity,
-so existing upstream aliases see the same binding. Other adapter hosts are unchanged.
+so existing upstream aliases see the same binding. Original global bindings remain
+live for later upstream/provider updates. Other adapter hosts are unchanged.
 
 No public configuration is required. Visibility, rank arguments, kernel choice,
 AR/norm policy and the official source files are unchanged. This does not remove

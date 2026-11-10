@@ -91,8 +91,9 @@ def _install_function(entry):
             return
         if _DISPATCH in function.__globals__:
             raise RuntimeError("HCU adapter: scheduler device binding already exists")
+        # Keep later upstream/provider global rebindings visible to the original.
         original = types.FunctionType(
-            function.__code__, dict(function.__globals__), function.__name__,
+            function.__code__, function.__globals__, function.__name__,
             function.__defaults__, function.__closure__,
         )
         original.__kwdefaults__ = function.__kwdefaults__

@@ -96,6 +96,16 @@ def test_hint_uses_the_yielded_reindexed_device(monkeypatch):
     assert events == [("enter", 1), ("exit", 1)]
 
 
+def test_original_global_rebindings_remain_visible(monkeypatch):
+    monkeypatch.delenv(subject._DEVICE_ENV, raising=False)
+    original, _ = entry(selected=0)
+    subject._install_function(original)
+    original.__wrapped__.__globals__["selected"] = 3
+    with original(7) as selected:
+        assert selected == 3
+        assert json.loads(os.environ[subject._DEVICE_ENV])["device"] == 3
+
+
 @pytest.mark.parametrize("selected", [-1, True, "1"])
 def test_invalid_upstream_device_does_not_publish_a_hint(monkeypatch, selected):
     monkeypatch.delenv(subject._DEVICE_ENV, raising=False)

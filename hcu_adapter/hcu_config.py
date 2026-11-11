@@ -343,6 +343,11 @@ BACKEND_CATALOG = {
                                "CUDA wheel emits NaN there — anchored "
                                "divergence, see "
                                "tests/kernels/test_aot_contract_b_class.py)"},
+            "cpp": {"status": "production",
+                    "note": "setup_hip.py wheel (merge_attn_states.cu port "
+                            "from sglang-das); all-masked rows arrive NaN "
+                            "from the kernel and are nan_to_num'd to the "
+                            "pinned 0/-inf in the python wrapper"},
             "emu": {"status": "production",
                     "note": "torch fallback (CPU / no-triton); optional "
                             "v_merged/s_merged out params per upstream "
@@ -358,6 +363,11 @@ BACKEND_CATALOG = {
             "triton": {"status": "production",
                        "note": "row-copy kernel; bf16/3D/unit-stride/16B "
                                "contract checks mirror concat_mla.cu"},
+            "cpp": {"status": "production",
+                    "note": "setup_hip.py wheel: concat_mla_absorb_q_hcu.cu "
+                            "(as-is from sglang-das) + concat_mla_k_hcu.cu "
+                            "(plain uint4 rewrite — the CUDA original rides "
+                            "NV PTX no-allocate intrinsics)"},
             "emu": {"status": "production",
                     "note": "strided torch copies / torch.cat fallback"},
         },
@@ -372,6 +382,11 @@ BACKEND_CATALOG = {
                             "(values in kernel launch params) is "
                             "CUDA-runtime-only — numerically identical, "
                             "mechanism differs (no triton equivalent)"},
+            "cpp": {"status": "production",
+                    "note": "setup_hip.py wheel: the REAL no-CE path "
+                            "(copy.cu InputArray — values ride the kernel "
+                            "launch parameters, which the HIP runtime "
+                            "supports too)"},
         },
     },
     "per_token_group_quant_8bit": {
@@ -389,6 +404,13 @@ BACKEND_CATALOG = {
                             "input dtype, DeepEP masked_m layout. "
                             "Contract anchors: "
                             "tests/kernels/test_aot_contract_quant.py"},
+            "cpp": {"status": "production",
+                    "note": "setup_hip.py wheel: plain 16-lane-per-group "
+                            "ports of both variants (no flashinfer vec_t / "
+                            "PDL / NV PTX); contracts bit-identical incl. "
+                            "int8 truncation and packed ue8m0 column-major "
+                            "scales; masked_m path host-reads row counts "
+                            "(not graph-capturable)"},
         },
     },
     "platform_detect": {

@@ -20,6 +20,7 @@ from typing import Optional
 import torch
 
 from .compat import HAS_ERF, HAS_TRITON, check_cuda_tensor, next_power_of_2
+from ._native import native_op
 
 _LIGHTOP_IMPL = None  # resolved once: None=probe-pending, (~)=unavailable
 _IMPL_CHOICE = None   # cached backend choice: "lightop" | "torch" | None
@@ -428,6 +429,21 @@ def concat_mla_k(k: torch.Tensor, k_nope: torch.Tensor, k_rope: torch.Tensor):
     if k.shape[0] != k_nope.shape[0] or k.shape[0] != k_rope.shape[0]:
         raise RuntimeError("token counts must match")
 
+    # cpp tier (setup_hip.py wheel): concat_mla_k_hcu.cu — uint4 rows need
+    # 16-byte-aligned row strides; wider strides stay on the triton tier.
+    native = native_op("concat_mla_k")
+    if (
+        native is not None
+        and k.is_cuda
+        and k.stride(0) % 8 == 0
+        and k.stride(1) % 8 == 0
+        and k_nope.stride(0) % 8 == 0
+        and k_nope.stride(1) % 8 == 0
+        and k_rope.stride(0) % 8 == 0
+    ):
+        native(k, k_nope, k_rope)
+        return
+
     if HAS_TRITON and k.is_cuda and k_nope.is_cuda and k_rope.is_cuda:
         _concat_mla_k_kernel[(num_tokens, _MLA_NUM_HEADS)](
             k_nope,
@@ -466,6 +482,12 @@ def concat_mla_absorb_q(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         device=a.device,
         dtype=a.dtype,
     )
+    # cpp tier (setup_hip.py wheel): concat_mla_absorb_q_hcu.cu — the
+    # freshly allocated out is always contiguous/aligned.
+    native = native_op("concat_mla_absorb_q")
+    if native is not None and a.is_cuda:
+        native(a, b, out)
+        return out
     if HAS_TRITON and a.is_cuda and b.is_cuda and out.is_contiguous():
         _concat_mla_absorb_q_kernel[(a.shape[0], a.shape[1])](
             a,
@@ -512,4 +534,11 @@ def copy_to_gpu_no_ce(input: torch.Tensor, output: torch.Tensor):
         raise RuntimeError("input must be a CPU tensor")
     if not output.is_cuda:
         raise RuntimeError("output must be a CUDA tensor")
+    # cpp tier (setup_hip.py wheel): the REAL no-CE path — values ride the
+    # kernel launch parameters (copy.cu InputArray trick, works on HIP's
+    # runtime too), bypassing the copy engine entirely.
+    native = native_op("copy_to_gpu_no_ce")
+    if native is not None:
+        native(input, output)
+        return
     output.copy_(input)

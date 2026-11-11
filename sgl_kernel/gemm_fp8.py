@@ -24,6 +24,7 @@ from typing import Optional
 import torch
 
 from .compat import HAS_TRITON, check_cuda_tensor
+from ._native import native_op
 
 if HAS_TRITON:
     import triton
@@ -260,6 +261,26 @@ def sgl_per_token_group_quant_8bit(
     if scale_ue8m0 and output_s.stride(0) >= output_s.stride(1):
         # v1 host asserts !scale_ue8m0 on the row-major branch
         raise RuntimeError("scale_ue8m0 requires column-major output_s")
+
+    # cpp tier (setup_hip.py wheel): per_token_group_quant_8bit_hcu.cu,
+    # contract-identical incl. the int8-truncating cast and the packed
+    # ue8m0 column-major scale format. Contiguous inputs only (native
+    # CHECK_INPUTs); wider layouts stay on the torch tier.
+    native = native_op("sgl_per_token_group_quant_8bit")
+    if (
+        native is not None
+        and input.is_cuda
+        and input.is_contiguous()
+        and output_q.is_contiguous()
+        and output_s.is_contiguous()
+        and input.dtype in (torch.float32, torch.float16, torch.bfloat16)
+    ):
+        native(
+            input, output_q, output_s, group_size, eps,
+            fp8_min, fp8_max, scale_ue8m0,
+        )
+        return
+
     flat = input.reshape(-1)
     y_s, n_groups = _quant_v1_rows(
         flat, output_q, output_s, group_size, eps, fp8_min, fp8_max,
@@ -275,6 +296,26 @@ def _quant_v2(input, output_q, output_s, group_size, scale_ue8m0,
     """v2 kernel math (per_token_group_quant_8bit_v2.cu): absmax floor
     1e-10, scale_inv = amax / dst_max (ue8m0: 2^ceil(log2(amax/dst_max))
     via the DeepEP bit trick), q = clamp(x * scale_inv) cast to dst."""
+    # cpp tier (setup_hip.py wheel): same contract, plain 16-lane kernels
+    # (no flashinfer vec_t / PDL). NB: the masked_m path reads the row
+    # count on the host once per expert — NOT CUDA-graph capturable; the
+    # torch tier below shares that limitation, the plain path does not.
+    native = native_op("sgl_per_token_group_quant_8bit_v2")
+    if (
+        native is not None
+        and input.is_cuda
+        and input.is_contiguous()
+        and output_q.is_contiguous()
+        and output_s.is_contiguous()
+        and input.dtype in (torch.float32, torch.float16, torch.bfloat16)
+    ):
+        native(
+            input, output_q, output_s, group_size, _V2_ABSMAX_FLOOR,
+            *_quant_dst_range(output_q),
+            scale_ue8m0, fuse_silu_and_mul, masked_m,
+        )
+        return
+
     dst_min, dst_max = _quant_dst_range(output_q)
 
     def rows(x, out_q, out_s):

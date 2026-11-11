@@ -198,6 +198,29 @@ def test_interlock_pin_matches_single_version_source(adapter_wheel):
     assert len(pins) == 1 and str(pins[0].specifier) == f"=={version}"
 
 
+def test_stamped_wheel_pair_pins_exact_matching_build(tmp_path):
+    source = _copy_repo(tmp_path)
+    stamp = "20261111.g123abc"
+    kernel = _build_wheel(source, tmp_path, "stamped-kernel", stamp=stamp)
+    adapter = _build_wheel(source / "packaging/hcu-adapter", tmp_path,
+                           "stamped-adapter", stamp=stamp)
+    messages = []
+    for wheel in (kernel, adapter):
+        with zipfile.ZipFile(wheel) as archive:
+            name = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
+            messages.append(email.message_from_string(archive.read(name).decode()))
+    expected_kernel = f"{Version(_kernel_version()).public}+hcu.{stamp}"
+    expected_adapter = f"{Version(_adapter_version()).public}+hcu.{stamp}"
+    assert messages[0]["Version"] == expected_kernel
+    assert messages[1]["Version"] == expected_adapter
+    pin = next(Requirement(r) for r in messages[1].get_all("Requires-Dist", [])
+               if Requirement(r).name == "sgl-kernel")
+    assert str(pin.specifier) == f"=={expected_kernel}"
+    assert pin.specifier.contains(expected_kernel)
+    assert not pin.specifier.contains(f"{Version(_kernel_version()).public}+hcu.other")
+
+
+
 def test_adapter_version_file_is_the_adapter_single_source(adapter_wheel):
     # packaging/hcu-adapter/VERSION is the adapter dist's own single source
     # (independent of sgl-kernel's line); the built wheel must carry it

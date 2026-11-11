@@ -235,3 +235,27 @@ def test_partial_rotary_triton_passthrough():
     positions = torch.randint(0, 64, (T,), device="cuda", dtype=torch.int64)
     sgl_kernel.rotary_embedding(positions, q, None, hs, cache, is_neox=True)
     torch.testing.assert_close(q.view(T, H, hs)[:, :, rd:], tail, rtol=0, atol=0)
+
+
+@requires_gpu
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_gptj_interleaved_torch_on_gpu(dtype):
+    # GPT-J has no triton tier — CUDA tensors go through the torch impl,
+    # whose even/odd index tensors must live on the tensor's device: CUDA
+    # self + CPU indices is a hard RuntimeError in advanced indexing
+    # (review #80 P1; only reachable on-GPU, CPU runs never saw it).
+    torch.manual_seed(5)
+    T, H, hs, rd = 11, 3, 32, 16
+    cache = _make_cache(64, rd).cuda()
+    q = torch.randn(T, H * hs, device="cuda").to(dtype)
+    k = torch.randn(T, hs, device="cuda").to(dtype)
+    positions = torch.randint(0, 64, (T,), device="cuda", dtype=torch.int64)
+    q_ref, k_ref = _gptj_ref(
+        q.clone().cpu(), k.clone().cpu(), positions.cpu(), hs, cache.cpu()
+    )
+    sgl_kernel.rotary_embedding(positions, q, k, hs, cache, is_neox=False)
+    tol = (2e-3, 2e-3) if dtype != torch.bfloat16 else (1.0, 0.3)
+    torch.testing.assert_close(q.float(), q_ref.float().cuda(),
+                               rtol=tol[0], atol=tol[1])
+    torch.testing.assert_close(k.float(), k_ref.float().cuda(),
+                               rtol=tol[0], atol=tol[1])

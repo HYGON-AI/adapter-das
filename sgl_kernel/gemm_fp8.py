@@ -183,11 +183,14 @@ def _write_scales(output_s, scale_vals, num_groups_per_row, ue8m0):
         | (packed_u8[:, :, 3] << 24)
     ).to(torch.int32)  # bit pattern of the upstream uint32 store
     npacks = packed.shape[1]
-    # column-major uint32 matrix (npacks, rows): scale(col_idx, row_idx)
+    # column-major uint32 matrix (npacks, rows): s[pack, token]. packed is
+    # (rows, npacks) — TRANSPOSE, never reshape: a row-major reshape to
+    # (npacks, rows) permutes the slots whenever rows != npacks, which the
+    # on-device parity test missed by using a square buffer (review #80).
     col_idx = torch.arange(npacks, device=packed.device).unsqueeze(1)
     row_idx = torch.arange(rows, device=packed.device).unsqueeze(0)
     output_s[..., col_idx.expand(npacks, rows), row_idx.expand(npacks, rows)] = (
-        packed.reshape(output_s.shape[:-2] + (npacks, rows))
+        packed.t().to(output_s.dtype)
     )
 
 

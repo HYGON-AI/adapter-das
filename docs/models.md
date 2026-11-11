@@ -208,3 +208,16 @@ decode graph 分配 0.021 GB；报告
 - **1.1 topk_v2 ragged 转正**：96 例 parity 集合语义 0 错（rem/topk/L/offsets 正交扫，4 reps）；非确定性=atomicAppend 发射到达序（topk_impl.cuh 612/617，paged 臂同源同在跑）；2.2-2.9× 快过 legacy；`HCU_TOPK_V2_RAGGED` 默认翻 1（validation-host-18 容器 dsa_topk_backend.py 已改）。**方法论：topk parity 一律比排序后集合，双跑分离"错"与"序"。**
 - **1.2/1.3 口径翻案（双双达标）**：rmsnorm 5.3-5.9µs=das 地板；router 10µs 快 das 2.8×。教训入库：**①trace 家族和÷单核地板=假膨胀 ②墙钟(bench loop)≠核时，必须 CUDA graph 重放 ③旧 trace 不代表当前树**（act_and_mul 3.1ms/reduce_bf16 438µs 都是 1.0a/b 前旧账）。P1 真残余=eager 段 per-call 50-90µs host 开销（→1.5/1.6）。
 - 容器遗产（/root）：topk_ragged_parity/bench.py、rmsnorm_bench2.py、router_graph/matrix.py、router_baseline.pt——复跑即可。
+
+## 2026-11-09 HY3 Channel FP8 与插件组合
+
+SGLang 0.5.22 的 HY3 Channel FP8 插件使用 per-token scale，但 adapter 的 DeepEP 翻译桥此前把 use_fp8 固定映射为 quant_group_size=128，导致低延迟 masked GEMM 拒绝 scale 形状。桥现在接受显式 quant_group_size，默认 128 不变；Channel FP8 插件显式请求 0。该配置由插件选择，adapter 只负责透传到 DTK ABI，不从模型名称猜测分组。普通 FP8/UE8M0 和 BF16 默认行为保持；vLLM 不使用该 SGLang 桥。
+
+`tests/adapter/test_deepep_dispatch_scale.py` 从实际桥源抽取翻译函数，mock 原生调用，覆盖默认 128、显式 0/128、UE8M0 与 BF16。修复前显式 0 被丢弃并得到 128，修复后通过。该离线测试不代表原生数值或完整服务通过；HY3 八卡复验通过权重加载和五档 prefill Graph，verify Graph 预热在 DeepGEMM pair32 出现 hipErrorNoBinaryForGpu；HOSTnone 单算子直接调用同样失败，未到服务健康或生成。改动基于 c43693f，尚未提交或推送。
+
+
+### 2026-11-09 本地提交收尾
+
+上段“尚未提交”和原生内核失败描述为当次检查的历史状态。本次将参数透传、对应离线回归和说明保存为本地 commit，未 push。提交前重新执行桥参数回归和 adapter L0；两项均通过，L0 的既有告警保留。组合运行仍要求 plugin 显式请求 Channel FP8 分组 0；plugin 的配套提交以其本地分支历史为准。
+
+后续 DeepGEMM 辅助扩展准备后，组合环境完成 TP8/Attention DP8、FA3、E4M3 KV、NEXTN 串行 200 题测试；数值匹配 197/200，正常结束且正确 196/200。该结果包含外部运行依赖及 plugin 修复，不是本桥独立数值结论；原 0.9 显存配方 OOM，8 并发 NextN padding 失败仍未修复。本次仅存档与 CPU/结构检查，没有重新启动 GPU 服务。

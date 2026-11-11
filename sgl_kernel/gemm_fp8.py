@@ -19,6 +19,8 @@ applied after the K loop.
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 
 from .compat import HAS_TRITON, check_cuda_tensor
@@ -113,3 +115,204 @@ def fp8_scaled_mm(mat_a, mat_b, scales_a, scales_b, out_dtype, bias=None):
         num_warps=4, num_stages=3,
     )
     return out
+
+
+# ---------------------------------------------------------------------------
+# sgl_per_token_group_quant_8bit — the upstream python bridge
+# (python/sgl_kernel/gemm.py:28-64) with BOTH kernel variants emulated in
+# torch: v1 (csrc/gemm/per_token_group_quant_8bit.cu) and v2
+# (csrc/gemm/per_token_group_quant_8bit_v2.cu). Pure-torch tiers (this is
+# the C-class "bridge the gap, do not rewrite" item: the python seam was
+# missing entirely — callers hit AttributeError).
+# ---------------------------------------------------------------------------
+
+_QUANT_V2_GROUP_SIZES = (16, 32, 64, 128)
+_V2_ABSMAX_FLOOR = 1e-10  # v2 LOCAL_ABSMAX_ABS; eps is TORCH_CHECKed to it
+
+
+def _quant_dst_range(output_q):
+    """dst_dtype_info::MIN/MAX per output_q.dtype (v2 CHECK_EQs the args)."""
+    if output_q.dtype == torch.int8:
+        return -128.0, 127.0
+    if output_q.dtype == torch.float8_e4m3fn:
+        return -448.0, 448.0
+    raise RuntimeError(f"unsupported quant output dtype {output_q.dtype}")
+
+
+def _write_scales(output_s, scale_vals, num_groups_per_row, ue8m0):
+    """Write per-group scales honoring the upstream row/column-major
+    convention (is_column_major = stride(-2) < stride(-1)).
+
+    scale_vals: (num_rows, num_groups_per_row) fp32 (already the stored
+    direction: amax / dst_max). For ue8m0 the column-major format is the
+    biased exponent byte packed 4-per-uint32 (little-endian pack order,
+    v1 concat_mla-style pointer math); v1 computes the exponent with
+    ceilf(log2f), v2 with the DeepEP fast_log2_ceil bit trick — identical
+    results for the powers of two actually stored."""
+    rows, ngpr = scale_vals.shape
+    is_col = output_s.stride(-2) < output_s.stride(-1)
+    if not ue8m0:
+        if is_col:
+            # output_s is the transposed (ngpr, rows) matrix: s[g, t]
+            g_idx = torch.arange(ngpr, device=scale_vals.device).unsqueeze(1)
+            t_idx = torch.arange(rows, device=scale_vals.device).unsqueeze(0)
+            output_s[..., g_idx.expand(ngpr, rows), t_idx.expand(ngpr, rows)] = (
+                scale_vals.t().to(output_s.dtype)
+            )
+        else:
+            output_s[..., :, :] = scale_vals.reshape(
+                output_s.shape[:-2] + output_s.shape[-2:]
+            ).to(output_s.dtype)
+        return
+
+    # ue8m0: biased exponent bytes, packed 4 per uint32 (column-major only)
+    if not is_col:
+        raise RuntimeError("scale_ue8m0 requires column-major output_s")
+    # v1 stores (int)log2(y_s) + 127; scale_vals are exact powers of two
+    exp_byte = (torch.log2(scale_vals.clamp_min(1e-30)).to(torch.int32) + 127)
+    exp_byte = exp_byte.clamp(0, 255).to(torch.uint8)
+    pad = (-ngpr) % 4  # v2 zero-fills the tail of the last pack
+    if pad:
+        exp_byte = torch.nn.functional.pad(exp_byte, (0, pad))
+    packed_u8 = exp_byte.reshape(rows, -1, 4).to(torch.int64)
+    packed = (
+        packed_u8[:, :, 0]
+        | (packed_u8[:, :, 1] << 8)
+        | (packed_u8[:, :, 2] << 16)
+        | (packed_u8[:, :, 3] << 24)
+    ).to(torch.int32)  # bit pattern of the upstream uint32 store
+    npacks = packed.shape[1]
+    # column-major uint32 matrix (npacks, rows): scale(col_idx, row_idx)
+    col_idx = torch.arange(npacks, device=packed.device).unsqueeze(1)
+    row_idx = torch.arange(rows, device=packed.device).unsqueeze(0)
+    output_s[..., col_idx.expand(npacks, rows), row_idx.expand(npacks, rows)] = (
+        packed.reshape(output_s.shape[:-2] + (npacks, rows))
+    )
+
+
+def _quant_v1_rows(flat_input, output_q, output_s, group_size, eps,
+                   min_8bit, max_8bit, scale_ue8m0):
+    """v1 kernel math (per_token_group_quant_8bit.cu:36-115): eps-floor
+    absmax, y_s = absmax / max_8bit, q = clamp(x / y_s) cast to dst —
+    note the int8 cast is a TRUNCATION (C++ int8_t(float)), not round."""
+    n_groups = flat_input.numel() // group_size
+    g = flat_input.reshape(n_groups, group_size).float()
+    amax = g.abs().amax(dim=1).clamp_min(eps)
+    y_s = amax / max_8bit
+    if scale_ue8m0:
+        # v1: y_s = exp2f(ceilf(log2f(max(y_s, 1e-10))))
+        y_s = torch.exp2(torch.ceil(torch.log2(y_s.clamp_min(1e-10))))
+    q = (g / y_s[:, None]).clamp_(min_8bit, max_8bit)
+    output_q.reshape(-1).copy_(q.reshape(-1).to(output_q.dtype))
+    return y_s, n_groups
+
+
+def sgl_per_token_group_quant_8bit(
+    input: torch.Tensor,
+    output_q: torch.Tensor,
+    output_s: torch.Tensor,
+    group_size: int,
+    eps: float,
+    fp8_min: float,
+    fp8_max: float,
+    scale_ue8m0: bool = False,
+    fuse_silu_and_mul: bool = False,
+    masked_m: Optional[torch.Tensor] = None,
+    enable_v2: Optional[bool] = None,
+) -> None:
+    """Upstream bridge contract (python/sgl_kernel/gemm.py:28-64).
+
+    Destination-passing: output_q (same shape as the quantized face of
+    input, dtype int8 or float8_e4m3fn) and output_s (per-group scales,
+    fp32 row-major or packed-ue8m0 column-major) are written in place.
+
+    enable_v2=None auto-selects v2 for group_size in {16,32,64,128}; v1
+    only supports plain quantization (upstream asserts on fuse/masked).
+    """
+    if enable_v2 is None:
+        enable_v2 = group_size in _QUANT_V2_GROUP_SIZES
+    if enable_v2:
+        # v2 host TORCH_CHECKs (per_token_group_quant_8bit_v2.cu:427-487)
+        if input.numel() == 0:
+            raise RuntimeError("input must be non-empty")
+        if abs(_V2_ABSMAX_FLOOR - eps) >= 1e-13:
+            raise RuntimeError("v2 requires eps == 1e-10")
+        if group_size not in _QUANT_V2_GROUP_SIZES:
+            raise RuntimeError(f"v2 unsupported group_size {group_size}")
+        dst_min, dst_max = _quant_dst_range(output_q)
+        if fp8_min != dst_min or fp8_max != dst_max:
+            raise RuntimeError(
+                f"v2 min/max {fp8_min}/{fp8_max} must match the output "
+                f"dtype range {dst_min}/{dst_max}"
+            )
+        return _quant_v2(
+            input, output_q, output_s, group_size, scale_ue8m0,
+            fuse_silu_and_mul, masked_m,
+        )
+
+    # v1 python-layer asserts, verbatim (upstream gemm.py:59-60)
+    assert not fuse_silu_and_mul, "only v2 support fuse_silu_and_mul"
+    assert masked_m is None, "only v2 support masked_m"
+    if input.numel() % group_size:
+        raise RuntimeError("input numel must divide by group_size")
+    if output_s.dim() != 2:
+        raise RuntimeError("output_s must be 2-D")
+    if scale_ue8m0 and output_s.stride(0) >= output_s.stride(1):
+        # v1 host asserts !scale_ue8m0 on the row-major branch
+        raise RuntimeError("scale_ue8m0 requires column-major output_s")
+    flat = input.reshape(-1)
+    y_s, n_groups = _quant_v1_rows(
+        flat, output_q, output_s, group_size, eps, fp8_min, fp8_max,
+        scale_ue8m0,
+    )
+    hidden = input.shape[-1]
+    ngpr = hidden // group_size
+    _write_scales(output_s, y_s.reshape(-1, ngpr), ngpr, scale_ue8m0)
+
+
+def _quant_v2(input, output_q, output_s, group_size, scale_ue8m0,
+              fuse_silu_and_mul, masked_m):
+    """v2 kernel math (per_token_group_quant_8bit_v2.cu): absmax floor
+    1e-10, scale_inv = amax / dst_max (ue8m0: 2^ceil(log2(amax/dst_max))
+    via the DeepEP bit trick), q = clamp(x * scale_inv) cast to dst."""
+    dst_min, dst_max = _quant_dst_range(output_q)
+
+    def rows(x, out_q, out_s):
+        if fuse_silu_and_mul:
+            h = x.shape[-1] // 2
+            # v2: silu(primary) is cast BACK to the input dtype before the
+            # product — the amax and the quantized source are both this
+            # low-precision product (input_primary_vec[j] is overwritten)
+            val = torch.nn.functional.silu(x[..., :h].float()).to(x.dtype) * x[..., h:]
+        else:
+            val = x
+        t, hidden = val.shape[0], val.shape[-1]
+        g = val.reshape(t, hidden // group_size, group_size).float()
+        amax = g.abs().amax(dim=-1).clamp_min(_V2_ABSMAX_FLOOR)
+        if scale_ue8m0:
+            # fast_log2_ceil: biased exp - 127 + (mantissa != 0)
+            ratio = (amax / dst_max).contiguous()
+            bits = ratio.view(torch.int32)
+            exp_ceil = ((bits >> 23) & 0xFF) - 127 + (
+                (bits & 0x7FFFFF) != 0
+            ).to(torch.int32)
+            scale_inv = torch.exp2(exp_ceil.float())
+        else:
+            scale_inv = amax / dst_max
+        q = (g * scale_inv[..., None]).clamp_(dst_min, dst_max)
+        out_q.reshape(t, hidden).copy_(q.reshape(t, hidden).to(out_q.dtype))
+        _write_scales(out_s, scale_inv, hidden // group_size, scale_ue8m0)
+
+    if masked_m is None:
+        rows(input.reshape(-1, input.shape[-1]), output_q, output_s)
+        return
+    # DeepEP masked layout: input (E, maxT, H(*2)) rows [0, masked_m[e])
+    for e in range(input.shape[0]):
+        m = int(masked_m[e])
+        if m > 0:
+            rows(input[e, :m], output_q[e, :m], output_s[e, :m])
+
+
+# For legacy usage (upstream gemm.py:67-68)
+sgl_per_token_group_quant_fp8 = sgl_per_token_group_quant_8bit
+sgl_per_token_group_quant_int8 = sgl_per_token_group_quant_8bit

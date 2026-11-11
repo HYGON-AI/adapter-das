@@ -7,8 +7,8 @@
 
 - python >= 3.9（验证栈为 py3.12）、pip、git。
 - 纯 python 打包，不需要 DTK/GPU。
-- 首次构建若当前环境缺 `setuptools.build_meta`，`build.sh` 会自动
-  `pip install "setuptools>=64" wheel`；也可手动安装。
+- 首次构建若缺 setuptools 构建后端或 packaging 版本解析器，`build.sh`
+  会自动准备 `setuptools>=64`、wheel、`packaging>=23`；也可手动安装。
 - 装 `hcu-runtime` extra 的机器需要配好 DTK nightly 归档的 pip 源
   （torch/triton/vendor 包从该归档解析）。
 

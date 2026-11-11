@@ -215,6 +215,95 @@ def _wheel_metadata(wheel):
         return email.message_from_bytes(archive.read(member))
 
 
+def _metadata_fixture_wheel(folder, name, version, requires=()):
+    """Resolver-only distributions: no Torch/provider code is installed or run."""
+    normalized = name.replace("-", "_")
+    info = f"{normalized}-{version}.dist-info"
+    metadata = (f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n"
+                + "".join(f"Requires-Dist: {item}\n" for item in requires)
+                + "\nMetadata-only resolver fixture; no native ABI evidence.\n")
+    payload = {
+        f"{info}/METADATA": metadata.encode(),
+        f"{info}/WHEEL": b"Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+    }
+    rows = io.StringIO()
+    writer = csv.writer(rows, lineterminator="\n")
+    for path, data in payload.items():
+        digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=")
+        writer.writerow([path, "sha256=" + digest.decode(), len(data)])
+    writer.writerow([f"{info}/RECORD", "", ""])
+    payload[f"{info}/RECORD"] = rows.getvalue().encode()
+    wheel = folder / f"{normalized}-{version}-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        for path, data in payload.items():
+            archive.writestr(path, data)
+    return wheel
+
+
+@pytest.mark.parametrize("torch_version,triton_version", [
+    ("2.11.0", "3.6.0"), ("2.13.0", "3.7.0"),
+])
+@pytest.mark.parametrize("conflicting_framework_pin", [False, True])
+def test_metadata_resolver_preserves_selected_framework_stack(
+    kernel_wheel, adapter_wheel, tmp_path, torch_version, triton_version,
+    conflicting_framework_pin,
+):
+    """Adapter must allow both stacks and preserve the framework's ABI constraint."""
+    fixtures = tmp_path / "metadata-fixtures"
+    fixtures.mkdir()
+    _metadata_fixture_wheel(fixtures, "packaging", "25.0")
+    _metadata_fixture_wheel(fixtures, "torch", torch_version,
+                            ["triton==" + triton_version])
+    for version in ["3.6.0", "3.7.0"]:
+        _metadata_fixture_wheel(fixtures, "triton", version)
+    requested_triton = triton_version
+    if conflicting_framework_pin:
+        requested_triton = "3.7.0" if triton_version == "3.6.0" else "3.6.0"
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--dry-run", "--ignore-installed",
+         "--no-index", "--no-cache-dir", "--find-links", str(fixtures),
+         str(kernel_wheel), str(adapter_wheel), "torch==" + torch_version,
+         "triton==" + requested_triton],
+        cwd=tmp_path,
+        env={**os.environ, "HCU_ADAPTER_HOST": "none", "PYTHONNOUSERSITE": "1",
+             "HIP_VISIBLE_DEVICES": "", "CUDA_VISIBLE_DEVICES": "",
+             "ROCR_VISIBLE_DEVICES": ""},
+        capture_output=True, text=True,
+    )
+    if conflicting_framework_pin:
+        assert result.returncode != 0 and "ResolutionImpossible" in result.stderr
+    else:
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("stamp", [
+    "2611111200.g13c43d.TORCH2110", "2611111200.g13c43d.RELEASE_tag-001",
+])
+def test_build_cli_lists_only_the_canonical_pair(tmp_path, stamp):
+    source = _copy_repo(tmp_path)
+    dist = source / "dist"
+    dist.mkdir()
+    decoys = ["sgl_kernel-0.0.0+hcu.decoy-py3-none-any.whl",
+              "hcu_adapter-0.5.22+hcu.decoy-py3-none-any.whl"]
+    for name in decoys:
+        (dist / name).write_bytes(b"unrelated old output")
+    result = subprocess.run(
+        ["bash", "packaging/build.sh"], cwd=source,
+        env={**os.environ, "HCU_ADAPTER_HOST": "none", "PYTHON": sys.executable,
+             "PYTHONNOUSERSITE": "1", "PIP_NO_INDEX": "1", "DAS_BUILD_STAMP": stamp,
+             "HIP_VISIBLE_DEVICES": "", "CUDA_VISIBLE_DEVICES": "",
+             "ROCR_VISIBLE_DEVICES": ""}, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    for name, version in [("sgl_kernel", _kernel_version()), ("hcu_adapter", _adapter_version())]:
+        expected = str(Version(version.split("+", 1)[0] + "+hcu." + stamp))
+        wheel = dist / f"{name}-{expected}-py3-none-any.whl"
+        assert wheel.is_file()
+        assert _wheel_metadata(wheel)["Version"] == expected
+        assert wheel.name in result.stdout
+    assert all(name not in result.stdout for name in decoys)
+
+
 @pytest.fixture(scope="module")
 def stamped_pairs(tmp_path_factory):
     pairs = {}

@@ -60,9 +60,9 @@ PY_STAMP
 )"
 
 # pip wheel --no-build-isolation needs the build backend in this environment
-if ! "$PY" -c "import setuptools.build_meta" >/dev/null 2>&1; then
-    echo "== installing build deps (setuptools/wheel) =="
-    "$PY" -m pip install "setuptools>=64" wheel
+if ! "$PY" -c "import setuptools.build_meta; from packaging.version import Version" >/dev/null 2>&1; then
+    echo "== installing build deps (setuptools/wheel/packaging) =="
+    "$PY" -m pip install "setuptools>=64" wheel "packaging>=23"
 fi
 
 # one stamp for both wheels: <YYMMDDHHMM>.g<commit6> (rendered as hcu.<stamp>),
@@ -76,6 +76,15 @@ else
     KERNEL_BUILD_VERSION="$VERSION"
     ADAPTER_BUILD_VERSION="$ADAPTER_VERSION"
 fi
+
+# Wheel builders canonicalize versions, while the provenance stamp stays raw.
+NORMALIZED_BUILD_VERSIONS="$("$PY" - "$KERNEL_BUILD_VERSION" "$ADAPTER_BUILD_VERSION" <<'PY_VERSIONS'
+import sys
+from packaging.version import Version
+print(" ".join(str(Version(value)) for value in sys.argv[1:]))
+PY_VERSIONS
+)"
+read -r KERNEL_BUILD_VERSION ADAPTER_BUILD_VERSION <<< "$NORMALIZED_BUILD_VERSIONS"
 
 # pin check: _pin.py is the build-time interlock source, ci/l0_gate re-checks
 EXPECTED_PIN="sgl-kernel==${VERSION%%+*}"

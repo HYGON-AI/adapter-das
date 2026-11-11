@@ -202,12 +202,14 @@ def test_fused_add_triton_vs_refs(dtype):
 
 @requires_gpu
 def test_rmsnorm_out_aliases_input_triton():
-    # Same-address out= on the triton tier (two-pass kernel is alias-safe).
+    # Same-address out= on the triton tier. NOTE: out=x rewrites x in
+    # place, so the reference must snapshot the ORIGINAL x first.
     torch.manual_seed(5)
     x = torch.randn(9, 512, device="cuda", dtype=torch.bfloat16)
     w = torch.randn(512, device="cuda", dtype=torch.bfloat16)
+    x0 = x.clone()
     y = sgl_kernel.rmsnorm(x, w, out=x)
-    fresh = sgl_kernel.rmsnorm(x.clone(), w)
+    fresh = sgl_kernel.rmsnorm(x0, w)
     torch.testing.assert_close(y.float(), fresh.float(), rtol=2e-2, atol=2e-2)
 
 

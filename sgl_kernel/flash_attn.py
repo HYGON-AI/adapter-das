@@ -696,6 +696,8 @@ def merge_state_v2(v_a, s_a, v_b, s_b, v_merged=None, s_merged=None):
         and v_b.is_contiguous()
         and v_merged.is_contiguous()
         and s_merged.is_contiguous()
+        and s_a_n.is_contiguous()
+        and s_b_n.is_contiguous()
         and d % (16 // v_merged.dtype.itemsize) == 0
     ):
         native(v_a, s_a_n, v_b, s_b_n, v_merged, s_merged)

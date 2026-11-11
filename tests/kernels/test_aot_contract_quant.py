@@ -213,6 +213,37 @@ def test_quant_v2_ue8m0_packs_biased_exponents():
     assert q[0, 0].item() == 100
 
 
+def test_quant_v2_ue8m0_nonsquare_column_major():
+    # rows(4) != npacks(2): the packed (rows, npacks) matrix must be
+    # TRANSPOSED into the column-major (npacks, rows) output_s — a plain
+    # reshape permutes the slots and silently lands every pack in the
+    # wrong (pack, token) slot (review #80; the square buffer in the test
+    # above masked this).
+    gs = 32
+    hidden = 256  # 8 groups per row -> two uint32 packs
+    rows = 4      # rows != npacks: reshape would permute the slots
+    # per-row amax picked on different sides of a power of two:
+    # amax/127 <= 1 -> scale 1.0 (byte 127); amax/127 > 1 -> scale 2.0 (byte 128)
+    amax_small, amax_big = 100.0, 200.0
+    x = torch.empty(rows, hidden)
+    for r in range(rows):
+        x[r] = amax_big if r % 2 == 1 else amax_small
+    q = torch.zeros(rows, hidden, dtype=torch.int8)
+    # column-major uint32 matrix (npacks=2, rows=4): stride (1, 2)
+    s = torch.zeros(rows, 2, dtype=torch.int32).t()
+    sgl_kernel.sgl_per_token_group_quant_8bit(
+        x, q, s, gs, 1e-10, -128.0, 127.0, scale_ue8m0=True)
+    byte_small = int(math.log2(1.0)) + 127   # amax 100 -> scale 1.0
+    byte_big = int(math.log2(2.0)) + 127     # amax 200 -> ratio 1.575 -> 2.0
+    for r in range(rows):
+        expect = byte_small * 0x01010101 if r % 2 == 0 else byte_big * 0x01010101
+        for p in range(2):
+            # int32 holds the uint32 bit pattern: byte 128 sets the sign
+            # bit, so compare as unsigned bit patterns, not signed values.
+            got = s[p, r].item() & 0xFFFFFFFF
+            assert got == expect, f"pack {p}, row {r}: {got:#x} != {expect:#x}"
+
+
 def test_quant_v2_fuse_silu_and_mul_low_precision():
     # v2: silu(primary) is cast back to the INPUT dtype before the
     # product; amax and quantized source both come from that product.

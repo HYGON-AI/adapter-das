@@ -32,6 +32,12 @@ void copy_to_gpu_no_ce_impl(const at::Tensor& input, at::Tensor& output) {
   TORCH_CHECK(input.device().is_cpu(), "input must be a CPU tensor");
   TORCH_CHECK(output.device().is_cuda(), "output must be a CUDA tensor");
 
+  // Pin the launch to output's device: getCurrentCUDAStream() alone
+  // returns the CURRENT device's stream, which is the wrong device's
+  // stream whenever the caller didn't switch before calling (multi-GPU;
+  // review #80). The header was already included but unused upstream.
+  const c10::cuda::OptionalCUDAGuard device_guard(output.device());
+
   InputArray<N> input_array;
   const int* input_ptr = input.data_ptr<int>();
   for (int i = 0; i < N; ++i)

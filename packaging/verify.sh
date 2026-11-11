@@ -18,7 +18,7 @@ if [ -z "$PY" ]; then
 fi
 [ -n "$PY" ] || { echo "verify.sh: no working python3/python on PATH" >&2; exit 1; }
 
-# Mixed build/profile directories require an explicit pair. --check-pair only
+# Mixed build directories require an explicit pair. --check-pair only
 # inspects real wheel metadata; it creates no environment and installs nothing.
 CHECK_PAIR=0
 if [ "${1:-}" = --check-pair ]; then CHECK_PAIR=1; shift; fi
@@ -40,6 +40,7 @@ fi
 import email
 import sys
 import zipfile
+from packaging.requirements import Requirement
 def metadata(path):
     with zipfile.ZipFile(path) as archive:
         name = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
@@ -47,11 +48,12 @@ def metadata(path):
 kernel, adapter = map(metadata, sys.argv[1:])
 if kernel["Name"] != "sgl-kernel" or adapter["Name"] != "hcu-adapter":
     raise SystemExit("wrong wheel owners")
-pins = [r.replace(" ", "") for r in adapter.get_all("Requires-Dist", [])
-        if r.startswith("sgl-kernel")]
-expected = {"sgl-kernel==" + kernel["Version"],
-            "sgl-kernel==" + kernel["Version"].split("+", 1)[0]}
-if len(pins) != 1 or pins[0] not in expected:
+pins = [Requirement(r) for r in adapter.get_all("Requires-Dist", [])
+        if Requirement(r).name == "sgl-kernel"]
+terms = list(pins[0].specifier) if len(pins) == 1 else []
+if (len(pins) != 1 or pins[0].marker is not None or len(terms) != 1
+        or terms[0].operator != "==" or "*" in terms[0].version
+        or not terms[0].contains(kernel["Version"], prereleases=True)):
     raise SystemExit(f"wheel pair mismatch: {pins!r} versus {kernel['Version']}")
 print("Exact wheel pair:", kernel["Version"], adapter["Version"])
 PY
@@ -79,6 +81,7 @@ VA="$(mktemp -d)/va"; mkvenv "$VA"
 venv_pip "$VA" install --no-deps --quiet "$KERNEL_WHL" "$ADAPTER_WHL"
 run_py "$VA" '
 import sys, importlib.metadata as im
+from packaging.requirements import Requirement
 import sgl_kernel
 assert "sitecustomize" in sys.modules, "sitecustomize not effective"
 eps = {e.name: e for e in im.entry_points(group="vllm.platform_plugins")
@@ -86,9 +89,8 @@ eps = {e.name: e for e in im.entry_points(group="vllm.platform_plugins")
 assert "hcu_adapter" in eps, "vllm platform plugin entry-point missing"
 pin = [r.replace(" ", "") for r in (im.metadata("hcu-adapter").get_all("Requires-Dist") or [])
        if r.startswith("sgl-kernel")]
-expected = "sgl-kernel==" + im.version("sgl-kernel")
-public = "sgl-kernel==" + im.version("sgl-kernel").split("+", 1)[0]
-assert len(pin) == 1 and pin[0] in {expected, public}, (pin, expected)
+assert len(pin) == 1 and Requirement(pin[0]).specifier.contains(
+    im.version("sgl-kernel"), prereleases=True), (pin, im.version("sgl-kernel"))
 print("A ok:", sgl_kernel.__version__)
 '
 

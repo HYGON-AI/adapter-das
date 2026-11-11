@@ -22,8 +22,8 @@ keywords = ["hcu", "adapter", "sglang", "vllm", "hip"]
 # sglang itself is installed --no-deps: these extras are the dependency
 # carrier, so pip never resolves sglang's CUDA-only pins. The base
 # dependencies rendered by setup.py/_pin.py carry the kernel interlock plus
-# the default torch2.13/triton3.7 pins; an explicit stamped torch2110 build
-# retains torch2.11/triton3.6. Extras carry the rest; see docs/build.md.
+# packaging>=23. Core/provider metadata and deployment constraints choose the
+# Torch/Triton stack; build stamps are provenance only. See docs/build.md.
 [project.optional-dependencies]
 # Platform-neutral subset of sglang v0.5.22 runtime deps. CUDA-only deps
 # (sglang-kernel, flash-attn-4, flashinfer_python, ...) must stay out.

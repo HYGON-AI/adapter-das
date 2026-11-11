@@ -18,7 +18,6 @@ import base64
 import csv
 import email
 import hashlib
-import importlib.util
 import io
 from pathlib import Path
 import re
@@ -29,6 +28,7 @@ import zipfile
 
 import pytest
 from packaging.requirements import Requirement
+from packaging.version import Version
 
 try:
     import tomllib
@@ -218,33 +218,54 @@ def _wheel_metadata(wheel):
 @pytest.fixture(scope="module")
 def stamped_pairs(tmp_path_factory):
     pairs = {}
-    for profile, suffix in [("torch2130", ""), ("torch2110", ".torch2110")]:
-        temp = tmp_path_factory.mktemp(profile)
+    for label, suffix in [("ordinary", ""), ("torch-text", ".TORCH2110")]:
+        temp = tmp_path_factory.mktemp(label)
         source = _copy_repo(temp)
         stamp = "2611111200.g23f605" + suffix
-        pairs[profile] = (
+        pairs[label] = (
             _build_wheel(source, temp, "kernel", stamp),
             _build_wheel(source / "packaging/hcu-adapter", temp, "adapter", stamp),
         )
     return pairs
 
 
-@pytest.mark.parametrize("profile,torch_version,triton_version", [
-    ("torch2130", "2.13.0", "3.7.0"), ("torch2110", "2.11.0", "3.6.0"),
-])
-def test_real_stamped_pair_dependency_profile(stamped_pairs, profile, torch_version,
-                                              triton_version):
-    kernel, adapter = stamped_pairs[profile]
+def test_shared_wheel_dependencies_allow_both_existing_stack_lines(stamped_pairs):
+    for kernel, adapter in stamped_pairs.values():
+        km, am = _wheel_metadata(kernel), _wheel_metadata(adapter)
+        adapter_base = {r.name: r for s in am.get_all("Requires-Dist", [])
+                        if (r := Requirement(s)).marker is None}
+        assert set(adapter_base) == {"packaging", "sgl-kernel"}
+        assert str(adapter_base["packaging"].specifier) == ">=23"
+        kernel_base = {r.name: r for s in km.get_all("Requires-Dist", [])
+                       if (r := Requirement(s)).marker is None}
+        assert str(kernel_base["torch"].specifier) == ">=2.0"
+        assert str(kernel_base["triton"].specifier) == ">=2.1"
+        for name, versions in [("torch", ["2.11.0", "2.13.0"]),
+                               ("triton", ["3.6.0", "3.7.0"])]:
+            requirements = [r for base in [adapter_base, kernel_base]
+                            for key, r in base.items() if key == name]
+            assert all(r.specifier.contains(version) for r in requirements for version in versions)
+
+
+def test_real_wheel_stamp_does_not_select_dependency_vector(stamped_pairs):
+    vectors = []
+    for kernel, adapter in stamped_pairs.values():
+        metadata = _wheel_metadata(adapter)
+        vectors.append([s for s in metadata.get_all("Requires-Dist", [])
+                        if Requirement(s).name != "sgl-kernel"])
+    assert vectors[0] == vectors[1]
+
+
+@pytest.mark.parametrize("label", ["ordinary", "torch-text"])
+def test_real_stamped_pair_preserves_record_payload_and_interlock(stamped_pairs, label):
+    kernel, adapter = stamped_pairs[label]
     km, am = _wheel_metadata(kernel), _wheel_metadata(adapter)
-    base = {r.name: r for s in am.get_all("Requires-Dist", [])
-            if (r := Requirement(s)).marker is None}
-    assert str(base["torch"].specifier) == "==" + torch_version
-    assert str(base["triton"].specifier) == "==" + triton_version
-    assert str(base["packaging"].specifier) == ">=23"
-    assert str(base["sgl-kernel"].specifier) == "==" + km["Version"]
+    base = {r.name: r for text in am.get_all("Requires-Dist", [])
+            if (r := Requirement(text)).marker is None}
+    terms = list(base["sgl-kernel"].specifier)
+    assert len(terms) == 1 and terms[0].operator == "=="
+    assert Version(terms[0].version) == Version(km["Version"])
     assert am["Version"].split("+", 1)[1] == km["Version"].split("+", 1)[1]
-    if profile == "torch2110":
-        assert am["Version"].endswith(".torch2110")
     for wheel in [kernel, adapter]:
         with zipfile.ZipFile(wheel) as archive:
             record = next(n for n in archive.namelist() if n.endswith(".dist-info/RECORD"))
@@ -254,63 +275,66 @@ def test_real_stamped_pair_dependency_profile(stamped_pairs, profile, torch_vers
                     encoded = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=")
                     assert digest == "sha256=" + encoded.decode()
                     assert int(size) == len(data)
-    # A profile must not change any runtime source or extra/entry-point declaration.
+    # Provenance must not change runtime source, extras or entry points.
     with zipfile.ZipFile(adapter) as archive:
         for name in archive.namelist():
             if name.startswith("hcu_adapter/") or name == "sitecustomize.py":
                 assert archive.read(name) == (REPO_ROOT / name).read_bytes()
     assert set(am.get_all("Provides-Extra", [])) == set(
-        _wheel_metadata(stamped_pairs["torch2130"][1]).get_all("Provides-Extra", []))
+        _wheel_metadata(stamped_pairs["ordinary"][1]).get_all("Provides-Extra", []))
 
 
 @pytest.mark.parametrize("stamp", [
-    "2611111200.g23f605.torch2150", "2611111200.torch2110.g23f605",
-    "2611111200.g23f605.torch2110.torch2110",
-    "2611111200.g23f605.torch2130.torch2110",
-    "2611111200.g23f605.TORCH2110", "2611111200.g23f605-torch2110",
-    "2611111200.g23f605_torch2110",
+    "2611111200.g13c43d.torch2150", "2611111200.torch2110.g13c43d",
+    "2611111200.g13c43d.torch2110.torch2110",
+    "2611111200.g13c43d.torch2130.torch2110",
+    "2611111200.g13c43d.TORCH2110", "2611111200.g13c43d-torch2110",
+    "2611111200.g13c43d_torch2110",
 ])
-def test_backend_rejects_invalid_reserved_profile(stamp, monkeypatch):
-    spec = importlib.util.spec_from_file_location("packaging_pin_test", ADAPTER_PYPROJECT.parent / "_pin.py")
-    pin = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(pin)
-    monkeypatch.setenv("DAS_BUILD_STAMP", stamp)
-    with pytest.raises(ValueError, match="profile"):
-        pin.base_dependencies()
+def test_backend_stamp_text_is_only_provenance(tmp_path, stamp):
+    source = _copy_repo(tmp_path)
+    output = tmp_path / "metadata"
+    output.mkdir()
+    env = {**os.environ, "HCU_ADAPTER_HOST": "none", "DAS_BUILD_STAMP": stamp,
+           "HIP_VISIBLE_DEVICES": "", "CUDA_VISIBLE_DEVICES": "", "ROCR_VISIBLE_DEVICES": ""}
+    result = subprocess.run([
+        sys.executable, "-c",
+        "import sys; from setuptools import build_meta; "
+        "build_meta.prepare_metadata_for_build_wheel(sys.argv[1])", str(output)],
+        cwd=source / "packaging/hcu-adapter", env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    metadata = email.message_from_bytes(next(output.glob("*.dist-info/METADATA")).read_bytes())
+    base = [s for s in metadata.get_all("Requires-Dist", [])
+            if Requirement(s).marker is None and Requirement(s).name != "sgl-kernel"]
+    assert base == ["packaging>=23"]
 
 
-def test_build_cli_profiles_and_explicit_stamp_conflict(tmp_path):
+@pytest.mark.parametrize("unstamped", [False, True])
+def test_build_cli_keeps_stamp_independent_of_dependencies(tmp_path, unstamped):
     source = _copy_repo(tmp_path)
     env = {**os.environ, "HCU_ADAPTER_HOST": "none", "PYTHON": sys.executable,
            "PYTHONNOUSERSITE": "1", "PIP_NO_INDEX": "1", "HIP_VISIBLE_DEVICES": "",
            "CUDA_VISIBLE_DEVICES": "", "ROCR_VISIBLE_DEVICES": "",
-           "DAS_BUILD_STAMP": "2611111200.g23f605"}
-    result = subprocess.run(["bash", "packaging/build.sh", "--runtime-profile", "torch2110"],
+           "DAS_BUILD_STAMP": "2611111200.g13c43d.torch2110"}
+    args = ["--no-stamp"] if unstamped else []
+    result = subprocess.run(["bash", "packaging/build.sh", *args],
                             cwd=source, env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     adapter = next((source / "dist").glob("hcu_adapter-*.whl"))
-    assert _wheel_metadata(adapter)["Version"].endswith(".torch2110")
-    env["DAS_BUILD_STAMP"] += ".torch2110"
-    result = subprocess.run(["bash", "packaging/build.sh", "--runtime-profile", "torch2130"],
-                            cwd=source, env=env, capture_output=True, text=True)
-    assert result.returncode != 0 and "conflict" in result.stderr.lower()
-
-
-def test_nondefault_unstamped_build_is_rejected():
-    env = {**os.environ, "HCU_ADAPTER_HOST": "none", "PYTHON": sys.executable}
-    env.pop("DAS_BUILD_STAMP", None)
-    result = subprocess.run(["bash", "packaging/build.sh", "--no-stamp", "--runtime-profile", "torch2110"],
-                            cwd=REPO_ROOT, env=env, capture_output=True, text=True)
-    assert result.returncode != 0
-    assert "no-stamp" in result.stderr and "torch2110" in result.stderr
+    metadata = _wheel_metadata(adapter)
+    assert metadata["Version"] == (_adapter_version() if unstamped else
+                                     "0.5.22+hcu.2611111200.g13c43d.torch2110")
+    base = [s for s in metadata.get_all("Requires-Dist", [])
+            if Requirement(s).marker is None and Requirement(s).name != "sgl-kernel"]
+    assert base == ["packaging>=23"]
 
 
 @pytest.mark.parametrize("optimize", ["0", "1"])
-def test_verify_exact_pair_refuses_cross_profile_kernel(stamped_pairs, optimize):
-    kernel, adapter = stamped_pairs["torch2110"]
+def test_verify_exact_pair_refuses_wrong_stamp_kernel(stamped_pairs, optimize):
+    kernel, adapter = stamped_pairs["torch-text"]
     env = {**os.environ, "HCU_ADAPTER_HOST": "none", "PYTHON": sys.executable,
            "PYTHONOPTIMIZE": optimize}
-    for actual_kernel, succeeds in [(kernel, True), (stamped_pairs["torch2130"][0], False)]:
+    for actual_kernel, succeeds in [(kernel, True), (stamped_pairs["ordinary"][0], False)]:
         result = subprocess.run(["bash", "packaging/verify.sh", "--check-pair",
                                  str(actual_kernel), str(adapter)], cwd=REPO_ROOT,
                                 env=env, capture_output=True, text=True)
@@ -337,19 +361,15 @@ def test_empty_normalized_cli_stamp_rejects_before_build(tmp_path, stamp):
     assert not (source / "dist").exists()
 
 
-@pytest.mark.parametrize("arguments", [
-    ["--runtime-profile"], ["--runtime-profile", ""],
-    ["--runtime-profile", "torch2150"],
-    ["--runtime-profile", "torch2110", "--runtime-profile", "torch2110"],
-])
-def test_cli_invalid_profile_rejects_before_build(tmp_path, arguments):
+@pytest.mark.parametrize("value", ["torch2110", "torch2130"])
+def test_removed_runtime_profile_option_rejects_before_build(tmp_path, value):
     source = _copy_repo(tmp_path)
-    result = subprocess.run(["bash", "packaging/build.sh", *arguments], cwd=source,
+    result = subprocess.run(["bash", "packaging/build.sh", "--runtime-profile", value], cwd=source,
                             env={**os.environ, "HCU_ADAPTER_HOST": "none", "PYTHON": sys.executable,
-                                 "PIP_NO_INDEX": "1", "DAS_BUILD_STAMP": "2611111200.g23f605"},
+                                 "PIP_NO_INDEX": "1", "DAS_BUILD_STAMP": "2611111200.g13c43d"},
                             capture_output=True, text=True)
     assert result.returncode != 0
-    assert "profile" in result.stderr
+    assert "unknown argument" in result.stderr
     assert not (source / "dist").exists()
 
 

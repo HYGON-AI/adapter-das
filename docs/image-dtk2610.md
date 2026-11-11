@@ -9,11 +9,10 @@
 > 实测记录见各节「实测」注记；第 6 节保留定案结论。
 > 前置阅读：[hygon-oss-landscape.md](hygon-oss-landscape.md)（供应商库图谱）。
 
-本文的 `[VERIFY-26.10]` 是历史迁移 Torch2.11/Triton3.6 组合；main 的普通
-wheel 现默认钉 Torch2.13/Triton3.7，两者不可混作同一验收栈。保留本次
-vLLM0.33 的 2.11/3.6 原生组合时，使用 [构建说明](build.md) 的显式
-`torch2110` profile、同戳双 wheel 与匹配 provider；历史记录不证明新包装或
-2.13 原生 ABI/模型已验收。默认 2.13 部署策略不因该兼容构建而改动。
+本文的 `[VERIFY-26.10]` 是历史迁移组合的来源记录，不是共享包装的版本
+限制。共享 Adapter 不选择 Torch/Triton 线；部署须按 [构建说明](build.md)
+保留同戳双 wheel，以真实 Core/provider METADATA 与 constraints 选择组合。
+历史记录不能证明另一原生栈或新包装的安装态、ABI、Graph 与模型已验收。
 
 ## 0. 基线事实
 

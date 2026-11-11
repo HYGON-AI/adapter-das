@@ -232,11 +232,12 @@ optional 误判为 fatal。保留 callback 原有捕获边界，不新增恢复�
 
 > 全仓文档地图与失效信号清单见 `docs/reading-guide.md`（新会话先读它）。
 
-包装依赖 profile 先读 `docs/build.md`：默认保留 Torch2.13/Triton3.7，
-本次 vLLM0.33 保留的 Torch2.11/Triton3.6 组合须显式构建带 `.torch2110`
-同戳的两张 wheel。不能全局降 pin、用 `--no-deps` 冒充依赖闭包，或因为
-vLLM 未调用 `sgl_kernel` 就移除共享安装互锁。构建 profile 不扩大原生 ABI
-准入；双宿主安装/引导与各真实 provider 闭包分别验证，旧模型证据不自动转授。
+包装依赖先读 `docs/build.md`：共享 Adapter 不按宿主或构建戳选择某条
+Torch/Triton 版本线，基础依赖仅 `packaging>=23` 加配对内核互锁；内核包
+既有最低依赖保持原样。具体组合由真实 Core/provider METADATA 与部署
+constraints 决定。不能用 `--no-deps` 冒充闭包，或因为 vLLM 未调用
+`sgl_kernel` 就移除共享安装互锁。构建来源不扩大原生 ABI 准入；双宿主
+安装/引导与各真实 provider 闭包分别验证，旧模型证据不自动转授。
 
 | 你要做的事 | 先读 |
 |---|---|

@@ -39,10 +39,21 @@ namespace {
 constexpr int kThreadsPerGroup = 16;
 constexpr float kV2AbsmaxFloor = 1e-10f;
 
+// Wave-size NOTE (DCU is a wave64 platform; CUDA's warp is 32): the
+// group reduction below uses __shfl_xor with offsets 8/4/2/1 — offsets
+// that only flip bits 0..3, so the shuffle partner always lies within
+// the SAME 16-lane group regardless of whether __shfl_xor's implicit
+// width is 32 (CUDA legacy) or 64 (wave64). The early-return guards are
+// per-GROUP predicates (all 16 lanes share one gid), so no partially
+// active group can ever hit a shuffle. Both kernels are therefore
+// wave-agnostic by construction.
 __device__ __forceinline__ float group_reduce_max16(float v) {
+  // HIP's __shfl_xor is the legacy (var, laneMask) signature — NOT the
+  // CUDA __shfl_xor_sync(mask, var, laneMask). xor offsets 8/4/2/1 stay
+  // within each 16-lane group, so no width argument is needed.
 #pragma unroll
   for (int off = kThreadsPerGroup / 2; off > 0; off >>= 1) {
-    v = fmaxf(v, __shfl_xor(0xffffffffu, v, off));
+    v = fmaxf(v, __shfl_xor(v, off));
   }
   return v;
 }
@@ -148,7 +159,11 @@ __global__ void quant8_v2_kernel(
   if (gid >= num_groups) return;
   const int64_t row = gid / groups_per_row;
   const int g = gid - row * groups_per_row;
-  const int64_t base = row * groups_per_row * group_size + g * group_size;
+  // fuse inputs carry BOTH halves per row: (rows, groups_per_row *
+  // group_size * 2); the row stride must account for the secondary tail.
+  const int64_t row_stride_elems =
+      static_cast<int64_t>(groups_per_row) * group_size * (FUSE_SILU ? 2 : 1);
+  const int64_t base = row * row_stride_elems + g * group_size;
   const int64_t secondary_off = FUSE_SILU
                                     ? static_cast<int64_t>(groups_per_row) * group_size
                                     : 0;

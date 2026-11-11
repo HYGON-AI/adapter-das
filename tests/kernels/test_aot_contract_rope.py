@@ -213,7 +213,10 @@ def test_neox_triton_vs_torch_ref(dtype):
     q = torch.randn(T, H * hs, device="cuda").to(dtype)
     k = torch.randn(T, 2 * hs, device="cuda").to(dtype)
     positions = torch.randint(0, 64, (T,), device="cuda", dtype=torch.int64)
-    q_ref, k_ref = _neox_ref(q.clone(), k.clone(), positions, hs, cache.cpu())
+    # reference runs on CPU tensors: q/k/positions must move with the cache
+    q_ref, k_ref = _neox_ref(
+        q.clone().cpu(), k.clone().cpu(), positions.cpu(), hs, cache.cpu()
+    )
     sgl_kernel.rotary_embedding(positions, q, k, hs, cache, is_neox=True)
     tol = (2e-3, 2e-3) if dtype != torch.bfloat16 else (1.0, 0.3)
     torch.testing.assert_close(q.float(), q_ref.float().cuda(),

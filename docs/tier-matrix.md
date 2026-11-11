@@ -1,47 +1,16 @@
 # 算子档位矩阵（自动生成，勿手改）
 
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-04）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
+> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-11）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
-## qsa_prefill
+## cuda_graph
 
-QSA sparse prefill launch geometry on HCU
-
-| 档位 | 状态 / 备注 |
-|---|---|
-| triton | candidate gfx936 uses 64/1 through 64 rows and |
-
-路由变量：（auto）
-
-## qsa_mqa
-
-QSA indexer MQA on HCU
+HIP driver guard for breakable prefill graph capture
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| torch | candidate Official Torch reference for unsuppo |
-| boltops | candidate gfx936 BF16 QSA indexer with four 12 |
-
-路由变量：（auto）
-
-## qsa_scatter
-
-QSA state and compressed-key row stores on HCU
-
-| 档位 | 状态 / 备注 |
-|---|---|
-| triton | candidate No host sync; duplicate destination  |
-
-路由变量：（auto）
-
-## mapped_host_view
-
-DTK mapped CPU allocation exposed as a device tensor
-
-| 档位 | 状态 / 备注 |
-|---|---|
-| dtk | candidate INT8/BF16/FP8 live-ID Graph replay p |
+| prefill-bcg-driver-truth | candidate Breakable prefill uses the upstream  |
 
 路由变量：（auto）
 
@@ -73,7 +42,28 @@ vLLM official dense FP8 fallback via public linear registration
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| official-triton | validated gfx936 only: official TritonFP8Scale |
+| official-triton | validated gfx936 and gfx938: official TritonFP |
+
+路由变量：（auto）
+
+## vllm_allreduce
+
+vLLM official AR constructor compatibility; separate from historical SGLang AR
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| official-aiter | candidate HCU ABI/copy-in/limits only; CPU con |
+| official-fallback | candidate AITER dispatch OFF; preserves offici |
+
+路由变量：`1`/`0`
+
+## vllm_allreduce_admission
+
+vLLM AR-only gate compatibility; global AITER and real architecture unchanged
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| official-aiter-gate | candidate Existing HCU kill/resolver policy; a |
 
 路由变量：（auto）
 
@@ -97,6 +87,7 @@ RMSNorm (plain); the fused-add family is its own op below
 |---|---|
 | triton | production default |
 | aiter | candidate aiter.rmsnorm_forward(x,w,eps,traini |
+| lightop | candidate Public BF16 plain RMSNorm; other dty |
 | torch | production reference path |
 
 路由变量：`HCU_RMS_NORM_IMPL`
@@ -183,6 +174,48 @@ topk_softmax / topk_sigmoid / moe_fused_gate (contract = torch baseline)
 | triton | production no switch needed |
 | aiter | planned moe_fused_gate_sqrtsoftplus_v41_hcu  |
 | lightop | planned fast_topk_transform_* family |
+
+路由变量：（auto）
+
+## merge_state_v2
+
+LSE-exact merge of two partial attention states (MTP verify / cascade)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | production fp32 FMA, ±inf lse -> -inf; all-mask |
+| emu | production torch fallback (CPU / no-triton); op |
+
+路由变量：（auto）
+
+## concat_mla
+
+MLA concat copies: concat_mla_k (in-place (T,128,192)), concat_mla_absorb_q (allocating (...,576))
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | production row-copy kernel; bf16/3D/unit-stride |
+| emu | production strided torch copies / torch.cat fal |
+
+路由变量：（auto）
+
+## copy_to_gpu_no_ce
+
+small pinned int32 H2D, N in {32,64,72} (upstream copy.cu)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| emu | production output.copy_(input); the upstream no |
+
+路由变量：（auto）
+
+## per_token_group_quant_8bit
+
+sgl_per_token_group_quant_8bit bridge, v1 + v2 variants (C-class gap: the python seam was missing entirely — callers hit AttributeError)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| emu | production torch ports of both upstream kernels |
 
 路由变量：（auto）
 
@@ -293,6 +326,26 @@ w8a8 fused MoE experts (standard dispatch, triton runner entry; deepep runner un
 
 路由变量：`HCU_FUSED_MOE_IMPL`
 
+## flashmla_kv_indices
+
+FlashMLA static-pool page-table import compatibility
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Reuse SGLang's existing page64 kerne |
+
+路由变量：（auto）
+
+## w4a8_contiguous_gemm
+
+DTK W4A8 HIPC code-object ABI compatibility
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| dtk | candidate Optional gfx936 COV5 extension for p |
+
+路由变量：（auto）
+
 ## w4a16_moe
 
 W4A16 fused MoE experts (moe_wna16 AWQ/GPTQ-int4 line)
@@ -304,6 +357,16 @@ W4A16 fused MoE experts (moe_wna16 AWQ/GPTQ-int4 line)
 
 路由变量：`HCU_W4A16_MOE_IMPL`
 
+## ct_channel_w4a8_components
+
+Channel INT4 / token INT8 components and explicit BF16 DeepEP LL route candidate; model acceptance pending
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate w4a8_int8_triton: masked absmax/127. |
+
+路由变量：（auto）
+
 ## int8_linear_gemm
 
 SGLang CT and explicit W8A8 INT8 linear scaled GEMM
@@ -313,6 +376,17 @@ SGLang CT and explicit W8A8 INT8 linear scaled GEMM
 | triton | candidate Existing sgl_kernel.gemm_int8 ABI; b |
 
 路由变量：（auto）
+
+## hadamard
+
+SGLang DSA indexer rotate_activation Hadamard transform
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Radix-2 butterfly (reshape/permute/s |
+| emu | candidate Torch Sylvester matrix multiply refe |
+
+路由变量：`HCU_HADAMARD_IMPL`
 
 ## per_token_quant
 

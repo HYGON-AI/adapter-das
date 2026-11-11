@@ -332,6 +332,65 @@ BACKEND_CATALOG = {
                         "note": "fast_topk_transform_* family"},
         },
     },
+    "merge_state_v2": {
+        "var": None,
+        "summary": "LSE-exact merge of two partial attention states "
+                   "(MTP verify / cascade)",
+        "backends": {
+            "triton": {"status": "production",
+                       "note": "fp32 FMA, ±inf lse -> -inf; all-masked "
+                               "rows -> 0/-inf (FA emu contract; upstream "
+                               "CUDA wheel emits NaN there — anchored "
+                               "divergence, see "
+                               "tests/kernels/test_aot_contract_b_class.py)"},
+            "emu": {"status": "production",
+                    "note": "torch fallback (CPU / no-triton); optional "
+                            "v_merged/s_merged out params per upstream "
+                            "python wrapper"},
+        },
+    },
+    "concat_mla": {
+        "var": None,
+        "summary": "MLA concat copies: concat_mla_k (in-place "
+                   "(T,128,192)), concat_mla_absorb_q (allocating "
+                   "(...,576))",
+        "backends": {
+            "triton": {"status": "production",
+                       "note": "row-copy kernel; bf16/3D/unit-stride/16B "
+                               "contract checks mirror concat_mla.cu"},
+            "emu": {"status": "production",
+                    "note": "strided torch copies / torch.cat fallback"},
+        },
+    },
+    "copy_to_gpu_no_ce": {
+        "var": None,
+        "summary": "small pinned int32 H2D, N in {32,64,72} "
+                   "(upstream copy.cu)",
+        "backends": {
+            "emu": {"status": "production",
+                    "note": "output.copy_(input); the upstream no-CE trick "
+                            "(values in kernel launch params) is "
+                            "CUDA-runtime-only — numerically identical, "
+                            "mechanism differs (no triton equivalent)"},
+        },
+    },
+    "per_token_group_quant_8bit": {
+        "var": None,
+        "summary": "sgl_per_token_group_quant_8bit bridge, v1 + v2 "
+                   "variants (C-class gap: the python seam was missing "
+                   "entirely — callers hit AttributeError)",
+        "backends": {
+            "emu": {"status": "production",
+                    "note": "torch ports of both upstream kernels; v1: "
+                            "eps-floor amax, x/y_s division, int8 cast "
+                            "TRUNCATES; v2: eps==1e-10 enforced, min/max "
+                            "must match dst dtype, ue8m0 via DeepEP "
+                            "fast_log2_ceil bits, fuse_silu_and_mul in "
+                            "input dtype, DeepEP masked_m layout. "
+                            "Contract anchors: "
+                            "tests/kernels/test_aot_contract_quant.py"},
+        },
+    },
     "platform_detect": {
         "var": "HCU_PLATFORM_SEMANTICS",
         "summary": "sglang 平台判定语义（§0.5 is_cuda 路线的落地点）",

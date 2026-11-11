@@ -37,9 +37,11 @@ jobs:
       SUITE: ${{ inputs.suite }}
       BASELINE_REF: ${{ inputs.baseline_ref }}
       CANDIDATE_REF: ${{ inputs.candidate_ref }}
-      OUTPUT_DIR: ${{ runner.temp }}/adapter-hcu-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
+      - name: Set result directory
+        shell: bash
+        run: echo "OUTPUT_DIR=${RUNNER_TEMP}/adapter-hcu-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
       - name: Check reservation and run selected suite
         shell: bash
         run: |

@@ -221,3 +221,13 @@ SGLang 0.5.22 的 HY3 Channel FP8 插件使用 per-token scale，但 adapter 的
 上段“尚未提交”和原生内核失败描述为当次检查的历史状态。本次将参数透传、对应离线回归和说明保存为本地 commit，未 push。提交前重新执行桥参数回归和 adapter L0；两项均通过，L0 的既有告警保留。组合运行仍要求 plugin 显式请求 Channel FP8 分组 0；plugin 的配套提交以其本地分支历史为准。
 
 后续 DeepGEMM 辅助扩展准备后，组合环境完成 TP8/Attention DP8、FA3、E4M3 KV、NEXTN 串行 200 题测试；数值匹配 197/200，正常结束且正确 196/200。该结果包含外部运行依赖及 plugin 修复，不是本桥独立数值结论；原 0.9 显存配方 OOM，8 并发 NextN padding 失败仍未修复。本次仅存档与 CPU/结构检查，没有重新启动 GPU 服务。
+
+
+## HY3 main 基线迁移（2026-11-11）
+
+基于 adapter main `1ab11bd` 迁入 FP8 分组透传与 AITER all-reduce 模块轻探测，配套 plugin main `9543829` 上的 HY3 迁移分支。启动探测不执行 GPU 模块，实际使用仍遵循设备绑定与能力检查。此处记录迁移范围；尚未执行的新基线模型验证不记作通过。
+
+
+### HY3 main 迁移提交前检查（2026-11-11）
+
+基于 main `1ab11bd`；配套 plugin 基于 `9543829`。Adapter L0 通过（31 条既存警告），`tests/test_ops_cpu.py` 38 项通过；`test_deepep_dispatch_scale.py` 与 `test_hcu_env_ar_norm.py` 共 3 项测试及 3 个子例通过。两仓 `git diff --check` 通过。完整 GPU/模型与性能检查尚未在新 main 组合执行，不以参数透传或轻导入测试代替数值验收。

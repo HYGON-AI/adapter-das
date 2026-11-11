@@ -494,6 +494,13 @@ Adapter 不保存 Plugin backend 路径，正式 registry 发布与健康检查�
   给两张 wheel 传同一个 `DAS_BUILD_STAMP=<时间>.g<commit>`（渲染为
   `+hcu.<时间>.g<commit>`），带戳内核与 adapter 依赖逐字互锁；无戳（可编辑/开发安装）
   时退化为内核公共版本等号。
+  默认构建依赖保留 Torch 2.13 / Triton 3.7；本次 vLLM 0.33 保留栈可显式
+  `--runtime-profile torch2110`，在同一构建戳末尾加 `.torch2110` 并精确钉
+  Torch 2.11 / Triton 3.6，双方版本和互锁均使用该戳。非默认 profile 禁止
+  `--no-stamp`，未知/冲突保留段拒绝。该 profile 是构建依赖选择，不扩大运行时
+  ABI/宿主支持；安装依赖 `sgl-kernel` 不等于 vLLM 调用其 SGLang 算子。
+  2110 仅显式交付，默认 nightly 保持 2130；两类产物的真实依赖闭包与安装态
+  验收分开记录，旧组合证据不转授新 metadata。详见 [构建说明](build.md)。
   `ci/l0_gate.py` 与 `packaging/build.sh` 双重校验。当初评估解耦的结论：单
   wheel 让"双宿主适配层挂单宿主内核名"，拆分后 sgl-kernel 的用法与语义与上游
   内核包对齐（独立内核包，谁需要谁装）；**复评触发条件**：官方

@@ -10,9 +10,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST="$ROOT/dist"
-# build.sh stamps each pair with hcu.<time>.g<commit>; pick the newest pair
-KERNEL_WHL="$(ls -t "$DIST"/sgl_kernel-*.whl | head -1)"
-ADAPTER_WHL="$(ls -t "$DIST"/hcu_adapter-*.whl | head -1)"
 PY="${PYTHON:-}"
 if [ -z "$PY" ]; then
     for cand in python3 python; do
@@ -20,6 +17,45 @@ if [ -z "$PY" ]; then
     done
 fi
 [ -n "$PY" ] || { echo "verify.sh: no working python3/python on PATH" >&2; exit 1; }
+
+# Mixed build/profile directories require an explicit pair. --check-pair only
+# inspects real wheel metadata; it creates no environment and installs nothing.
+CHECK_PAIR=0
+if [ "${1:-}" = --check-pair ]; then CHECK_PAIR=1; shift; fi
+if [ "$#" = 2 ]; then
+    KERNEL_WHL="$1"; ADAPTER_WHL="$2"
+elif [ "$#" = 0 ] && [ "$CHECK_PAIR" = 0 ]; then
+    shopt -s nullglob
+    kernels=("$DIST"/sgl_kernel-*.whl)
+    adapters=("$DIST"/hcu_adapter-*.whl)
+    if [ "${#kernels[@]}" != 1 ] || [ "${#adapters[@]}" != 1 ]; then
+        echo "verify.sh: specify exact kernel and adapter wheel paths for an ambiguous dist directory" >&2
+        exit 2
+    fi
+    KERNEL_WHL="${kernels[0]}"; ADAPTER_WHL="${adapters[0]}"
+else
+    echo "usage: verify.sh [--check-pair] <kernel.whl> <adapter.whl>" >&2; exit 2
+fi
+"$PY" - "$KERNEL_WHL" "$ADAPTER_WHL" <<'PY'
+import email
+import sys
+import zipfile
+def metadata(path):
+    with zipfile.ZipFile(path) as archive:
+        name = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
+        return email.message_from_bytes(archive.read(name))
+kernel, adapter = map(metadata, sys.argv[1:])
+if kernel["Name"] != "sgl-kernel" or adapter["Name"] != "hcu-adapter":
+    raise SystemExit("wrong wheel owners")
+pins = [r.replace(" ", "") for r in adapter.get_all("Requires-Dist", [])
+        if r.startswith("sgl-kernel")]
+expected = {"sgl-kernel==" + kernel["Version"],
+            "sgl-kernel==" + kernel["Version"].split("+", 1)[0]}
+if len(pins) != 1 or pins[0] not in expected:
+    raise SystemExit(f"wheel pair mismatch: {pins!r} versus {kernel['Version']}")
+print("Exact wheel pair:", kernel["Version"], adapter["Version"])
+PY
+if [ "$CHECK_PAIR" = 1 ]; then exit 0; fi
 
 mkvenv() {  # torch/triton come from the system site; wheels install --no-deps
     "$PY" -m venv --system-site-packages "$1"
@@ -51,7 +87,8 @@ assert "hcu_adapter" in eps, "vllm platform plugin entry-point missing"
 pin = [r.replace(" ", "") for r in (im.metadata("hcu-adapter").get_all("Requires-Dist") or [])
        if r.startswith("sgl-kernel")]
 expected = "sgl-kernel==" + im.version("sgl-kernel")
-assert pin == [expected], (pin, expected)
+public = "sgl-kernel==" + im.version("sgl-kernel").split("+", 1)[0]
+assert len(pin) == 1 and pin[0] in {expected, public}, (pin, expected)
 print("A ok:", sgl_kernel.__version__)
 '
 

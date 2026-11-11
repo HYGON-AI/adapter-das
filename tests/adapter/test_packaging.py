@@ -14,6 +14,12 @@ Two wheels, independent version lines, one interlock:
 """
 
 import os
+import base64
+import csv
+import email
+import hashlib
+import importlib.util
+import io
 from pathlib import Path
 import re
 import shutil
@@ -22,6 +28,7 @@ import sys
 import zipfile
 
 import pytest
+from packaging.requirements import Requirement
 
 try:
     import tomllib
@@ -45,11 +52,16 @@ def _adapter_version():
         encoding="utf-8").strip()
 
 
-def _build_wheel(source_dir, tmp_path, tag):
+def _build_wheel(source_dir, tmp_path, tag, stamp=None):
     wheel_dir = tmp_path / ("wheel-" + tag)
     wheel_dir.mkdir()
     env = os.environ.copy()
     env["HCU_ADAPTER_HOST"] = "none"
+    env.update(HIP_VISIBLE_DEVICES="", CUDA_VISIBLE_DEVICES="",
+               ROCR_VISIBLE_DEVICES="", PYTHONNOUSERSITE="1", PIP_NO_INDEX="1")
+    env.pop("DAS_BUILD_STAMP", None)
+    if stamp is not None:
+        env["DAS_BUILD_STAMP"] = stamp
     subprocess.run(
         [
             sys.executable,
@@ -142,7 +154,10 @@ def test_adapter_wheel_carries_bootstrap_bridges_and_entry_points(adapter_wheel)
     dist_info = f"hcu_adapter-{version}.dist-info"
     assert f"{dist_info}/METADATA" in members
     metadata = archive.read(f"{dist_info}/METADATA").decode()
-    assert f"Requires-Dist: sgl-kernel=={_kernel_version()}" in metadata, \
+    requirements = [Requirement(s) for s in email.message_from_string(metadata).get_all(
+        "Requires-Dist", [])]
+    assert [str(r.specifier) for r in requirements if r.name == "sgl-kernel"] == [
+        "==" + _kernel_version().split("+", 1)[0]], \
         "adapter must interlock the kernel dist with an exact pin"
     assert "sgl-kernel~=" not in metadata
 
@@ -172,11 +187,15 @@ def test_vllm_entry_points_declared_only_in_adapter_dist():
     assert "entry-points" not in kernel_project
 
 
-def test_interlock_pin_matches_single_version_source():
-    version = _kernel_version()
+def test_interlock_pin_matches_single_version_source(adapter_wheel):
+    version = _kernel_version().split("+", 1)[0]
     project = tomllib.loads(ADAPTER_PYPROJECT.read_text(encoding="utf-8"))["project"]
-    assert project["dependencies"] == [f"sgl-kernel=={version}"], \
-        "hcu-adapter dependency must be an exact == pin on the single source"
+    assert "dependencies" in project["dynamic"]
+    assert "dependencies" not in project
+    metadata = _wheel_metadata(adapter_wheel)
+    pins = [Requirement(s) for s in metadata.get_all("Requires-Dist", [])
+            if Requirement(s).name == "sgl-kernel"]
+    assert len(pins) == 1 and str(pins[0].specifier) == f"=={version}"
 
 
 def test_adapter_version_file_is_the_adapter_single_source(adapter_wheel):
@@ -188,6 +207,150 @@ def test_adapter_version_file_is_the_adapter_single_source(adapter_wheel):
     metadata = archive.read(f"{dist_info}/METADATA").decode()
     archive.close()
     assert f"Version: {_adapter_version()}" in metadata
+
+
+def _wheel_metadata(wheel):
+    with zipfile.ZipFile(wheel) as archive:
+        member = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
+        return email.message_from_bytes(archive.read(member))
+
+
+@pytest.fixture(scope="module")
+def stamped_pairs(tmp_path_factory):
+    pairs = {}
+    for profile, suffix in [("torch2130", ""), ("torch2110", ".torch2110")]:
+        temp = tmp_path_factory.mktemp(profile)
+        source = _copy_repo(temp)
+        stamp = "2611111200.g23f605" + suffix
+        pairs[profile] = (
+            _build_wheel(source, temp, "kernel", stamp),
+            _build_wheel(source / "packaging/hcu-adapter", temp, "adapter", stamp),
+        )
+    return pairs
+
+
+@pytest.mark.parametrize("profile,torch_version,triton_version", [
+    ("torch2130", "2.13.0", "3.7.0"), ("torch2110", "2.11.0", "3.6.0"),
+])
+def test_real_stamped_pair_dependency_profile(stamped_pairs, profile, torch_version,
+                                              triton_version):
+    kernel, adapter = stamped_pairs[profile]
+    km, am = _wheel_metadata(kernel), _wheel_metadata(adapter)
+    base = {r.name: r for s in am.get_all("Requires-Dist", [])
+            if (r := Requirement(s)).marker is None}
+    assert str(base["torch"].specifier) == "==" + torch_version
+    assert str(base["triton"].specifier) == "==" + triton_version
+    assert str(base["packaging"].specifier) == ">=23"
+    assert str(base["sgl-kernel"].specifier) == "==" + km["Version"]
+    assert am["Version"].split("+", 1)[1] == km["Version"].split("+", 1)[1]
+    if profile == "torch2110":
+        assert am["Version"].endswith(".torch2110")
+    for wheel in [kernel, adapter]:
+        with zipfile.ZipFile(wheel) as archive:
+            record = next(n for n in archive.namelist() if n.endswith(".dist-info/RECORD"))
+            for name, digest, size in csv.reader(io.StringIO(archive.read(record).decode())):
+                if digest:
+                    data = archive.read(name)
+                    encoded = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=")
+                    assert digest == "sha256=" + encoded.decode()
+                    assert int(size) == len(data)
+    # A profile must not change any runtime source or extra/entry-point declaration.
+    with zipfile.ZipFile(adapter) as archive:
+        for name in archive.namelist():
+            if name.startswith("hcu_adapter/") or name == "sitecustomize.py":
+                assert archive.read(name) == (REPO_ROOT / name).read_bytes()
+    assert set(am.get_all("Provides-Extra", [])) == set(
+        _wheel_metadata(stamped_pairs["torch2130"][1]).get_all("Provides-Extra", []))
+
+
+@pytest.mark.parametrize("stamp", [
+    "2611111200.g23f605.torch2150", "2611111200.torch2110.g23f605",
+    "2611111200.g23f605.torch2110.torch2110",
+    "2611111200.g23f605.torch2130.torch2110",
+    "2611111200.g23f605.TORCH2110", "2611111200.g23f605-torch2110",
+    "2611111200.g23f605_torch2110",
+])
+def test_backend_rejects_invalid_reserved_profile(stamp, monkeypatch):
+    spec = importlib.util.spec_from_file_location("packaging_pin_test", ADAPTER_PYPROJECT.parent / "_pin.py")
+    pin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pin)
+    monkeypatch.setenv("DAS_BUILD_STAMP", stamp)
+    with pytest.raises(ValueError, match="profile"):
+        pin.base_dependencies()
+
+
+def test_build_cli_profiles_and_explicit_stamp_conflict(tmp_path):
+    source = _copy_repo(tmp_path)
+    env = {**os.environ, "HCU_ADAPTER_HOST": "none", "PYTHON": sys.executable,
+           "PYTHONNOUSERSITE": "1", "PIP_NO_INDEX": "1", "HIP_VISIBLE_DEVICES": "",
+           "CUDA_VISIBLE_DEVICES": "", "ROCR_VISIBLE_DEVICES": "",
+           "DAS_BUILD_STAMP": "2611111200.g23f605"}
+    result = subprocess.run(["bash", "packaging/build.sh", "--runtime-profile", "torch2110"],
+                            cwd=source, env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    adapter = next((source / "dist").glob("hcu_adapter-*.whl"))
+    assert _wheel_metadata(adapter)["Version"].endswith(".torch2110")
+    env["DAS_BUILD_STAMP"] += ".torch2110"
+    result = subprocess.run(["bash", "packaging/build.sh", "--runtime-profile", "torch2130"],
+                            cwd=source, env=env, capture_output=True, text=True)
+    assert result.returncode != 0 and "conflict" in result.stderr.lower()
+
+
+def test_nondefault_unstamped_build_is_rejected():
+    env = {**os.environ, "HCU_ADAPTER_HOST": "none", "PYTHON": sys.executable}
+    env.pop("DAS_BUILD_STAMP", None)
+    result = subprocess.run(["bash", "packaging/build.sh", "--no-stamp", "--runtime-profile", "torch2110"],
+                            cwd=REPO_ROOT, env=env, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "no-stamp" in result.stderr and "torch2110" in result.stderr
+
+
+@pytest.mark.parametrize("optimize", ["0", "1"])
+def test_verify_exact_pair_refuses_cross_profile_kernel(stamped_pairs, optimize):
+    kernel, adapter = stamped_pairs["torch2110"]
+    env = {**os.environ, "HCU_ADAPTER_HOST": "none", "PYTHON": sys.executable,
+           "PYTHONOPTIMIZE": optimize}
+    for actual_kernel, succeeds in [(kernel, True), (stamped_pairs["torch2130"][0], False)]:
+        result = subprocess.run(["bash", "packaging/verify.sh", "--check-pair",
+                                 str(actual_kernel), str(adapter)], cwd=REPO_ROOT,
+                                env=env, capture_output=True, text=True)
+        assert (result.returncode == 0) is succeeds, result.stdout + result.stderr
+
+
+def test_verify_development_pair_accepts_public_version_pin(kernel_wheel, adapter_wheel):
+    result = subprocess.run(["bash", "packaging/verify.sh", "--check-pair",
+                             str(kernel_wheel), str(adapter_wheel)], cwd=REPO_ROOT,
+                            env={**os.environ, "HCU_ADAPTER_HOST": "none", "PYTHON": sys.executable},
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("stamp", [" ", "."])
+def test_empty_normalized_cli_stamp_rejects_before_build(tmp_path, stamp):
+    source = _copy_repo(tmp_path)
+    result = subprocess.run(["bash", "packaging/build.sh"], cwd=source,
+                            env={**os.environ, "HCU_ADAPTER_HOST": "none", "PYTHON": sys.executable,
+                                 "PIP_NO_INDEX": "1", "DAS_BUILD_STAMP": stamp},
+                            capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "empty build stamp" in result.stderr
+    assert not (source / "dist").exists()
+
+
+@pytest.mark.parametrize("arguments", [
+    ["--runtime-profile"], ["--runtime-profile", ""],
+    ["--runtime-profile", "torch2150"],
+    ["--runtime-profile", "torch2110", "--runtime-profile", "torch2110"],
+])
+def test_cli_invalid_profile_rejects_before_build(tmp_path, arguments):
+    source = _copy_repo(tmp_path)
+    result = subprocess.run(["bash", "packaging/build.sh", *arguments], cwd=source,
+                            env={**os.environ, "HCU_ADAPTER_HOST": "none", "PYTHON": sys.executable,
+                                 "PIP_NO_INDEX": "1", "DAS_BUILD_STAMP": "2611111200.g23f605"},
+                            capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "profile" in result.stderr
+    assert not (source / "dist").exists()
 
 
 _SENTINEL_BLOCK = """\

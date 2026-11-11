@@ -9,6 +9,12 @@
 > 实测记录见各节「实测」注记；第 6 节保留定案结论。
 > 前置阅读：[hygon-oss-landscape.md](hygon-oss-landscape.md)（供应商库图谱）。
 
+本文的 `[VERIFY-26.10]` 是历史迁移 Torch2.11/Triton3.6 组合；main 的普通
+wheel 现默认钉 Torch2.13/Triton3.7，两者不可混作同一验收栈。保留本次
+vLLM0.33 的 2.11/3.6 原生组合时，使用 [构建说明](build.md) 的显式
+`torch2110` profile、同戳双 wheel 与匹配 provider；历史记录不证明新包装或
+2.13 原生 ABI/模型已验收。默认 2.13 部署策略不因该兼容构建而改动。
+
 ## 0. 基线事实
 
 - **镜像**：`192.0.2.152:5000/hcu/base/dtk:26.10-ubuntu22.04-py3.12`（DTK 26.10，Python 3.12）。

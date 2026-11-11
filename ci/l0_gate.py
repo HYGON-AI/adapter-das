@@ -436,8 +436,8 @@ def check_dual_dist_packaging(r):
     sgl-kernel==<public>[+hcu.<stamp>] from the single kernel version source
     (sgl_kernel/version.py), and build.sh passes one DAS_BUILD_STAMP to both
     wheels. Without a stamp the pin names the public kernel version only.
-    The adapter base dependencies also carry the validated torch/triton pins
-    so a plain adapter install cannot drift to the newest nightly stack.
+    The adapter base dependencies retain default torch/triton pins, with an
+    explicit stamped profile for the retained 2.11/3.6 upgrade cohort.
     Versions are independent lines; only the pin is machine-checked.
     """
     try:
@@ -483,6 +483,12 @@ def check_dual_dist_packaging(r):
         pin_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(pin_mod)
         pin = pin_mod.kernel_pin(stamp="")
+        if pin_mod.base_dependencies(stamp="") != [
+                "packaging>=23", "torch==2.13.0", "triton==3.7.0"]:
+            r.fail("dual-dist", "default Torch2.13/Triton3.7 dependency profile drifted")
+        if pin_mod.base_dependencies(stamp="2611111200.gabcdef.torch2110") != [
+                "packaging>=23", "torch==2.11.0", "triton==3.6.0"]:
+            r.fail("dual-dist", "retained Torch2.11/Triton3.6 dependency profile drifted")
     except Exception as exc:
         r.fail("dual-dist", f"cannot evaluate hcu-adapter interlock pin: {exc}")
     else:

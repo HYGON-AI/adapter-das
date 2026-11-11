@@ -18,6 +18,18 @@
 bash packaging/build.sh
 ```
 
+默认依赖仍为 `torch==2.13.0` / `triton==3.7.0`，与现有 nightly 保持一致。
+为本次保留 Torch 2.11 / Triton 3.6 原生栈的 vLLM 0.33 升级组合构建时，显式使用：
+
+```bash
+bash packaging/build.sh --runtime-profile torch2110
+```
+
+这只选择构建依赖，不新增宿主/模型或 ABI 支持承诺。该组合须保留匹配的 Core、
+Plugin、DTK vendor 产物与独立验收；不能因 Core 未声明 Torch pin 就换原生 ABI。
+`sgl-kernel` 的安装依赖与 vLLM 运行时是否调用 `sgl_kernel` 算子是两回事，
+本 profile 保留双包互锁，不启用 SGLang 专用桥。
+
 产物（同一个戳）：
 
 ```text
@@ -42,6 +54,12 @@ Requires-Dist: sgl-kernel ==0.0.0+hcu.<同戳>
 渲染规则：去掉基线里的 local 段，再拼 `+hcu.<戳>`。基线在 main 上不固定
 （内核 `0.0.0+hcu.dev0`），拉 release 分支时定死；重配对上游时改对应文件即可。
 
+`DAS_BUILD_STAMP` 是后端唯一的 profile 输入，不增加运行时环境变量。
+`--runtime-profile torch2110` 在同一个戳末尾加保留段 `.torch2110`，两张 wheel
+及 adapter 的 kernel pin 都包含它；不带该段仍是默认 `torch2130`。
+直接向构建后端传带该段的固定戳也会选择 2.11/3.6。未知、重复、非末尾的
+`torch*` 保留段或与显式 CLI profile 冲突的戳会拒绝，不能静默改写来源。
+
 固定戳（复现某次构建）：
 
 ```bash
@@ -63,6 +81,8 @@ dist/hcu_adapter-0.5.22+hcu.1-py3-none-any.whl
 
 此时 adapter 只钉内核公共版本 `sgl-kernel==0.0.0`（PEP 440 下可匹配任何
 `0.0.0+local` 内核）。
+`--no-stamp` 仅用于默认 `torch2130`；与 `torch2110` 同用会拒绝，避免相同
+wheel 名称/版本承载不同依赖。
 
 ## 5. 安装
 
@@ -75,7 +95,8 @@ pip install "$(ls -t dist/hcu_adapter-*.whl | head -1)[sglang-runtime,sglang-dif
 ```
 
 - adapter 基础依赖已钉 `packaging>=23` / `torch==2.13.0` / `triton==3.7.0`，
-  即使不带 extras 也不会漂到最新 nightly。
+  即使不带 extras 也不会漂到最新 nightly。显式 `torch2110` 产物精确钉
+  `torch==2.11.0` / `triton==3.6.0`；不能用 `--no-deps` 把未满足依赖当成通过。
 - 三个 extra 的分工：`sglang-runtime` 官方 sglang 运行时、`sglang-diffusion`
   扩散入口、`hcu-runtime` DTK vendor 栈（aiter/flash_attn/deep_ep/nixl/vllm 等）。
 - `hcu-runtime` 另有三个可独立安装的子 extra：`hcu-runtime-kernels`
@@ -89,12 +110,25 @@ pip install "$(ls -t dist/hcu_adapter-*.whl | head -1)[sglang-runtime,sglang-dif
 - 从旧单 dist 版升级：先 `pip uninstall sgl-kernel`，否则同名残留与
   entry-points 双注册。
 
+多 profile/多次构建共用 `dist/` 时，按构建输出的**确切两条路径**成对安装，
+不能分别挑最新 wheel。2110 本轮仅显式本地产物或独立交付渠道，不追加到默认
+nightly 上传：local 版本中的 profile 段防止产物重名，却不能保证 pip 在同一
+index 中默认选择 2130；较新的 2110 时间戳仍可能被当成最新版。
+
 ## 6. 自检
 
 ```bash
 python3 ci/l0_gate.py      # 双 dist 结构门禁（版本源、互锁、entry-points）
 bash packaging/verify.sh   # A/B/C 三组合安装验证，需要 python venv
+# 多对产物必须显式指定；此选项仅核对 METADATA，不创建环境/不安装
+bash packaging/verify.sh --check-pair /path/sgl_kernel.whl /path/hcu_adapter.whl
 ```
+
+`verify.sh <kernel.whl> <adapter.whl>` 可对指定 pair 跑原有 A/B/C；这些
+`--no-deps` 结构/半装测试不证明依赖闭包。闭包须分别使用各 profile 的真实
+provider METADATA/产物，正常依赖解析并检查所有活动约束。当前 2110 历史证据
+不转授新包装；2130 缺实际 cohort 时只能标未运行。包装解析、安装身份、原生
+ABI、Graph 与模型质量分别留证，不能用 import/help 或一项绿色替代。
 
 `verify.sh` 需要目标机 python 带 `venv`/`ensurepip`；基础镜像里若缺 venv，
 在镜像内执行或改用 `python3 -m venv --system-site-packages` 验证。

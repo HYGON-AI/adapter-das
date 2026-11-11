@@ -51,6 +51,7 @@ import os
 import torch
 
 from .compat import HAS_TRITON, next_power_of_2
+from ._native import native_op
 
 __all__ = [
     "flash_attn_varlen_func",
@@ -682,6 +683,29 @@ def merge_state_v2(v_a, s_a, v_b, s_b, v_merged=None, s_merged=None):
 
     rows = s_a.numel()
     d = v_a.shape[-1]
+
+    # cpp tier (setup_hip.py wheel): merge_attn_states.cu port. Constraints
+    # mirror its TORCH_CHECKs: contiguous fp32/fp16/bf16 v, fp32 lse, and
+    # head_size % (16/itemsize) == 0 (the 128-bit pack loop).
+    native = native_op("merge_state_v2")
+    if (
+        native is not None
+        and v_a.is_cuda
+        and v_merged.dtype in (torch.float32, torch.float16, torch.bfloat16)
+        and v_a.is_contiguous()
+        and v_b.is_contiguous()
+        and v_merged.is_contiguous()
+        and s_merged.is_contiguous()
+        and d % (16 // v_merged.dtype.itemsize) == 0
+    ):
+        native(v_a, s_a_n, v_b, s_b_n, v_merged, s_merged)
+        # The native kernel has NO all-masked special case (upstream emits
+        # NaN there); this package pins 0/-inf (FA emu contract). Restore
+        # the pinned semantics without a host sync.
+        torch.nan_to_num(v_merged, nan=0.0, out=v_merged)
+        torch.nan_to_num(s_merged, nan=float("-inf"), posinf=float("-inf"), out=s_merged)
+        return v_merged, s_merged
+
     use_triton = (
         HAS_TRITON
         and v_a.is_cuda

@@ -71,7 +71,14 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
-            pip install --no-cache-dir ciupload
+            # ciupload 只在 devpi 的 nightly 归档有 (公网/默认源无此包)；
+            # 索引拼接与 sglang-das / vllm-plugin-das 的 release-pypi 同口径
+            PIP_INDEX="${PYPI_URL}/nightly/dtk${DTK_VER}/+simple/"
+            TRUSTED_HOST="${PIP_INDEX#*://}"; TRUSTED_HOST="${TRUSTED_HOST%%/*}"
+            pip install --no-cache-dir \
+              -i "${PIP_INDEX}" \
+              --trusted-host "${TRUSTED_HOST}" \
+              ciupload
             CIUpload NIGHTLY \
               --devpi_url "${PYPI_URL}" \
               --password "${CIUPLOAD_PASSWORD}" \

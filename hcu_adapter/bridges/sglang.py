@@ -699,6 +699,28 @@ def install() -> None:
 
             _CR.is_satisfied_by = _hcu_is_satisfied_by
 
+            # Scope the relaxation away from kernel *dispatch*. The fused-op
+            # priority lists JIT before AOT, and its capability gate must keep
+            # upstream's HIP truth: inheriting the CUDA->HIP relaxation above
+            # makes a CUDA-only JIT backend auto-select on HIP even when AOT
+            # (our sgl_kernel) is registered for HIP — the 33s
+            # sgl_kernel_jit_activation build observed in the L1 kernels
+            # segment. The relaxation exists for the fixed-path selector
+            # (select_kernel, below), not for choosing a provenance; rebind
+            # the capability predicate imported into fused_op so only that
+            # module keeps the original check. HIP-native backends (AOT =
+            # CUDA+HIP, AITER = HIP) stay eligible, CUDA-only JIT does not.
+            import sglang.kernels.fused_op as _fop
+
+            def _hcu_fused_capabilities_satisfied(capabilities, platform):
+                if isinstance(capabilities, _CR):
+                    capabilities = (capabilities,)
+                return (not capabilities) or any(
+                    _orig_sat(c, platform) for c in capabilities
+                )
+
+            _fop.capabilities_satisfied = _hcu_fused_capabilities_satisfied
+
             # The relaxation above can make upstream CUDA-declared specs eligible
             # alongside a spec that natively declares HIP — e.g. moe.topk_softmax
             # registers AOT(sgl_kernel, _HIP) + JIT(_CUDA): on real ROCm only AOT

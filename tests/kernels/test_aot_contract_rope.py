@@ -218,7 +218,10 @@ def test_neox_triton_vs_torch_ref(dtype):
         q.clone().cpu(), k.clone().cpu(), positions.cpu(), hs, cache.cpu()
     )
     sgl_kernel.rotary_embedding(positions, q, k, hs, cache, is_neox=True)
-    tol = (2e-3, 2e-3) if dtype != torch.bfloat16 else (1.0, 0.3)
+    # gfx938/dtk2610 实测（nmz26 GPU6, 2026-11-12）: 全 dtype 与参考逐位一致
+    # （maxabs=0，fp32 2.4e-7）。bf16 档按 1 ulp(≈0.4% rel) 的 ~25x 余量收紧
+    # ——rtol<1 且旋转输出 O(1)（|ref|max≈3.9），全零输出必被拒（review #80 R6）。
+    tol = (2e-3, 2e-3) if dtype != torch.bfloat16 else (2e-2, 2e-2)
     torch.testing.assert_close(q.float(), q_ref.float().cuda(),
                                rtol=tol[0], atol=tol[1])
     torch.testing.assert_close(k.float(), k_ref.float().cuda(),
@@ -254,7 +257,7 @@ def test_gptj_interleaved_torch_on_gpu(dtype):
         q.clone().cpu(), k.clone().cpu(), positions.cpu(), hs, cache.cpu()
     )
     sgl_kernel.rotary_embedding(positions, q, k, hs, cache, is_neox=False)
-    tol = (2e-3, 2e-3) if dtype != torch.bfloat16 else (1.0, 0.3)
+    tol = (2e-3, 2e-3) if dtype != torch.bfloat16 else (2e-2, 2e-2)  # 同 neox 实测
     torch.testing.assert_close(q.float(), q_ref.float().cuda(),
                                rtol=tol[0], atol=tol[1])
     torch.testing.assert_close(k.float(), k_ref.float().cuda(),

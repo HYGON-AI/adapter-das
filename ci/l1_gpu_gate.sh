@@ -174,6 +174,34 @@ run_seg() {  # name timeout_base cmd...
 # ---------------------------------------------------------------- segments
 run_seg l0      60   python3 ci/l0_gate.py
 run_seg cpu     300  python3 -m pytest tests/test_ops_cpu.py -q --no-header
+# Temporary runtime-contract probe: compare the existing failing INT8 case
+# with the documented stock route, without changing its math or assertions.
+run_seg moe_config_probe 60 env HCU_ADAPTER_HOST=none python3 - <<'PY'
+import hashlib
+import inspect
+from pathlib import Path
+
+import torch
+from aiter.moe import MoeQuantType, get_aiter_moe_config
+
+source = Path(inspect.getfile(get_aiter_moe_config)).resolve()
+print("aiter config source", source, hashlib.sha256(source.read_bytes()).hexdigest())
+print(inspect.getsource(get_aiter_moe_config))
+for m, e, n1, n2, k, topk, block, quant in (
+    (33, 4, 256, 128, 128, 2, 0, MoeQuantType.W8A8),
+    (512, 288, 512, 4096, 4096, 8, 128, MoeQuantType.FP8_W8A8),
+):
+    status, cfg = get_aiter_moe_config(
+        M=m, E=e, N1=n1, N2=n2, K=k, top_k=topk, block_size=block,
+        dtype=torch.bfloat16, quant_type=quant, activation="silu",
+    )
+    print("config result", m, e, n1, k, quant, status, cfg, flush=True)
+PY
+cat /tmp/l1_moe_config_probe.log
+run_seg moe_stock_recheck 300 env HCU_FUSED_MOE_IMPL=triton \
+    python3 -m pytest -vv --no-header --tb=short -o faulthandler_timeout=120 \
+    'tests/kernels/test_l15_execution_chains.py::test_w8a8_int8_moe_chain[33-2]'
+cat /tmp/l1_moe_stock_recheck.log
 # Transfer ownership only to a blocking matrix with an available upstream tree.
 # Observe/off modes retain the broad regression's blocking coverage.
 FAMILY_DESELECT=()

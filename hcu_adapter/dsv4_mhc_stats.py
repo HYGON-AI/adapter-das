@@ -61,6 +61,7 @@ def install() -> None:
         _kern_mhc._HC_MIX_NUM_STAGES = 2
         flipped = True
     if not hasattr(_kern_mhc, "hc_mix_reduce_sinkhorn_vec"):
+        # JIT 唯一实现（mhc_boundary_hip 供应商预编译线）
         from sglang.kernels.ops.layernorm.mhc_boundary_hip import (
             hc_mix_reduce_sinkhorn_vec,
         )

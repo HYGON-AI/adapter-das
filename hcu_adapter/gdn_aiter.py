@@ -64,7 +64,9 @@ def _scatter_states(pool, indices, local_indices, states):
 def _install_fwd_h_aiter(registry):
     """Swap sglang.kernels...fla.chunk_delta_h.chunk_gated_delta_rule_fwd_h
     for the aiter CK state recursion; rebind the chunk.py consumer too."""
+    # 替代档: aiter CK（本文件 rebind 宿主 fla 档）
     from sglang.kernels.ops.attention.fla import chunk_delta_h as _cdh
+    # 替代档: aiter CK（本文件 rebind 宿主 fla 档）
     from sglang.kernels.ops.attention.fla import chunk as _chunk_mod
 
     _orig_fwd_h = _cdh.chunk_gated_delta_rule_fwd_h
@@ -94,6 +96,7 @@ def _install_fwd_h_aiter(registry):
         import aiter.ops.fla as _afla
 
         if chunk_indices is None and cu_seqlens is not None:
+            # 替代档: 宿主 fla helper（本文件 aiter 链路复用）
             from sglang.kernels.ops.attention.fla.index import (
                 prepare_chunk_indices,
             )
@@ -154,6 +157,7 @@ def _install_packed_decode_aiter(registry):
     """Swap the packed decode fused kernel for aiter's triton fla variant
     (same contract incl. state-pool indices — the operator team's own
     sglang alignment; drop-in rebind)."""
+    # 替代档: aiter triton fla（本文件 packed-decode rebind）
     from sglang.kernels.ops.attention.fla import fused_recurrent as _fr
     from aiter.ops.triton.fla.fused_recurrent import (
         fused_recurrent_gated_delta_rule_packed_decode as _aiter_decode,

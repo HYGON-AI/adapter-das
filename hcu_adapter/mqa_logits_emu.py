@@ -38,6 +38,7 @@ def _note_call(tag):
 
 
 def _fp8_view_dtype():
+    # 替代档: 无（fp8 dtype probe helper；包面未导出 is_fp8_fnuz）
     from sglang.kernels.ops.quantization.fp8_kernel import is_fp8_fnuz
 
     return torch.float8_e4m3fnuz if is_fp8_fnuz() else torch.float8_e4m3fn

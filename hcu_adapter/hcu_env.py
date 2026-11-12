@@ -95,7 +95,7 @@ def _auto_quant_impl():
 
 
 def has_aiter_custom_allreduce():
-    """Check the wheel layout without importing GPU code during sitecustomize."""
+    """Early layout hint only; real communicator admission follows device binding."""
     try:
         from importlib.util import find_spec
         from pathlib import Path
@@ -334,8 +334,9 @@ REGISTRY = {
         "env": "HCU_AR_NORM_IMPL", "default": "auto",
         "auto": _auto_ar_norm_impl, "auto_hosts": ("sglang", "vllm"),
         "about": "融合 AR+RMSNorm vendor 档（R-09①，ar_norm_aiter 桥）："
-                 "auto=hip+aiter GraphSafe 类可导入且 HCU_AITER_AR auto 规"
-                 "则未拒（旧布局图重放损坏史连带拒融合）则 aiter——对 "
+                 "auto=hip+aiter 模块文件存在且 HCU_AITER_AR auto 规"
+                 "则未拒时选 aiter 候选；SGLang 设备绑定和 TP 通信初始化后"
+                 "检查真实通信对象再安装融合；旧布局图重放损坏史连带拒融合。对 "
                  "fp64 精确 AR 真值 norm 1ulp/residual 0ulp（优于 rccl "
                  "3-8ulp），vs customAR+norm 1.38-2.11×（hidden=4096 "
                  "t=1..4096），图回放新鲜数据精确；仅全 TP 组目标融合"

@@ -315,3 +315,16 @@ plugin。该组合在 DTK26.10 上运行 P=PP2/TP8/CP8/EP8、D=TP16/DP16/EP16
 真实 P/D 的 HMMT Nov25 128K 复测为 28/30（93.33%），旧组合为 30/30。`index=9/15` 两题均达到完整的 131,072-token 预算，最终答案为空；旧输出分别为 74,572/103,495 tokens 后正常停止。该差异暂保留记录，未做因果归属，本轮不继续追查。HumanEval 为 161/164（98.17%，旧 162/164、98.78%），两题退分、一题恢复：`HumanEval/116` 生成普通数值排序，未满足按二进制 1 的数量排序的要求；`HumanEval/145` 达到原定 100,000-token 预算且最终答案为空。两组输入、采样参数与请求预算均与基线核对一致，194 条模型输出均无推理接口 error，全部 judge 状态为 success；失败题为答案未通过或无最终答案，未修改评分。汇总脚本误把 HumanEval 的 acc 字段读作 accuracy，现仅修复指标读取并从已完成结果重建汇总，保留原错误记录。该轮存在精度差异，不作为精度无回退的证明；更广场景的性能复测由主对话继续，本节仅引用已完成的单档配对结果。
 
 结构化验证摘要保存于 `docs/glm5.3-qconcat-validation-20261111.json`。HumanEval/145 的思考段反复宣布结束后继续推翻，存在重复长代码片段和说明段落，最终耗尽 100K 且 final 为空；HumanEval/116、140 也有反复讨论，但均正常结束并返回未通过测试的代码。HMMT 两个 128K 截断样本不因长度本身被判作固定文本循环。算子对拍、真实服务运行、基准分数和待核查项分别记录；这些结果不能证明精度差异由哪一项改动造成。
+
+
+## 2026-11-12 PR #73 的 CI 夹具修复与基线同步
+
+本轮将 PR 同步到 adapter main `bd5eaa7`。此前 GitHub CPU 的八项失败来自离线 `test_jit_sources.py` 夹具：它只收录旧 portability 锚点，没有收录本 PR 新增的 Q kernel/launch 两个锚点，因此完整编译输入在发布前被契约检查拒绝。修复前已在隐藏 GPU、`HCU_ADAPTER_HOST=none` 的独立进程重现同一 RuntimeError。
+
+仅为现有夹具补齐两项输入，并在已有的完整 bundle 用例中断言 HCU kernel 与 launch 均进入私有编译资产；社区输入前后哈希、重复发布、损坏缓存拒绝和 spawn 发布的原有验证保留。生产端的唯一匹配检查与 fallback 未改，也没有更换算子、数学策略或量化方案。两个运行时修改文件与旧 PR head `279deab` 逐字节一致。
+
+与历史部署的字节绑定分别核对：`jit_concat_mla.py` 仍匹配历史 JSON 的 `738dc141…`；`registry.py` 已含 main 新增的六项 per-token FP8 登记，当前 SHA256 为 `981f403defe95cbaf50db6a8018687e5fcf21dd526484c38b7ffff9b086ed33a`，不匹配历史快照的 `99abd631…`。保留这些上游登记及原 JSON，不能将当前整个注册表表述为与冻结部署逐字节相同。
+
+本机针对性检查为 `tests/adapter/test_jit_sources.py` 的 21 passed / 26 skipped；跳过项需要显式指定的社区源码树。Ruff 0.12.1 按 CI 的 E9/F63/F7/F82、ignore-noqa 规则检查全部 PR Python 文件，另做语法、L0 与 `git diff --check`。完整 CPU/GPU CI 交由 GitHub 执行。旧 L1 的 kernel 超时及 aiter MoE gate 失败仍需结合新 run 判定，不能把退出清理的 ValueError 当作已确认主因。
+
+变基后的实际 P/D、MTP、Graph 与 P0/P1 小样本组合复验为 **pending**，由 [plugin #47](https://github.com/HYGON-AI/sglang-plugin-das/issues/47) 跟踪。11 月 11 日的 JSON 保留原版本和历史快照语义；局部 CPU 测试与源码相同不替代当前组合的算子、服务或模型精度验收。

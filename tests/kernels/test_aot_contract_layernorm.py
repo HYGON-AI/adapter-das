@@ -196,8 +196,16 @@ def test_fused_add_triton_vs_refs(dtype):
     w = (torch.randn(512, device="cuda") * 0.5).to(dtype)
     x_t, r_t = x.clone(), r.clone()
     sgl_kernel.fused_add_rmsnorm(x_t, r_t, w)
-    x_up, _ = _fused_add_ref_upstream(x, r, w, 1e-6, False)
+    x_up, r_up = _fused_add_ref_upstream(x, r, w, 1e-6, False)
+    x_st, r_st = _fused_add_ref_stored(x, r, w, 1e-6, False)
+    # the residual output IS part of the contract: both references store
+    # the identical activation-dtype sum — assert it bit-exact (review
+    # #80: it was previously discarded and never checked).
+    torch.testing.assert_close(r_t.float(), r_up.float(), rtol=0, atol=0)
+    torch.testing.assert_close(r_t.float(), r_st.float(), rtol=0, atol=0)
+    # both numerators describe the normalized output within a ULP budget
     torch.testing.assert_close(x_t.float(), x_up.float(), rtol=2e-2, atol=2e-2)
+    torch.testing.assert_close(x_t.float(), x_st.float(), rtol=2e-2, atol=2e-2)
 
 
 @requires_gpu

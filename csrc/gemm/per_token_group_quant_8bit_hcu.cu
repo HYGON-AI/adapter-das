@@ -486,6 +486,11 @@ void sgl_per_token_group_quant_8bit_v2(
                 "masked_m must be (num_experts,)");
     TORCH_CHECK(masked_m->scalar_type() == at::ScalarType::Int,
                 "masked_m must be int32");
+    // The row limit is dereferenced ON DEVICE; a CPU tensor would hand
+    // the kernel a host pointer (illegal memory access) and a strided
+    // view would read garbage counts (review #80).
+    TORCH_CHECK(masked_m->is_cuda(), "masked_m must be on an HCU device");
+    TORCH_CHECK(masked_m->is_contiguous(), "masked_m must be contiguous");
     const int32_t* limit_base = masked_m->data_ptr<int32_t>();
     for (int64_t e = 0; e < output_q.size(0); ++e) {
       auto in_slab = input.select(0, e);

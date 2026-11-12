@@ -333,6 +333,7 @@ def _hcu_platform_class() -> type:
             from hcu_adapter.bridges.vllm_moe_aiter import configure_padding_policy
 
             configure_padding_policy(vllm_config.kernel_config.moe_backend)
+            worker_was_auto = vllm_config.parallel_config.worker_cls == "auto"
             super().check_and_update_config(vllm_config)
             from hcu_adapter.bridges.vllm_model_load import (
                 OFFICIAL_MODEL_LOAD_WORKER,
@@ -345,7 +346,7 @@ def _hcu_platform_class() -> type:
                 and parallel.distributed_executor_backend in ("uni", "mp")
             ):
                 parallel.worker_cls = POST_MODEL_LOAD_WORKER
-            if (cls._worker_selector is not None
+            if (worker_was_auto and cls._worker_selector is not None
                     and parallel.worker_cls in ("auto", OFFICIAL_MODEL_LOAD_WORKER,
                                                 POST_MODEL_LOAD_WORKER)):
                 parallel.worker_cls = cls._worker_selector(parallel.worker_cls, vllm_config)

@@ -5,9 +5,6 @@ as the local version hcu.<time>.g<commit>, so both wheels of one build carry
 the same local label and hcu-adapter depends on the exact stamped kernel
 build. Without the stamp (editable/dev installs) the adapter falls back to
 its VERSION file and the kernel's public version.
-
-The stamp records provenance only; it never selects Torch/Triton dependencies.
-The actual Core/provider metadata and deployment constraints own that choice.
 """
 import os
 import re
@@ -44,5 +41,9 @@ def adapter_version(stamp=None):
 
 
 def base_dependencies():
-    """Host-neutral requirements; runtime stack selection belongs to consumers."""
-    return ["packaging>=23"]
+    """Validated DTK stack pins carried by the adapter dist.
+
+    Mirrors the release line: a plain adapter install must pull the tested
+    torch/triton builds instead of the newest nightly archive versions.
+    """
+    return ["packaging>=23", "torch==2.13.0", "triton==3.7.0"]

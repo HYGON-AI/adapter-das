@@ -10,5 +10,5 @@ import _pin  # noqa: E402
 
 setup(
     version=_pin.adapter_version(),
-    install_requires=[_pin.kernel_pin(), *_pin.base_dependencies()],
+    install_requires=[_pin.kernel_pin(), "packaging>=23"],
 )

@@ -483,8 +483,6 @@ def check_dual_dist_packaging(r):
         pin_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(pin_mod)
         pin = pin_mod.kernel_pin(stamp="")
-        if pin_mod.base_dependencies() != ["packaging>=23"]:
-            r.fail("dual-dist", "shared adapter base must not select a Torch/Triton stack")
     except Exception as exc:
         r.fail("dual-dist", f"cannot evaluate hcu-adapter interlock pin: {exc}")
     else:

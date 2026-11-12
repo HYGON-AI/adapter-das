@@ -452,6 +452,24 @@ when stream is capturing`）并阻塞；在实际捕获 stream 预热后，原�
 [CI run 43196120630](https://github.com/HYGON-AI/adapter-das/actions/runs/43196120630/job/131108225814)
 通过 INT8、FP8、CT-FP8 × 1/17/33 token 的全部 9 个 Linear 节点，
 每个节点保留三轮变输入 replay 和原精度断言；其余失败不计为已修复。
+同轮定向段在 122.17 秒完成，完整结果是 **9 passed / 4 failed**：
+三个 compression 节点均在检查社区原测试文件时失败，wheel 安装位置下
+缺少 `test/registered/attention/unittests/dsv4/test_dsv41_fused_compress.py`，
+尚未执行压缩算子；INT8 MoE `[33-2]` 则在变输入 replay 比较中出现
+1/4224 个元素超差，最大绝对差 0.0224609375（原 `atol=0.02`）。
+现场记录其分发进入 Aiter 的未调优 `solution_type=triton`，不能将该失败
+解释为原 Q 拼接内核错误，也不能通过放宽精度或跳过原测试消除。
+在同镜像的
+[CI run 43199988553](https://github.com/HYGON-AI/adapter-das/actions/runs/43199988553/job/131121528672)
+中，仅设已有 `HCU_FUSED_MOE_IMPL=triton` 关闭 Aiter 桥，原 INT8 MoE
+`[33-2]` 用例及三轮变输入 replay 在 39.63 秒通过。实际安装的
+`aiter/moe.py` SHA256 为
+`975eaecbdb6f9934695ad785bef97535e2e9b364c5f6d8e850a2f99f3715f147`；
+其 `get_aiter_moe_config` 在所有调优候选缺失后，对默认未调优 Triton
+配置仍返回 `True`，INT8 小形状和 GLM FP8 形状均现场复现。
+现有桥仅检查 status，因而接管了本应保留社区路径的调用；这同时解释
+`_test_aiter_moe_gate` 的 `B1-should-fallback` 失败。此轮仅定位该分发
+合同差异，未修改生产 MoE 算法、精度或全局配置，也未将 CI 记为全绿。
 
 ## 测试怎么归层（给提 MR 的人）
 

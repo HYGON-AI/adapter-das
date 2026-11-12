@@ -209,25 +209,18 @@ decode graph 分配 0.021 GB；报告
 - **1.2/1.3 口径翻案（双双达标）**：rmsnorm 5.3-5.9µs=das 地板；router 10µs 快 das 2.8×。教训入库：**①trace 家族和÷单核地板=假膨胀 ②墙钟(bench loop)≠核时，必须 CUDA graph 重放 ③旧 trace 不代表当前树**（act_and_mul 3.1ms/reduce_bf16 438µs 都是 1.0a/b 前旧账）。P1 真残余=eager 段 per-call 50-90µs host 开销（→1.5/1.6）。
 - 容器遗产（/root）：topk_ragged_parity/bench.py、rmsnorm_bench2.py、router_graph/matrix.py、router_baseline.pt——复跑即可。
 
-## 2026-11-09 HY3 Channel FP8 与插件组合
+## HY3 Channel FP8 适配（SGLang 0.5.22）
 
-SGLang 0.5.22 的 HY3 Channel FP8 插件使用 per-token scale，但 adapter 的 DeepEP 翻译桥此前把 use_fp8 固定映射为 quant_group_size=128，导致低延迟 masked GEMM 拒绝 scale 形状。桥现在接受显式 quant_group_size，默认 128 不变；Channel FP8 插件显式请求 0。该配置由插件选择，adapter 只负责透传到 DTK ABI，不从模型名称猜测分组。普通 FP8/UE8M0 和 BF16 默认行为保持；vLLM 不使用该 SGLang 桥。
+HY3 Channel FP8 使用每个 token 一份 scale。DeepEP 翻译桥此前将 FP8 的 `quant_group_size` 固定为 128，忽略 plugin 请求的 0，导致低延迟 masked GEMM 收到不匹配的 scale 形状。桥现在透传该参数，默认值仍为 128；Channel FP8 由 plugin 显式选择 0。普通 FP8、UE8M0 和 BF16 的默认调用不变，vLLM 不使用此 SGLang 桥。
 
-`tests/adapter/test_deepep_dispatch_scale.py` 从实际桥源抽取翻译函数，mock 原生调用，覆盖默认 128、显式 0/128、UE8M0 与 BF16。修复前显式 0 被丢弃并得到 128，修复后通过。该离线测试不代表原生数值或完整服务通过；HY3 八卡复验通过权重加载和五档 prefill Graph，verify Graph 预热在 DeepGEMM pair32 出现 hipErrorNoBinaryForGpu；HOSTnone 单算子直接调用同样失败，未到服务健康或生成。改动基于 c43693f，尚未提交或推送。
+AITER all-reduce 的启动探测改为检查模块文件是否存在，避免在设备绑定前导入 GPU 通信模块。文件存在仅表示可以尝试加载，实际使用仍需通过设备与通信能力检查。
 
+### 验证范围
 
-### 2026-11-09 本地提交收尾
+- 离线回归：`tests/adapter/test_deepep_dispatch_scale.py` 覆盖默认 128、显式 0/128、UE8M0 与 BF16 的参数透传；`tests/adapter/test_hcu_env_ar_norm.py` 覆盖 AITER 模块存在、缺失及探测不执行模块代码。两文件共 3 项测试及 3 个子例通过，`tests/test_ops_cpu.py` 38 项通过，adapter L0 通过。这些检查不代替原生内核数值验证。
+- 2026-11-11 组合验证：官方 SGLang `baa9befa`、adapter `9e616cc`、plugin `3eb48a8`；DTK 26.10、Python 3.12、Torch 2.11。HY3 Channel FP8 在 TP8 / attention DP8、DeepEP、FA3、E4M3 KV、NEXTN 配置下完成启动与问答。固定 GSM8K 5-shot 200 题，数值答案正确 197/200，正确且正常结束 196/200；1 题达到输出长度上限，0 请求错误。该结果属于两仓与计算库的组合，不能归为本桥的独立精度结论。
+- NEXTN 缓存回归共 128 次请求完整返回，未复现负尺寸 `-64` 或服务退出；合成 token 输入的冷、热缓存输出仍有差异，原因未定位。早期 0.9 显存配方曾 OOM，8 并发曾出现 NEXTN padding 失败；上述缓存回归没有按这两个原始配方复验。
 
-上段“尚未提交”和原生内核失败描述为当次检查的历史状态。本次将参数透传、对应离线回归和说明保存为本地 commit，未 push。提交前重新执行桥参数回归和 adapter L0；两项均通过，L0 的既有告警保留。组合运行仍要求 plugin 显式请求 Channel FP8 分组 0；plugin 的配套提交以其本地分支历史为准。
+### 依赖与限制
 
-后续 DeepGEMM 辅助扩展准备后，组合环境完成 TP8/Attention DP8、FA3、E4M3 KV、NEXTN 串行 200 题测试；数值匹配 197/200，正常结束且正确 196/200。该结果包含外部运行依赖及 plugin 修复，不是本桥独立数值结论；原 0.9 显存配方 OOM，8 并发 NextN padding 失败仍未修复。本次仅存档与 CPU/结构检查，没有重新启动 GPU 服务。
-
-
-## HY3 main 基线迁移（2026-11-11）
-
-基于 adapter main `1ab11bd` 迁入 FP8 分组透传与 AITER all-reduce 模块轻探测，配套 plugin main `9543829` 上的 HY3 迁移分支。启动探测不执行 GPU 模块，实际使用仍遵循设备绑定与能力检查。此处记录迁移范围；尚未执行的新基线模型验证不记作通过。
-
-
-### HY3 main 迁移提交前检查（2026-11-11）
-
-基于 main `1ab11bd`；配套 plugin 基于 `9543829`。Adapter L0 通过（31 条既存警告），`tests/test_ops_cpu.py` 38 项通过；`test_deepep_dispatch_scale.py` 与 `test_hcu_env_ar_norm.py` 共 3 项测试及 3 个子例通过。两仓 `git diff --check` 通过。完整 GPU/模型与性能检查尚未在新 main 组合执行，不以参数透传或轻导入测试代替数值验收。
+Channel FP8 需要配套 plugin 显式传入 `quant_group_size=0`。上述组合验证使用静态显存比例 0.70 和部署环境中的 DeepGEMM v4 兼容扩展；该扩展不在本仓提交内，仅安装两仓不能保证复现。AITER custom all-reduce 初始化存在回退警告，通信后端未验收。现有启动环境变量尚未完成配置治理，与 sglang-das 0.5.18 的同条件性能、精度对照也尚未完成。

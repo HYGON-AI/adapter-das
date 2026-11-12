@@ -57,9 +57,14 @@ def _ref_v1(x_flat, group_size, eps, lo, hi):
     return y_s, q
 
 
-def _trunc_boundaries_ok(q_out, groups_exact, dst_min, dst_max):
+def _trunc_boundaries_ok(q_out, slab_exact, dst_min, dst_max, group_size):
     """Compare a truncating int8 quantizer against a float64-EXACT
     reference, tolerating the integer-boundary ULP only there.
+
+    slab_exact: the quantized face of the input (row-major over tokens,
+    hidden). amax is taken PER GROUP (hidden reshaped to (…, H/gs, gs))
+    — a whole-slab amax silently works only when hidden == group_size
+    and mis-fails everywhere else (caught by the graph-replay case).
 
     The v2 quantizer multiplies v * fl(dst_max/amax) in fp32. On the
     group-amax lane the exact product is exactly ±dst_max; hipcc and
@@ -69,10 +74,11 @@ def _trunc_boundaries_ok(q_out, groups_exact, dst_min, dst_max):
     the float64 truncation everywhere except within 1e-3 of an integer,
     where ±1 is accepted (surfaced while verifying the review #80 P1
     fix on DCU)."""
-    amax = groups_exact.abs().amax(dim=-1, keepdim=True).clamp_min(1e-10)
-    exact = (groups_exact * (float(dst_max) / amax)).clamp(dst_min, dst_max)
+    g = slab_exact.double().reshape(-1, group_size)
+    amax = g.abs().amax(dim=-1, keepdim=True).clamp_min(1e-10)
+    exact = (g * (float(dst_max) / amax)).clamp(dst_min, dst_max).reshape(-1)
     t = exact.trunc()
-    k = q_out.reshape(t.shape).double()
+    k = q_out.reshape(-1).double()
     near = (exact - exact.round()).abs() < 1e-3
     ok = k == t
     ok |= near & ((k - t).abs() <= 1.0)
@@ -219,7 +225,7 @@ def test_quant_v2_int8_math_and_floor():
     y_scale = 127.0 / amax             # quantizer: the RECIPROCAL
     q_ref = (g * y_scale[..., None]).clamp_(-128.0, 127.0)
     torch.testing.assert_close(s, scale_inv, rtol=1e-6, atol=1e-8)
-    assert _trunc_boundaries_ok(q, g.double(), -128.0, 127.0)
+    assert _trunc_boundaries_ok(q, x.double(), -128.0, 127.0, gs)
     if not q.is_cuda:
         # torch tier == its own fp32 reference chain bit-exact (the
         # boundary helper above is what stays correct for the native
@@ -331,7 +337,7 @@ def test_quant_v2_fuse_silu_and_mul_low_precision():
     amax = val.abs().amax(dim=-1, keepdim=True).clamp_min(1e-10)
     scale_inv = amax / 127.0
     torch.testing.assert_close(s, scale_inv, rtol=1e-3, atol=1e-6)
-    assert _trunc_boundaries_ok(q, val.double(), -128.0, 127.0)
+    assert _trunc_boundaries_ok(q, val, -128.0, 127.0, 64)
 
 
 def test_quant_v2_masked_m_deepep_layout():
@@ -350,7 +356,7 @@ def test_quant_v2_masked_m_deepep_layout():
             assert (q[e] == 99).all()  # untouched
             continue
         val = x[e, :m]
-        assert _trunc_boundaries_ok(q[e, :m], val.double(), -128.0, 127.0)
+        assert _trunc_boundaries_ok(q[e, :m], x[e, :m], -128.0, 127.0, gs)
         if m < maxT:
             assert (q[e, m:] == 99).all()  # padding rows untouched
 
@@ -434,8 +440,8 @@ def test_quant_v2_masked_m_cuda_graph_replay():
             x, q, s, gs, 1e-10, -128.0, 127.0, masked_m=masked)
 
     def _ref_ok(expert, m):
-        return _trunc_boundaries_ok(q[expert, :m], x[expert, :m].double(),
-                                    -128.0, 127.0)
+        return _trunc_boundaries_ok(q[expert, :m], x[expert, :m],
+                                    -128.0, 127.0, gs)
 
     # replay 1 — original counts [4, 0, 6]
     q.fill_(99)

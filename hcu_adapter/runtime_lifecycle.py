@@ -10,10 +10,25 @@ no framework admission, backend mapping or activation policy lives here.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 import os
 from threading import RLock, local
 
-from hcu_adapter.extensions import ExtensionCommitError, ExtensionReport, ExtensionStatus
+from hcu_adapter.extensions import (
+    ExtensionCommitError, ExtensionContext, ExtensionReport, ExtensionStatus,
+)
+
+
+_HealthBinding = tuple[ExtensionReport, Callable[[], None], int]
+
+
+@dataclass(frozen=True)
+class _ForwardExtensionPolicy:
+    requested_extensions: frozenset[str]
+    requested_capabilities: frozenset[str]
+    owners: tuple[tuple[ExtensionReport, _HealthBinding | None], ...]
+    pid: int
+    generation: int
 
 
 class ProcessLocalLifecycle:
@@ -31,7 +46,8 @@ class ProcessLocalLifecycle:
         self._records: dict[str, str | None] = {}
         self._running: set[str] = set()
         self._extension_reports: tuple[ExtensionReport, ...] = ()
-        self._health_bindings: dict[str, tuple[ExtensionReport, Callable[[], None], int]] = {}
+        self._health_bindings: dict[str, _HealthBinding] = {}
+        self._forward_policy: _ForwardExtensionPolicy | None = None
         self._report_generation = 0
         self._health_inflight = 0
         self._health_context = local()
@@ -52,6 +68,7 @@ class ProcessLocalLifecycle:
         self._running = set()
         self._extension_reports = ()
         self._health_bindings = {}
+        self._forward_policy = None
         self._report_generation = 0
         self._health_inflight = 0
         self._health_context = local()
@@ -141,12 +158,91 @@ class ProcessLocalLifecycle:
                 raise ExtensionCommitError("duplicate extension health binding")
             self._health_bindings[report.entry_point_name] = (report, checker, self._owner_pid)
 
-    def require_extension_healthy(self, capability: str) -> None:
-        """Snapshot under host lock, call owner unlocked, verify snapshot again.
+    def record_forward_extension_policy(self, context: ExtensionContext) -> None:
+        """Freeze requirements at the trusted runtime publication boundary.
 
-        Lock order is host-only, owner-only, host-only. The checker must not call
-        host lifecycle APIs; reentry fails without taking the host lock. This
-        does not make arbitrary concurrent third-party registry writes atomic.
+        No checker runs here: run_once still holds the outer activation lock.
+        None is an explicit API1 no-checker marker, never inferred at forward.
+        """
+        self._ensure_process_local()
+        self._reject_health_reentry()
+        with self._lock:
+            self.require_runtime_healthy()
+            if self._runtime_action not in self._running:
+                raise ExtensionCommitError("forward policy requires runtime activation enrollment")
+            names = frozenset(context.requested_extensions)
+            capabilities = frozenset(context.requested_capabilities)
+            selected = []
+            for required, attribute, label in (
+                (names, "entry_point_name", "extension"),
+                (capabilities, "capabilities", "capability"),
+            ):
+                for name in sorted(required):
+                    owners = [report for report in self._extension_reports
+                              if (report.entry_point_name == name if attribute == "entry_point_name"
+                                  else name in report.capabilities)]
+                    if len(owners) != 1 or owners[0].status is not ExtensionStatus.ACTIVE:
+                        raise ExtensionCommitError(
+                            f"{label} {name!r} requires exactly one ACTIVE extension owner")
+                    if not any(report is owners[0] for report in selected):
+                        selected.append(owners[0])
+            owners = tuple((report, self._health_bindings.get(report.entry_point_name))
+                           for report in selected)
+            for report, binding in owners:
+                self._validate_health_binding(report, binding, allow_absent=True)
+            policy = self._forward_policy
+            if policy is not None:
+                if (policy.pid != self._owner_pid or policy.generation != self._report_generation
+                        or policy.requested_extensions != names
+                        or policy.requested_capabilities != capabilities
+                        or len(policy.owners) != len(owners)
+                        or any(old_report is not report or old_binding is not binding
+                               for (old_report, old_binding), (report, binding)
+                               in zip(policy.owners, owners))):
+                    raise ExtensionCommitError("forward extension policy enrollment changed")
+                return
+            self._forward_policy = _ForwardExtensionPolicy(
+                names, capabilities, owners, self._owner_pid, self._report_generation)
+
+    def _validate_health_binding(
+        self, report: ExtensionReport, binding: _HealthBinding | None, *, allow_absent: bool,
+    ) -> None:
+        if ((binding is None and not allow_absent)
+                or (binding is not None and (binding[0] is not report
+                                            or binding[2] != os.getpid()))):
+            raise ExtensionCommitError("extension has no exact current-process health binding")
+
+    def _requested_health_snapshot(self) -> tuple[tuple[ExtensionReport, _HealthBinding | None], ...]:
+        if self._runtime_action not in self._records:
+            raise ExtensionCommitError("forward health requires completed runtime activation")
+        policy = self._forward_policy
+        if policy is None or policy.pid != os.getpid():
+            raise ExtensionCommitError("forward health requires current-process policy enrollment")
+        if policy.generation != self._report_generation:
+            raise ExtensionCommitError("forward extension policy report generation changed")
+        for report, binding in policy.owners:
+            if (report.status is not ExtensionStatus.ACTIVE
+                    or sum(item.entry_point_name == report.entry_point_name
+                           for item in self._extension_reports) != 1
+                    or not any(item is report for item in self._extension_reports)
+                    or self._health_bindings.get(report.entry_point_name) is not binding):
+                raise ExtensionCommitError("forward extension report/health binding changed")
+            self._validate_health_binding(report, binding, allow_absent=True)
+        return policy.owners
+
+    def require_requested_extensions_healthy(self) -> None:
+        """Check the frozen requested-owner union after completed PID activation."""
+        self._require_extensions_healthy(requested=True)
+
+    def require_extension_healthy(self, capability: str) -> None:
+        """Require a unique owner with an exact callable current-PID binding."""
+        self._require_extensions_healthy(capability)
+
+    def _require_extensions_healthy(self, capability: str | None = None, *, requested: bool = False) -> None:
+        """One host snapshot, unlocked owner callbacks, then host verification.
+
+        Both strict capability and frozen forward policy share failure/reentry,
+        inflight and fork semantics. Arbitrary registry writers have no CAS.
         """
         self.require_runtime_healthy()
         inflight = False
@@ -160,35 +256,43 @@ class ProcessLocalLifecycle:
                 inflight = True
                 if self._running:
                     raise ExtensionCommitError("extension health requires completed host activation")
-                owners = [report for report in self._extension_reports
-                          if capability in report.capabilities]
-                if len(owners) != 1 or owners[0].status is not ExtensionStatus.ACTIVE:
-                    raise ExtensionCommitError(
-                        f"capability {capability!r} requires exactly one ACTIVE extension owner")
-                report = owners[0]
-                binding = self._health_bindings.get(report.entry_point_name)
-                if binding is None or binding[0] is not report or binding[2] != os.getpid():
-                    raise ExtensionCommitError(f"capability {capability!r} has no exact current-process health binding")
+                if requested:
+                    snapshot = self._requested_health_snapshot()
+                else:
+                    owners = [report for report in self._extension_reports
+                              if capability in report.capabilities]
+                    if len(owners) != 1 or owners[0].status is not ExtensionStatus.ACTIVE:
+                        raise ExtensionCommitError(
+                            f"capability {capability!r} requires exactly one ACTIVE extension owner")
+                    report = owners[0]
+                    binding = self._health_bindings.get(report.entry_point_name)
+                    self._validate_health_binding(report, binding, allow_absent=False)
+                    snapshot = ((report, binding),)
                 generation = self._report_generation
             self._health_context.checking = True
             self._health_context.violation = False
             try:
-                result = binding[1]()
-                if result is not None:
-                    # Close an accidentally returned native coroutine without
-                    # running it, avoiding an unawaited-coroutine resource leak.
-                    import inspect
-                    if inspect.iscoroutine(result):
-                        result.close()
-                    raise ExtensionCommitError("health checker must return None synchronously")
-                if self._health_context.violation:
-                    raise ExtensionCommitError("health checker caught forbidden host lifecycle reentry")
+                for report, binding in snapshot:
+                    if binding is None:
+                        continue  # Only the frozen policy admits explicit no-checker.
+                    result = binding[1]()
+                    if result is not None:
+                        # Close a native coroutine without running owner code.
+                        import inspect
+                        if inspect.iscoroutine(result):
+                            result.close()
+                        raise ExtensionCommitError("health checker must return None synchronously")
+                    if self._health_context.violation:
+                        raise ExtensionCommitError("health checker caught forbidden host lifecycle reentry")
             finally:
                 self._health_context.checking = False
             with self._lock:
-                if (generation != self._report_generation
-                        or self._health_bindings.get(report.entry_point_name) is not binding):
+                if (owner_pid != os.getpid() or generation != self._report_generation
+                        or any(self._health_bindings.get(report.entry_point_name) is not binding
+                               for report, binding in snapshot)):
                     raise ExtensionCommitError("extension reports/health binding changed during health check")
+                if requested:
+                    self._requested_health_snapshot()
                 self.require_runtime_healthy()
         except BaseException as exc:
             # Owner locks have unwound before the host latch is acquired.

@@ -35,6 +35,10 @@ def startup(monkeypatch):
     monkeypatch.setattr(bridge, "_require_vllm_hip_runtime_abi", lambda: None)
     from hcu_adapter.bridges import vllm_fp8
     monkeypatch.setattr(vllm_fp8, "install", lambda: False)
+    # Match the other operator boundaries: startup policy/loader tests must
+    # not enter AR's native admission or its unrelated environment controls.
+    from hcu_adapter.bridges import vllm_allreduce
+    monkeypatch.setattr(vllm_allreduce, "prepare_runtime", lambda: None)
     # Required-policy CPU fixtures isolate operator activation. The real C4
     # publication, health and startup paths have their own contracts/probes.
     from hcu_adapter.bridges import vllm_sparse_indexer
@@ -212,6 +216,7 @@ def test_host_none_actual_bootstrap_and_runtime_resolve_sources_without_common_s
                     invoke()
             else:
                 invoke()
+                bridge.require_forward_healthy()
         load_plugins()  # Official once flag is separate from host retry health.
     reached = [extension] if mode == "malformed-extension" else [extension, capability]
     assert order[:len(reached)] == [("resolve", key, *expected[key]) for key in reached]
@@ -273,6 +278,7 @@ def test_real_vllm_bootstrap_common_logs_once_then_actual_runtime_preserves_poli
                         invoke()
                 else:
                     invoke()
+                    bridge.require_forward_healthy()
             load_plugins()
     finally:
         logger.removeHandler(observer)
@@ -289,3 +295,78 @@ def test_real_vllm_bootstrap_common_logs_once_then_actual_runtime_preserves_poli
     assert checks == ([] if mode == "malformed" else ["version"])
     assert len(contexts) == (0 if mode == "malformed" else 1)
     _record_startup_evidence("host-vllm", mode, caplog)
+
+
+@pytest.mark.parametrize('mode', ['NONE', 'PIECEWISE', 'FULL'])
+def test_public_forward_hook_checks_frozen_required_owner_before_context_body(startup, monkeypatch, mode):
+    """CPU Core dependency fixture proves Python ordering, not compiled/Graph execution."""
+    from contextlib import contextmanager
+    from types import ModuleType
+    import sys
+
+    events = []
+    result = {'preserved': object()}
+    token = object()
+    class RocmPlatform:
+        @classmethod
+        def set_additional_forward_context(cls, *args, **kwargs):
+            assert args == (token,)
+            assert kwargs == {'cudagraph_runtime_mode': mode, 'num_tokens': 7}
+            events.append('super')
+            return result
+    rocm = ModuleType('vllm.platforms.rocm')
+    rocm.RocmPlatform = RocmPlatform
+    monkeypatch.setitem(sys.modules, 'vllm.platforms.rocm', rocm)
+    monkeypatch.setitem(bridge.__dict__, 'HcuPlatform', None)
+    monkeypatch.delitem(bridge.__dict__, 'HcuPlatform')
+    platform = bridge.HcuPlatform
+    points, _ = startup
+    unhealthy = []
+    def checker():
+        events.append('owner')
+        if unhealthy:
+            raise ValueError('owner publication drift')
+    points.append(type('Point', (), {'name': 'provider', 'load': lambda _: lambda:
+        extensions.ExtensionSpec('declared-provider', 1, 0, {'required-cap'},
+                                 lambda _: events.append('activate'), checker)})())
+    monkeypatch.setenv('HCU_ADAPTER_VLLM_REQUIRED_EXTENSIONS', 'provider')
+    monkeypatch.setenv('HCU_ADAPTER_VLLM_REQUIRED_CAPABILITIES', 'required-cap')
+    bridge.hcu_runtime_plugin()
+    assert events == ['activate']
+    # Startup request snapshot survives environment drift; forward does no parsing.
+    monkeypatch.setenv('HCU_ADAPTER_VLLM_REQUIRED_EXTENSIONS', 'missing')
+    monkeypatch.setenv('HCU_ADAPTER_VLLM_REQUIRED_CAPABILITIES', ',invalid,')
+    @contextmanager
+    def context():
+        additional = platform.set_additional_forward_context(
+            token, cudagraph_runtime_mode=mode, num_tokens=7)
+        assert additional is result
+        yield additional
+    with context():
+        events.append('body')
+    assert events == ['activate', 'owner', 'super', 'body']
+    unhealthy.append(True)
+    with pytest.raises(bridge.LatchedVllmRuntimeError, match='publication drift'):
+        with context():
+            events.append('BAD body')
+    assert events == ['activate', 'owner', 'super', 'body', 'owner']
+    unhealthy.clear()
+    with pytest.raises(bridge.LatchedVllmRuntimeError):
+        with context():
+            events.append('BAD retry')
+    assert events == ['activate', 'owner', 'super', 'body', 'owner']
+
+
+def test_real_runtime_callback_enrolls_empty_and_no_checker_required_policies(startup, monkeypatch):
+    points, _ = startup
+    contexts = []
+    points.append(Point('provider', 'attention', contexts))
+    monkeypatch.setenv('HCU_ADAPTER_VLLM_REQUIRED_EXTENSIONS', 'provider')
+    bridge.hcu_runtime_plugin()
+    bridge.require_forward_healthy()
+    assert len(contexts) == 1
+    monkeypatch.setattr(bridge, '_RUNTIME_ACTIONS', bridge.ProcessLocalActions())
+    monkeypatch.delenv('HCU_ADAPTER_VLLM_REQUIRED_EXTENSIONS')
+    points.clear()
+    bridge.hcu_runtime_plugin()
+    bridge.require_forward_healthy()

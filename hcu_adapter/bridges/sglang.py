@@ -1619,6 +1619,11 @@ def install() -> None:
                     "HCU adapter: aiter AR gate not installed", exc_info=True
                 )
 
+        elif _ar_val == "1" or str(_ar_val).startswith("allowed"):
+            from hcu_adapter import sglang_allreduce
+
+            sglang_allreduce.install()
+
         # gfx936-class HCUs have no fp8 matrix unit and the DTK aiter MQA-logits
         # kernels hard-gate on gfx942/950: emulate paged/ragged fp8 MQA logits in
         # torch (dequant -> bf16 GEMM, fp32 scales). Legacy page_size=1 only.

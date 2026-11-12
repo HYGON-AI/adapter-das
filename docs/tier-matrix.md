@@ -1,6 +1,6 @@
 # 算子档位矩阵（自动生成，勿手改）
 
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-07）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
+> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-12）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
@@ -11,6 +11,16 @@ HIP driver guard for breakable prefill graph capture
 | 档位 | 状态 / 备注 |
 |---|---|
 | prefill-bcg-driver-truth | candidate Breakable prefill uses the upstream  |
+
+路由变量：（auto）
+
+## vllm_dsv41_pcp_compat
+
+vLLM V4.1 compatibility for the opt-in PCP extension
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| scoped | candidate FP8 SHUFFLE scoring, delayed mHC and |
 
 路由变量：（auto）
 

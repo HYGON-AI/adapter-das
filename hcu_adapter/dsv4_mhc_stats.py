@@ -43,6 +43,7 @@ def install() -> None:
     if not getattr(_model_mhc, "_is_gfx95_supported", False):
         _model_mhc._is_gfx95_supported = True
 
+    # 替代档: mhc fused-stats 无包面出口——本模块即 gfx95 门翻转的挂载面
     import sglang.kernels.ops.layernorm.mhc as _kern_mhc
 
     flipped = False

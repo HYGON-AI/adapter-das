@@ -187,6 +187,7 @@ def _triton_or_emu_faces():
 
 
 def install():
+    # 替代档: dsa 包挂载面（aiter_paged_mqa_logits 分档见 HCU_MQA_LOGITS_IMPL）
     import sglang.kernels.ops.attention.dsa as _dsa_pkg
 
     _paged_fn, _ragged_fn, _impl_label = _triton_or_emu_faces()

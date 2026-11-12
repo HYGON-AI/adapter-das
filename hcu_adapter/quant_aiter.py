@@ -71,6 +71,8 @@ def install():
         return
     try:
         import torch
+        # 替代档: fp8_kernel 模块为 quant_aiter 桥挂载面（分档入口 HCU_QUANT_IMPL；
+        # 包面符号走 quantization 包 __init__ 的 get_kernel 分发）
         from sglang.kernels.ops.quantization import fp8_kernel as _fk
     except Exception:
         LOG.warning("[HCU quant] fp8_kernel not importable (impl=%s)",

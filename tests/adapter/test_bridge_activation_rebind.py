@@ -103,6 +103,9 @@ def _install_fake_host(monkeypatch, *, package=_ABSENT, runner=_ABSENT):
         mods["sglang.srt.layers.moe.moe_runner"].deep_gemm = leaf
         monkeypatch.setitem(sys.modules, _RUNNER, leaf)
         return leaf
+    # A booted adapter may have imported the real runner already; the fake
+    # parent chain cannot shadow a fully-qualified sys.modules hit, so drop it.
+    monkeypatch.delitem(sys.modules, _RUNNER, raising=False)
     return None
 
 
@@ -142,6 +145,7 @@ def _bridge():
 
 def test_helper_binds_package_face_and_never_imports_the_module_body(monkeypatch):
     sentinel = object()
+    body_was_imported = _BODY in sys.modules
     runner = _install_fake_host(monkeypatch, package=sentinel, runner=None)
     body = _TraceFinder({_BODY})
     monkeypatch.setattr(sys, "meta_path", [body, *sys.meta_path])
@@ -149,7 +153,8 @@ def test_helper_binds_package_face_and_never_imports_the_module_body(monkeypatch
     assert _bridge()._bind_deepgemm_legacy_silu() is True
     assert runner._legacy_silu_and_mul is sentinel
     assert body.hits == []
-    assert _BODY not in sys.modules
+    if not body_was_imported:
+        assert _BODY not in sys.modules
 
     # Idempotent: an existing binding is left alone, so a later import of the
     # package cannot silently re-point the runner mid-serve.

@@ -175,6 +175,24 @@ def test_helper_keeps_a_host_bound_implementation(monkeypatch):
     assert package.hits == []
 
 
+def test_helper_replaces_the_jit_module_body_binding(monkeypatch):
+    def jit_body(input, out=None):
+        raise AssertionError("the JIT module body must never be called")
+
+    # Upstream's import-time branch binds this body whenever sglang answers
+    # CUDA semantics (the adapter platform seam); None is only the pre-seam
+    # boot order. The bridge must replace exactly this binding.
+    jit_body.__module__ = _BODY
+    sentinel = object()
+    runner = _install_fake_host(monkeypatch, package=sentinel, runner=jit_body)
+    body = _TraceFinder({_BODY})
+    monkeypatch.setattr(sys, "meta_path", [body, *sys.meta_path])
+
+    assert _bridge()._bind_deepgemm_legacy_silu() is True
+    assert runner._legacy_silu_and_mul is sentinel
+    assert body.hits == []
+
+
 def test_helper_is_a_noop_when_the_runner_is_absent(monkeypatch):
     _install_fake_host(monkeypatch)  # parents only: no deep_gemm leaf
     assert _bridge()._bind_deepgemm_legacy_silu() is False

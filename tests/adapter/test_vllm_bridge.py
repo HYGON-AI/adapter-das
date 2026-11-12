@@ -329,6 +329,10 @@ def test_runtime_plugin_records_required_reports_before_latching(monkeypatch):
     monkeypatch.setattr(bridge, "_ensure_hcu_platform_selected", lambda: None)
     monkeypatch.setattr(bridge, "configure_vllm_hip_runtime_path", lambda: None)
     monkeypatch.setattr(bridge, "_require_vllm_hip_runtime_abi", lambda: None)
+    # Required-report policy is independent of native FP8 provider admission.
+    # Match the operator isolation used by the adjacent runtime-ordering test.
+    from hcu_adapter.bridges import vllm_fp8
+    monkeypatch.setattr(vllm_fp8, "install", lambda: None)
     monkeypatch.setattr(bridge, "_installed_adapter_version", lambda: "0.1.0")
 
     def fail(_context, *, health_check_sink):

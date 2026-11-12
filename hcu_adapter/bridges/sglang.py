@@ -539,6 +539,7 @@ def install() -> None:
         # this; the native fallback doesn't. Bridge: align scale to the padded
         # row count before quant (graph-safe: same buffers, no host sync).
         try:
+            # 替代档: fp8_kernel 模块=quant 桥挂载面（包面 per_token_group_quant 走分档）
             import sglang.kernels.ops.quantization.fp8_kernel as _fpk
 
             # is_cuda-seam ordering guard: this module reads is_cuda()/is_hip()
@@ -626,6 +627,7 @@ def install() -> None:
         # fp8 view (zero-copy reinterpret) so downstream GEMM callers keep
         # seeing the expected dtype.
         try:
+            # 替代档: fp8_kernel 模块=quant 桥挂载面（fp8-out 特化绕 dtype 门）
             import sglang.kernels.ops.quantization.fp8_kernel as _fpk2
 
             # The JIT per_token_group_quant kernel binds Q as uint8 (HIP fp8 is
@@ -853,6 +855,7 @@ def install() -> None:
 
             if _henv.enabled("HCU_FA3_EMU"):
                 os.environ.setdefault("SGLANG_USE_SGL_FA3_KERNEL", "1")
+                # 替代档: fa3 emu 门翻转挂载面（HCU_FA3_EMU；包面无该门出口）
                 import sglang.kernels.ops.attention.flash_attention_v3 as _fa3v
 
                 _fa3v._is_fa3_supported = lambda device=None: True
@@ -2742,6 +2745,7 @@ def install() -> None:
         #      `from ...mhc import hc_pre` would otherwise bind the original.
         if os.environ.get("HCU_DUMP_MHC") == "1":
             try:
+                # 替代档: mhc dump 探针挂载面（HCU_DUMP_MHC；包面无该出口）
                 import sglang.kernels.ops.layernorm.mhc as _mhcmod
 
                 _mhcd = {

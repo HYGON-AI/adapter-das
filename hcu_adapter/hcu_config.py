@@ -399,9 +399,12 @@ BACKEND_CATALOG = {
                     "note": "torch ports of both upstream kernels; v1: "
                             "eps-floor amax, x/y_s division, int8 cast "
                             "TRUNCATES; v2: eps==1e-10 enforced, min/max "
-                            "must match dst dtype, ue8m0 via DeepEP "
-                            "fast_log2_ceil bits, fuse_silu_and_mul in "
-                            "input dtype, DeepEP masked_m layout. "
+                            "must match dst dtype, two scale directions "
+                            "(stored dequant scale_inv; the quant "
+                            "multiplier is its reciprocal), ue8m0 via "
+                            "DeepEP fast_log2_ceil bits, fuse_silu_and_mul "
+                            "in input dtype, DeepEP masked_m layout read "
+                            "ON DEVICE (graph-capturable). "
                             "Contract anchors: "
                             "tests/kernels/test_aot_contract_quant.py"},
             "cpp": {"status": "production",
@@ -409,8 +412,8 @@ BACKEND_CATALOG = {
                             "ports of both variants (no flashinfer vec_t / "
                             "PDL / NV PTX); contracts bit-identical incl. "
                             "int8 truncation and packed ue8m0 column-major "
-                            "scales; masked_m path host-reads row counts "
-                            "(not graph-capturable)"},
+                            "scales; masked_m row limit read on device "
+                            "(per-expert row guard) — graph-capturable"},
         },
     },
     "platform_detect": {

@@ -483,9 +483,22 @@ def concat_mla_absorb_q(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         dtype=a.dtype,
     )
     # cpp tier (setup_hip.py wheel): concat_mla_absorb_q_hcu.cu — the
-    # freshly allocated out is always contiguous/aligned.
+    # freshly allocated out is always contiguous/aligned. The native
+    # kernel additionally requires a/b ROW strides in multiples of 8
+    # bf16 elements (uint4 vectorization, check_concat_tensor); a
+    # base-aligned but row-strided view like a=(2,3,513)[..., :512]
+    # passes _check_mla_common yet would TORCH_CHECK-fail inside the
+    # native lib — guard it here and fall through to the strided
+    # triton/torch tiers instead (review #80).
     native = native_op("concat_mla_absorb_q")
-    if native is not None and a.is_cuda:
+    if (
+        native is not None
+        and a.is_cuda
+        and a.stride(0) % 8 == 0
+        and a.stride(1) % 8 == 0
+        and b.stride(0) % 8 == 0
+        and b.stride(1) % 8 == 0
+    ):
         native(a, b, out)
         return out
     if HAS_TRITON and a.is_cuda and b.is_cuda and out.is_contiguous():

@@ -217,6 +217,12 @@ def test_rmsnorm_out_aliases_input_triton():
     w = torch.randn(512, device="cuda", dtype=torch.bfloat16)
     x0 = x.clone()
     y = sgl_kernel.rmsnorm(x, w, out=x)
+    # Pin the same-address CONTRACT itself, not just the values: out=x
+    # must write in place and hand back the caller's buffer — an impl
+    # that ignores out= and returns a fresh tensor would pass the value
+    # check below while breaking every caller relying on x being
+    # updated (the CPU face asserts `y is out`; review #80).
+    assert y is x
     fresh = sgl_kernel.rmsnorm(x0, w)
     torch.testing.assert_close(y.float(), fresh.float(), rtol=2e-2, atol=2e-2)
 

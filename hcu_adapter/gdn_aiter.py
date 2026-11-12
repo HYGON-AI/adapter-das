@@ -486,24 +486,39 @@ def install():
     _install_target_verify_aiter()
 
     mode, _src = hcu_env.resolve("HCU_LINEAR_ATTN_GDN")
-    if mode != "aiter":
+    if mode == "triton":
         LOG.warning(
             "HCU adapter: HCU_LINEAR_ATTN_GDN=%s -- GDN prefill/packed decode stay on the "
             "upstream triton fla kernels (aiter route available via =aiter)",
-            mode,
         )
         return
+    # auto (new default) and aiter both take the validated CK route; any
+    # import/install failure leaves the upstream triton fla faces intact.
     try:
         import aiter  # noqa: F401
         import aiter.ops.fla  # noqa: F401
     except Exception:
-        LOG.warning(
-            "HCU adapter: aiter not importable; GDN stays on triton fla",
-            exc_info=True,
-        )
+        if mode == "aiter":
+            LOG.warning(
+                "HCU adapter: HCU_LINEAR_ATTN_GDN=aiter but aiter is not "
+                "importable; GDN stays on triton fla",
+                exc_info=True,
+            )
+        else:
+            LOG.info(
+                "HCU adapter: GDN auto: aiter not importable; stays on "
+                "upstream triton fla",
+            )
         return
 
     from hcu_adapter import registry
 
-    _install_fwd_h_aiter(registry)
-    _install_packed_decode_aiter(registry)
+    try:
+        _install_fwd_h_aiter(registry)
+        _install_packed_decode_aiter(registry)
+    except Exception:
+        LOG.warning(
+            "HCU adapter: GDN aiter install failed; keeping upstream triton "
+            "fla faces",
+            exc_info=True,
+        )

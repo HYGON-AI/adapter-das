@@ -94,6 +94,21 @@ def _auto_quant_impl():
     return "stock"
 
 
+def has_aiter_custom_allreduce():
+    """Check the wheel layout without importing GPU code during sitecustomize."""
+    try:
+        from importlib.util import find_spec
+        from pathlib import Path
+
+        spec = find_spec("aiter")
+        return bool(spec and spec.submodule_search_locations and any(
+            (Path(root) / "dist" / "device_communicators" / "custom_all_reduce.py").is_file()
+            for root in spec.submodule_search_locations
+        ))
+    except (ImportError, OSError, ValueError):
+        return False
+
+
 def _auto_ar_norm_impl():
     # fused AR+RMSNorm rides the SAME aiter GraphSafe communicator the
     # plain AR auto-rule already vets: refuse wherever HCU_AITER_AR
@@ -103,10 +118,9 @@ def _auto_ar_norm_impl():
 
         if getattr(torch.version, "hip", None) is None:
             return "stock"
-        from aiter.dist.device_communicators.custom_all_reduce import (  # noqa: F401
-            CustomAllreduce,
-        )
     except Exception:
+        return "stock"
+    if not has_aiter_custom_allreduce():
         return "stock"
     if _auto_aiter_ar().startswith("refused"):
         return "stock"
@@ -284,6 +298,10 @@ REGISTRY = {
     "VLLM_ROCM_USE_AITER_CUSTOM_AR": {
         "env": "VLLM_ROCM_USE_AITER_CUSTOM_AR", "default": "1", "hosts": ("vllm",),
         "about": "Official AR child switch; 0 vetoes HCU_AITER_AR opt-in, without enabling global AITER",
+    },
+    "VLLM_MOE_SKIP_PADDING": {
+        "env": "VLLM_MOE_SKIP_PADDING", "default": "1", "hosts": ("vllm",),
+        "about": "Official skip sentinel; HCU unquantized AITER normalizes to 0 before workers spawn",
     },
     "AITER_AR_MAX_SIZE_MB": {
         "env": "AITER_AR_MAX_SIZE_MB", "default": "64", "hosts": ("vllm",),

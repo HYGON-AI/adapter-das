@@ -298,17 +298,36 @@ def test_moe_align_triton_tiers_match_torch_port(mode, monkeypatch):
     nb = E + 1
     max_tokens = numel + E * bs + 8
 
-    def run():
+    def fresh():
         s = torch.full((max_tokens,), -7, device="cuda", dtype=torch.int32)
         e = torch.full((max_tokens // bs + 2,), -7, device="cuda", dtype=torch.int32)
         p = torch.zeros(1, device="cuda", dtype=torch.int32)
         c = torch.zeros(nb + 1, device="cuda", dtype=torch.int32)
+        return s, e, p, c
+
+    def run_triton():
+        # triton tier under test — the public entry, mode selects the
+        # fused single-CTA kernel or the 4-launch quartet
+        s, e, p, c = fresh()
         sgl_kernel.moe_align_block_size(topk_ids, E, bs, s, e, p, c)
         torch.cuda.synchronize()
         return s, e, p, c
 
-    s_t, e_t, p_t, c_t = run()               # torch port reference
-    s_g, e_g, p_g, c_g = run()               # triton tier under test
+    def run_torch_port():
+        # the torch port (the CPU tier) DIRECTLY on the same CUDA buffers
+        # — pure torch ops, so it runs on-device. Review #80: routing both
+        # sides through the same public entry compared one tier against
+        # itself (run-to-run determinism only); the reference must come
+        # from a DIFFERENT tier for this to be a cross-tier parity check.
+        from sgl_kernel.moe import _moe_align_block_size_torch
+
+        s, e, p, c = fresh()
+        _moe_align_block_size_torch(topk_ids, E, bs, s, e, p, c, False)
+        torch.cuda.synchronize()
+        return s, e, p, c
+
+    s_t, e_t, p_t, c_t = run_torch_port()
+    s_g, e_g, p_g, c_g = run_triton()
     assert int(p_g[0]) == int(p_t[0])
     torch.testing.assert_close(c_g, c_t)
     torch.testing.assert_close(e_g, e_t)

@@ -16,11 +16,16 @@
 //       q = clamp(x / y_s) cast. ue8m0: y_s = exp2(ceil(log2(max(y_s,1e-10)))),
 //       stored as biased-exponent byte (log2(y_s)+127).
 //   v2: absmax floored at 1e-10 (eps TORCH_CHECKed == 1e-10, min/max
-//       CHECK_EQ'd to the dst dtype range); scale_inv = amax / dst_max
-//       (ue8m0: 2^ceil-log2 via the DeepEP bit trick, byte = bits>>23);
-//       q = clamp(x * scale_inv) cast. fuse_silu_and_mul computes
-//       silu(primary) cast BACK to the input dtype before the product;
-//       masked_m walks the DeepEP (E, maxT, H) layout.
+//       CHECK_EQ'd to the dst dtype range); TWO directions
+//       (calculate_fp8_scales, v2.cu:69-80): the STORED scale_inv =
+//       amax / dst_max (ue8m0: 2^ceil-log2 via the DeepEP bit trick,
+//       byte = bits>>23) is the dequant scale, while the quantized
+//       value multiplies the RECIPROCAL y_scale = dst_max / amax
+//       (ue8m0: 2^-exp). fuse_silu_and_mul computes silu(primary)
+//       cast BACK to the input dtype before the product; masked_m is
+//       read ON DEVICE (per-expert row guard) like upstream's
+//       MaskedLayoutScheduler, keeping the DeepEP (E, maxT, H) path
+//       CUDA-graph capturable.
 
 #include <ATen/cuda/CUDAContext.h>
 #include <c10/cuda/CUDAGuard.h>
@@ -145,6 +150,7 @@ __global__ void quant8_v2_kernel(
     const T* __restrict__ input,
     DST* __restrict__ output_q,
     float* __restrict__ output_s,
+    const int32_t* __restrict__ row_limit,  // masked_m + expert, or null
     int64_t num_groups,   // total (row, group) pairs for this launch
     int groups_per_row,
     int group_size,
@@ -159,6 +165,12 @@ __global__ void quant8_v2_kernel(
   if (gid >= num_groups) return;
   const int64_t row = gid / groups_per_row;
   const int g = gid - row * groups_per_row;
+  // DeepEP masked layout: the expert's live row count is read ON DEVICE
+  // (upstream MaskedLayoutScheduler reads masked_m[expert_idx] in the
+  // kernel, v2.cu:237) — rows past it are left untouched. A host-side
+  // .item() read would sync and break CUDA-graph capture/replay
+  // (review #80). The guard is uniform across the whole 16-lane group.
+  if (row_limit != nullptr && row >= *row_limit) return;
   // fuse inputs carry BOTH halves per row: (rows, groups_per_row *
   // group_size * 2); the row stride must account for the secondary tail.
   const int64_t row_stride_elems =
@@ -184,12 +196,18 @@ __global__ void quant8_v2_kernel(
   }
   local_absmax = group_reduce_max16(local_absmax);
 
-  float scale_inv;
+  // calculate_fp8_scales (v2.cu:69-80): scale_inv (STORED, dequant
+  // direction) and y_scale (RECIPROCAL, the quantization multiplier —
+  // multiplying by scale_inv zeroes every group; review #80 P1).
+  float scale_inv, y_scale;
   if (SCALE_UE8M0) {
     const float ratio = fmaxf(local_absmax / max_8bit, 1e-30f);
-    scale_inv = exp2f(static_cast<float>(fast_log2_ceil(ratio)));
+    const int e = fast_log2_ceil(ratio);
+    scale_inv = exp2f(static_cast<float>(e));
+    y_scale = exp2f(static_cast<float>(-e));
   } else {
     scale_inv = local_absmax / max_8bit;
+    y_scale = max_8bit / local_absmax;
   }
 
   if (lane_id == 0) {
@@ -226,7 +244,7 @@ __global__ void quant8_v2_kernel(
     } else {
       v = static_cast<float>(input[base + i]);
     }
-    const float q = fminf(fmaxf(v * scale_inv, min_8bit), max_8bit);
+    const float q = fminf(fmaxf(v * y_scale, min_8bit), max_8bit);
     output_q[row * groups_per_row * group_size + g * group_size + i] = cast_quant<DST>(q);
   }
 }
@@ -343,15 +361,17 @@ void sgl_per_token_group_quant_8bit(
 namespace {
 
 // One v2 launch over a (rows, hidden) slab; shared by the plain and the
-// per-expert masked paths.
-template <bool HAS_MASK>
+// per-expert masked paths. row_limit (masked_m + expert offset) is read
+// on device; a full-slab launch with static shape keeps the masked path
+// CUDA-graph capturable.
 void launch_v2(
     const at::Tensor& input,
     at::Tensor& output_q,
     at::Tensor& output_s,
     int64_t group_size,
     bool scale_ue8m0,
-    bool fuse_silu_and_mul) {
+    bool fuse_silu_and_mul,
+    const int32_t* row_limit = nullptr) {
   const int64_t num_rows = output_q.size(-2);
   const int64_t hidden = output_q.size(-1);
   const int groups_per_row = hidden / group_size;
@@ -381,7 +401,7 @@ void launch_v2(
       reinterpret_cast<const T*>(input.data_ptr()),                             \
       reinterpret_cast<DST*>(output_q.data_ptr()),                              \
       reinterpret_cast<float*>(output_s.data_ptr()),                            \
-      num_groups, groups_per_row, group_size, lo, hi, scale_stride, col)
+      row_limit, num_groups, groups_per_row, group_size, lo, hi, scale_stride, col)
 
 #define LAUNCH_V2_UE8(T, DST, FUSE)       \
   do {                                    \
@@ -452,24 +472,30 @@ void sgl_per_token_group_quant_8bit_v2(
   TORCH_CHECK(output_s.dim() == (masked_layout ? 3 : 2), "unexpected output_s rank");
   if (masked_layout) {
     // DeepEP layout: input (E, maxT, H(*2 fuse)), output_q (E, maxT, H),
-    // output_s (E, maxT, groups_per_row); rows [masked_m[e], maxT) untouched.
+    // output_s (E, maxT, groups_per_row); rows [masked_m[e], maxT) are
+    // left untouched. The per-expert row limit is read ON DEVICE by the
+    // kernel (row guard), so each launch covers the FULL static slab —
+    // CUDA-graph capturable, and a replay with an updated masked_m
+    // re-masks correctly (upstream MaskedLayoutScheduler, v2.cu:203-247;
+    // the previous host .item() read synced per expert and froze the
+    // counts into the captured topology; review #80 P2).
     TORCH_CHECK(output_q.dim() == 3, "output_q must be 3-D with masked_m");
     TORCH_CHECK(input.dim() == 3 && input.size(0) == output_q.size(0),
                 "DeepEP layout mismatch");
     TORCH_CHECK(masked_m->dim() == 1 && masked_m->size(0) == output_q.size(0),
                 "masked_m must be (num_experts,)");
+    TORCH_CHECK(masked_m->scalar_type() == at::ScalarType::Int,
+                "masked_m must be int32");
+    const int32_t* limit_base = masked_m->data_ptr<int32_t>();
     for (int64_t e = 0; e < output_q.size(0); ++e) {
-      // host-side row count read: not CUDA-graph capturable (one sync per
-      // expert); the plain path above stays capture-safe.
-      const int64_t m = masked_m->select(0, e).cpu().item<int64_t>();
-      if (m <= 0) continue;
-      auto in_slab = input.select(0, e).narrow(0, 0, m);
-      auto q_slab = output_q.select(0, e).narrow(0, 0, m);
-      auto s_slab = output_s.select(0, e).narrow(0, 0, m);
-      launch_v2<true>(in_slab, q_slab, s_slab, group_size, scale_ue8m0, fuse_silu_and_mul);
+      auto in_slab = input.select(0, e);
+      auto q_slab = output_q.select(0, e);
+      auto s_slab = output_s.select(0, e);
+      launch_v2(in_slab, q_slab, s_slab, group_size, scale_ue8m0,
+                fuse_silu_and_mul, limit_base + e);
     }
     return;
   }
   TORCH_CHECK(input.dim() == 2, "input must be 2-D without masked_m");
-  launch_v2<false>(input, output_q, output_s, group_size, scale_ue8m0, fuse_silu_and_mul);
+  launch_v2(input, output_q, output_s, group_size, scale_ue8m0, fuse_silu_and_mul);
 }

@@ -679,7 +679,15 @@ def merge_state_v2(v_a, s_a, v_b, s_b, v_merged=None, s_merged=None):
                 f"merge_state_v2: s_merged must be {tuple(s_a.shape)}, "
                 f"got {tuple(s_merged.shape)}"
             )
-        s_merged = s_merged.float() if s_merged.dtype != torch.float32 else s_merged
+        # The lse output is fp32 regardless of the v dtype (upstream
+        # merge_attn_states TORCH_CHECKs fp32 lse). A `.float()` rebind
+        # would silently detach the caller's buffer (the merge writes a
+        # private copy and the out-argument contract breaks); reject the
+        # dtype instead (review #80).
+        if s_merged.dtype != torch.float32:
+            raise RuntimeError(
+                f"merge_state_v2: s_merged must be float32, got {s_merged.dtype}"
+            )
 
     rows = s_a.numel()
     d = v_a.shape[-1]

@@ -104,6 +104,21 @@ def test_merge_state_v2_signature_has_out_params():
         assert inspect.signature(sgl_kernel.merge_state_v2).parameters[p].default is None
 
 
+def test_merge_state_v2_rejects_non_fp32_s_merged():
+    # The lse output is fp32 regardless of the v dtype (upstream
+    # merge_attn_states TORCH_CHECKs fp32). A `.float()` rebind would
+    # silently detach the caller's buffer — the merge writes a private
+    # copy, the returned tensor is a different storage, and the out=
+    # contract breaks (review #80); reject the dtype instead.
+    va = torch.randn(2, 2, 32, dtype=torch.float16)
+    vb = torch.randn(2, 2, 32, dtype=torch.float16)
+    sa = torch.zeros(2, 2)
+    sb = torch.zeros(2, 2)
+    sm16 = torch.empty(2, 2, dtype=torch.float16)
+    with pytest.raises(RuntimeError, match="float32"):
+        sgl_kernel.merge_state_v2(va, sa, vb, sb, s_merged=sm16)
+
+
 def test_merge_state_v2_all_masked_rows_pinned():
     # FA-contract anchor: both lse -inf -> (0 output, -inf lse). The
     # upstream CUDA wheel emits NaN here (no special case in
@@ -233,6 +248,24 @@ def test_concat_mla_triton_tiers_vs_emu():
     a = torch.randn(4, 7, 512, device="cuda", dtype=torch.bfloat16)
     b = torch.randn(4, 7, 64, device="cuda", dtype=torch.bfloat16)
     out = sgl_kernel.concat_mla_absorb_q(a, b)
+    torch.testing.assert_close(out[..., :512], a, rtol=0, atol=0)
+    torch.testing.assert_close(out[..., 512:], b, rtol=0, atol=0)
+
+
+@requires_gpu
+def test_concat_mla_absorb_q_strided_view_falls_back():
+    # a=(2,3,513)[..., :512] passes every common check (3-D, bf16, last
+    # dim unit stride, 16B base) but its row strides (3*513, 513) are not
+    # multiples of 8 bf16 elements — the native kernel's uint4 loop would
+    # TORCH_CHECK-fail. The dispatch must fall back to the strided
+    # triton/torch tiers and still produce the exact concat (review #80).
+    torch.manual_seed(6)
+    storage = torch.randn(2, 3, 513, device="cuda", dtype=torch.bfloat16)
+    a = storage[..., :512]
+    b = torch.randn(2, 3, 64, device="cuda", dtype=torch.bfloat16)
+    assert a.stride(1) == 513 and a.stride(1) % 8 != 0
+    out = sgl_kernel.concat_mla_absorb_q(a, b)
+    assert out.shape == (2, 3, 576)
     torch.testing.assert_close(out[..., :512], a, rtol=0, atol=0)
     torch.testing.assert_close(out[..., 512:], b, rtol=0, atol=0)
 

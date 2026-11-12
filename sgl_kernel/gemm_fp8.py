@@ -145,20 +145,25 @@ def _write_scales(output_s, scale_vals, num_groups_per_row, ue8m0):
     convention (is_column_major = stride(-2) < stride(-1)).
 
     scale_vals: (num_rows, num_groups_per_row) fp32 (already the stored
-    direction: amax / dst_max). For ue8m0 the column-major format is the
-    biased exponent byte packed 4-per-uint32 (little-endian pack order,
-    v1 concat_mla-style pointer math); v1 computes the exponent with
-    ceilf(log2f), v2 with the DeepEP fast_log2_ceil bit trick — identical
-    results for the powers of two actually stored."""
+    direction: amax / dst_max — the DEQUANT scale). Column-major keeps
+    the LOGICAL axes (token, group): the physical address of scale(t, g)
+    is t * stride(-2) + g * stride(-1) with stride(-2) == 1 — token is
+    the fastest axis (upstream v1.cu:54-61, v2.cu:320-328). The buffer
+    is NOT a transposed logical matrix; indexing it as [g, t] walks the
+    wrong axes and indexes out of bounds (review #80). For ue8m0 the
+    column-major format is the biased exponent byte packed 4-per-uint32
+    (little-endian pack order, byte = group_idx % 4); v1 computes the
+    exponent with ceilf(log2f), v2 with the DeepEP fast_log2_ceil bit
+    trick — identical results for the powers of two actually stored."""
     rows, ngpr = scale_vals.shape
     is_col = output_s.stride(-2) < output_s.stride(-1)
     if not ue8m0:
         if is_col:
-            # output_s is the transposed (ngpr, rows) matrix: s[g, t]
-            g_idx = torch.arange(ngpr, device=scale_vals.device).unsqueeze(1)
-            t_idx = torch.arange(rows, device=scale_vals.device).unsqueeze(0)
-            output_s[..., g_idx.expand(ngpr, rows), t_idx.expand(ngpr, rows)] = (
-                scale_vals.t().to(output_s.dtype)
+            # logical (token, group): s[t, g] at its strided slot
+            t_idx = torch.arange(rows, device=scale_vals.device).unsqueeze(1)
+            g_idx = torch.arange(ngpr, device=scale_vals.device).unsqueeze(0)
+            output_s[..., t_idx.expand(rows, ngpr), g_idx.expand(rows, ngpr)] = (
+                scale_vals.to(output_s.dtype)
             )
         else:
             output_s[..., :, :] = scale_vals.reshape(
@@ -183,14 +188,16 @@ def _write_scales(output_s, scale_vals, num_groups_per_row, ue8m0):
         | (packed_u8[:, :, 3] << 24)
     ).to(torch.int32)  # bit pattern of the upstream uint32 store
     npacks = packed.shape[1]
-    # column-major uint32 matrix (npacks, rows): s[pack, token]. packed is
-    # (rows, npacks) — TRANSPOSE, never reshape: a row-major reshape to
-    # (npacks, rows) permutes the slots whenever rows != npacks, which the
-    # on-device parity test missed by using a square buffer (review #80).
-    col_idx = torch.arange(npacks, device=packed.device).unsqueeze(1)
-    row_idx = torch.arange(rows, device=packed.device).unsqueeze(0)
-    output_s[..., col_idx.expand(npacks, rows), row_idx.expand(npacks, rows)] = (
-        packed.t().to(output_s.dtype)
+    # logical (token, pack): the uint32 for token t pack p lives at
+    # s[t, p] — t on the stride-1 axis, p on the stride(-1) axis. packed
+    # is ALREADY (rows, npacks) in that logical order, so index-write
+    # with NO transpose and NO reshape (earlier attempts — reshape, then
+    # a .t() onto a [p, t] axis order — misplaced every slot on
+    # non-square shapes; review #80).
+    t_idx = torch.arange(rows, device=packed.device).unsqueeze(1)
+    p_idx = torch.arange(npacks, device=packed.device).unsqueeze(0)
+    output_s[..., t_idx.expand(rows, npacks), p_idx.expand(rows, npacks)] = (
+        packed.to(output_s.dtype)
     )
 
 
@@ -266,16 +273,22 @@ def sgl_per_token_group_quant_8bit(
         raise RuntimeError("scale_ue8m0 requires column-major output_s")
 
     # cpp tier (setup_hip.py wheel): per_token_group_quant_8bit_hcu.cu,
-    # contract-identical incl. the int8-truncating cast and the packed
-    # ue8m0 column-major scale format. Contiguous inputs only (native
-    # CHECK_INPUTs); wider layouts stay on the torch tier.
+    # contract-identical incl. the int8-truncating cast and both scale
+    # layouts (row-major linear + column-major strided, the latter incl.
+    # packed ue8m0). input/output_q must be contiguous (native
+    # CHECK_INPUTs); output_s may be a legal column-major buffer — like
+    # upstream, the kernel addresses it through its strides, so the
+    # is_contiguous() guard below would wrongly reject every legal
+    # column-major buffer (review #80).
     native = native_op("sgl_per_token_group_quant_8bit")
     if (
         native is not None
         and input.is_cuda
         and input.is_contiguous()
         and output_q.is_contiguous()
-        and output_s.is_contiguous()
+        # row-major contiguous OR the canonical column-major stride(-2)==1
+        # the kernel addresses (exotic strides stay on the torch tier)
+        and (output_s.is_contiguous() or output_s.stride(-2) == 1)
         and input.dtype in (torch.float32, torch.float16, torch.bfloat16)
     ):
         native(
@@ -296,20 +309,26 @@ def sgl_per_token_group_quant_8bit(
 
 def _quant_v2(input, output_q, output_s, group_size, scale_ue8m0,
               fuse_silu_and_mul, masked_m):
-    """v2 kernel math (per_token_group_quant_8bit_v2.cu): absmax floor
-    1e-10, scale_inv = amax / dst_max (ue8m0: 2^ceil(log2(amax/dst_max))
-    via the DeepEP bit trick), q = clamp(x * scale_inv) cast to dst."""
+    """v2 kernel math (per_token_group_quant_8bit_v2.cu:69-80): absmax
+    floor 1e-10, then TWO directions — the stored scale_inv = amax /
+    dst_max (ue8m0: 2^ceil(log2(amax/dst_max)) via the DeepEP bit trick,
+    packed as biased-exponent bytes) is the DEQUANT scale for downstream,
+    while the quantized value multiplies the RECIPROCAL quant scale
+    y_scale = dst_max / amax (ue8m0: 2^-exp). Multiplying by scale_inv
+    collapses every group toward zero (ones -> int8 0 instead of 127);
+    review #80 P1."""
     # cpp tier (setup_hip.py wheel): same contract, plain 16-lane kernels
-    # (no flashinfer vec_t / PDL). NB: the masked_m path reads the row
-    # count on the host once per expert — NOT CUDA-graph capturable; the
-    # torch tier below shares that limitation, the plain path does not.
+    # (no flashinfer vec_t / PDL). masked_m is read ON DEVICE (per-expert
+    # row-guard in the kernel), so the masked path stays CUDA-graph
+    # capturable like upstream's MaskedLayoutScheduler (v2.cu:203-247).
     native = native_op("sgl_per_token_group_quant_8bit_v2")
     if (
         native is not None
         and input.is_cuda
         and input.is_contiguous()
         and output_q.is_contiguous()
-        and output_s.is_contiguous()
+        # row-major contiguous OR canonical column-major stride(-2)==1
+        and (output_s.is_contiguous() or output_s.stride(-2) == 1)
         and input.dtype in (torch.float32, torch.float16, torch.bfloat16)
     ):
         native(
@@ -321,7 +340,7 @@ def _quant_v2(input, output_q, output_s, group_size, scale_ue8m0,
 
     dst_min, dst_max = _quant_dst_range(output_q)
 
-    def rows(x, out_q, out_s):
+    def rows(x, out_q, out_s, mask=None):
         if fuse_silu_and_mul:
             h = x.shape[-1] // 2
             # v2: silu(primary) is cast BACK to the input dtype before the
@@ -341,20 +360,37 @@ def _quant_v2(input, output_q, output_s, group_size, scale_ue8m0,
                 (bits & 0x7FFFFF) != 0
             ).to(torch.int32)
             scale_inv = torch.exp2(exp_ceil.float())
+            y_scale = torch.exp2(-exp_ceil.float())
         else:
             scale_inv = amax / dst_max
-        q = (g * scale_inv[..., None]).clamp_(dst_min, dst_max)
-        out_q.reshape(t, hidden).copy_(q.reshape(t, hidden).to(out_q.dtype))
-        _write_scales(out_s, scale_inv, hidden // group_size, scale_ue8m0)
+            y_scale = dst_max / amax
+        q = (g * y_scale[..., None]).clamp_(dst_min, dst_max)
+        if mask is None:
+            out_q.reshape(t, hidden).copy_(q.reshape(t, hidden).to(out_q.dtype))
+            _write_scales(out_s, scale_inv, hidden // group_size, scale_ue8m0)
+            return
+        # masked write-back: compute ran over ALL t rows (static shapes);
+        # only rows [0, masked_m[e]) land in the caller's buffers, the
+        # padding rows keep their previous contents.
+        sel = mask.unsqueeze(-1)
+        out_q.copy_(torch.where(sel, q.reshape(out_q.shape).to(out_q.dtype), out_q))
+        scratch = torch.empty_strided(
+            out_s.shape, out_s.stride(), dtype=out_s.dtype, device=out_s.device)
+        _write_scales(scratch, scale_inv, hidden // group_size, scale_ue8m0)
+        out_s.copy_(torch.where(sel, scratch, out_s))
 
     if masked_m is None:
         rows(input.reshape(-1, input.shape[-1]), output_q, output_s)
         return
-    # DeepEP masked layout: input (E, maxT, H(*2)) rows [0, masked_m[e])
+    # DeepEP masked layout: input (E, maxT, H(*2)) rows [0, masked_m[e]).
+    # masked_m[e] is consumed ON DEVICE (arange compare + where) — no
+    # .item() sync, static shapes, so the call is CUDA-graph capturable
+    # and a replay with an updated masked_m re-masks correctly (upstream
+    # reads masked_m[expert_idx] inside the kernel; review #80 P2).
+    trange = torch.arange(input.shape[1], device=input.device)
     for e in range(input.shape[0]):
-        m = int(masked_m[e])
-        if m > 0:
-            rows(input[e, :m], output_q[e, :m], output_s[e, :m])
+        rows(input[e], output_q[e], output_s[e],
+             mask=trange < masked_m[e])
 
 
 # For legacy usage (upstream gemm.py:67-68)

@@ -19,7 +19,11 @@ Three layers, because "the bridge bound something" is not the contract:
 2. resolution (real sglang, still CPU-only): a mocked HIP platform makes the
    real package dispatch pick AOT; a mocked CUDA platform picks JIT (control:
    the mock really drives the seam, so a platform regression turns this red);
-   one call of the bound symbol compiles nothing and leaves the JIT cache empty;
+   one call of the bound symbol compiles nothing and leaves the JIT cache empty.
+   Note the adapter answers CUDA semantics for sglang: the capability bridge in
+   ``bridges/sglang.py`` scopes that CUDA->HIP relaxation out of fused-op
+   dispatch, so HIP still filters the CUDA-only JIT candidate (this guard is
+   what keeps that scoping honest);
 3. tier (clean subprocess): ``HCU_SILU_MUL_IMPL=lightop`` / ``torch`` still
    resolve inside the shadow AOT op, so binding the package face keeps the
    tier switch reachable.

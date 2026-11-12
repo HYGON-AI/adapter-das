@@ -69,9 +69,17 @@ inline void check_concat_mla_k_tensor(
   TORCH_CHECK(
       reinterpret_cast<uintptr_t>(t.data_ptr()) % 16 == 0,
       name, " base address must be 16-byte aligned");
-  TORCH_CHECK(
-      t.stride(0) % kBf16PerVec == 0 && t.stride(1) % kBf16PerVec == 0,
-      name, " row strides must be 16-byte aligned");
+  // A size-1 dim carries no addressing information — the kernel never
+  // multiplies by its stride (k_rope is indexed token*stride(0) only,
+  // head fixed at 0), and views like [T,64,1].transpose legitimately
+  // carry stride(1)=1 there. Skip the alignment check for that dim
+  // (review #80).
+  TORCH_CHECK(t.stride(0) % kBf16PerVec == 0, name,
+              " token stride must be 16-byte aligned");
+  if (t.size(1) != 1) {
+    TORCH_CHECK(t.stride(1) % kBf16PerVec == 0, name,
+                " row stride must be 16-byte aligned");
+  }
 }
 
 }  // namespace

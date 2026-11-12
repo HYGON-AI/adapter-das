@@ -55,6 +55,7 @@ def _hcu_fused_clamp_act_mul(
     matching the plain (non-bpreshuffle) aiter layout the downstream
     block-fp8 `down_proj` tuple input expects.
     """
+    # 替代档: 无（宿主仅 HIP triton clamp；本文件组合 aiter stub）
     from sglang.kernels.ops.activation.silu_and_mul_clamp_hip import (
         silu_and_mul_clamp_triton,
     )
@@ -75,6 +76,7 @@ def _hcu_fused_clamp_act_mul(
             f"hcu-adapter 'aiter': fused_clamp_act_mul dtype_quant={dtype_quant}"
             " (only e4m3 fp8 is supported on HCU)"
         )
+    # 替代档: 无（模块内 legacy 便捷签名；包面 8bit 为 destination-passing）
     from sglang.kernels.ops.quantization.fp8_kernel import per_token_group_quant_8bit
 
     q, s = per_token_group_quant_8bit(out, 128, fp8_dtype)
@@ -104,6 +106,7 @@ def _hcu_cp_gather_indexer_k_quant_cache(
     pages] (aiter's is flattened per-request; sglang passes [1, pages]);
     cu_seq_lens: [reqs+1] i32 cumulative pooled lengths.
     """
+    # 替代档: 无（私有 _get_k_and_s_triton；DTK aiter wheel 缺该 op）
     from sglang.kernels.ops.attention.dsa.index_buf_accessor import (
         _get_k_and_s_triton,
     )

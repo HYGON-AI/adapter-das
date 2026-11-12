@@ -37,6 +37,7 @@ _HEAD_PAD = 132
 
 def _fp8_view_dtype():
     try:
+        # 替代档: 无（fp8 dtype probe helper；包面未导出 is_fp8_fnuz）
         from sglang.kernels.ops.quantization.fp8_kernel import is_fp8_fnuz
 
         return torch.float8_e4m3fnuz if is_fp8_fnuz() else torch.float8_e4m3fn
@@ -117,6 +118,7 @@ def fp8_paged_mqa_logits(
         preshuffle = os.environ.get("HCU_DSA_PRESHUFFLE", "1") != "0"
         tile = 16
         try:
+            # 替代档: 无（私有 PRESHUFFLE tile 常量；仅模块体可见）
             from sglang.kernels.ops.attention.dsa.kpool_fp8_index import (
                 INDEXER_K_CACHE_PRESHUFFLE_TILE as _tile,
             )

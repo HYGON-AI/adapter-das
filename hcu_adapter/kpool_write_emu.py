@@ -312,6 +312,7 @@ def install_patch() -> None:
 
 def install_read_patch() -> None:
     """Route GetKAndS.aiter to the torch gather (aiter kernel dead on gfx938)."""
+    # 替代档: kpool_write_emu（本文件 torch gather emu；aiter 档 gfx938 不可用）
     from sglang.kernels.ops.attention.dsa import index_buf_accessor as iba
 
     iba.GetKAndS.aiter = _aiter_emu_wrapper

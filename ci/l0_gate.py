@@ -16,6 +16,9 @@ the invariants that historically broke us (see docs/ci.md):
     5. every var referenced by BACKEND_CATALOG exists in REGISTRY
     6. every sgl_kernel module routing glue imports resolves to a file
     7. hcu_adapter.example.yaml op keys are real catalog ops
+    8. no deep `sglang.kernels.ops.<domain>.<module>` imports in hcu_adapter
+       without a bridge note (`JIT 唯一实现` / `替代档:`) -- package faces
+       are the catalog's dispatch seam; module bodies pin one implementation
 
   SOFT (warnings; --strict turns them into failures for local dev)
     - registered HCU_* vars read via bare os.environ outside hcu_env.py
@@ -211,6 +214,48 @@ def check_example_yaml(r):
                 r.fail("example-yaml", f"op '{m.group(1)}' not in BACKEND_CATALOG")
             if stripped and not line.startswith(" ") and stripped != "ops:":
                 in_ops = False
+
+
+_OPS_DEEP_IMPORT = re.compile(r"^sglang\.kernels\.ops\.[^.]+\..+$")
+_BRIDGE_NOTE_MARKERS = ("JIT 唯一实现", "替代档:")
+
+
+def check_ops_import_depth(r):
+    """HARD: hcu_adapter must not pin a host module-body implementation.
+
+    ``sglang.kernels.ops.<domain>`` is the catalog / fused-op dispatch seam;
+    importing ``…<domain>.<module>`` bypasses the priority + capability filter
+    and pins that module's implementation (on HCU this forced a 33s ninja JIT
+    build for ``silu_and_mul`` in the L1 kernels segment). Exceptions must say
+    why inline: ``JIT 唯一实现`` (no other tier exists) or ``替代档: <location>``
+    (point at the alternative tier this call shape cannot use / does not need).
+    """
+    n = 0
+    for p in iter_files(".py"):
+        rp = rel(p)
+        if not rp.startswith("hcu_adapter/"):
+            continue
+        try:
+            src = open(p, encoding="utf-8").read()
+            tree = ast.parse(src)
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue  # check_py_syntax owns that failure
+        lines = src.splitlines()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not node.module:
+                continue
+            if not _OPS_DEEP_IMPORT.match(node.module):
+                continue
+            n += 1
+            window = "\n".join(lines[max(0, node.lineno - 3): node.end_lineno])
+            if not any(marker in window for marker in _BRIDGE_NOTE_MARKERS):
+                r.fail(
+                    "ops-import-depth",
+                    f"{rp}:{node.lineno} imports host module body "
+                    f"{node.module!r} without a bridge note (add "
+                    f"'JIT 唯一实现' or '替代档: ...')",
+                )
+    return n
 
 
 def check_bare_environ(r, reg):
@@ -548,6 +593,7 @@ def main():
     check_catalog_refs(r, reg)
     check_routing_glue_imports(r)
     check_example_yaml(r)
+    check_ops_import_depth(r)
     check_bare_environ(r, reg)
     check_glue_has_no_numerics(r)
     check_text_patch_allowlist(r)

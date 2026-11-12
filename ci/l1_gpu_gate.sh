@@ -174,80 +174,13 @@ run_seg() {  # name timeout_base cmd...
 # ---------------------------------------------------------------- segments
 run_seg l0      60   python3 ci/l0_gate.py
 run_seg cpu     300  python3 -m pytest tests/test_ops_cpu.py -q --no-header
-# Diagnose the native FP8 capture stall in fresh processes before the broad
-# suite. Both arms reuse the original case/oracle and have four warmup calls;
-# only the stream used for the first two warmups differs. A failed probe keeps
-# CI red and stops before another process touches a potentially wedged device.
-for warmup_mode in same-stream default-stream; do
-    run_seg "fp8_capture_${warmup_mode}" 180 python3 - "$warmup_mode" <<'PY'
-import contextlib
-import faulthandler
-import hashlib
-import importlib.metadata as metadata
-import inspect
-from pathlib import Path
-import runpy
-import sys
-
-import pytest
-import torch
-import sglang.srt.layers.quantization.fp8_utils as fp8
-from sglang.test.test_utils import published_topology
-
-mode = sys.argv[1]
-print("FP8 capture probe", mode, "hip", torch.version.hip, flush=True)
-print("device", torch.cuda.get_device_properties(0), flush=True)
-for name in ("torch", "sglang", "aiter", "hcu-adapter", "sgl-kernel"):
-    try:
-        print("distribution", name, metadata.version(name), flush=True)
-    except metadata.PackageNotFoundError:
-        print("distribution", name, "not found", flush=True)
-for name in ("sglang", fp8.__name__, "hcu_adapter.quant_aiter", "aiter", "torch.cuda.graphs"):
-    module = sys.modules.get(name)
-    if module is not None and getattr(module, "__file__", None):
-        source = Path(module.__file__).resolve()
-        print("source", name, source, hashlib.sha256(source.read_bytes()).hexdigest(), flush=True)
-print("dispatch", inspect.signature(fp8.apply_fp8_linear), flush=True)
-print("fallback source", inspect.getsource(fp8._apply_fallback_scaled_mm), flush=True)
-
-case = runpy.run_path("tests/kernels/test_l15_execution_chains.py")["test_quantized_linear_chain"]
-replay = case.__globals__["replay_three"]
-graph_factory = torch.cuda.graph
-
-def replay_probe(run, inputs, reference):
-    capture_stream = torch.cuda.Stream()
-    current = torch.cuda.current_stream()
-    capture_stream.wait_stream(current)
-    warm_stream = capture_stream if mode == "same-stream" else current
-    print("probe warmup", mode, flush=True)
-    with torch.cuda.stream(warm_stream):
-        for _ in range(2):
-            run()
-    current.wait_stream(capture_stream)
-    torch.cuda.synchronize()
-    print("probe warmup complete", mode, flush=True)
-
-    @contextlib.contextmanager
-    def capture(*args, **kwargs):
-        print("probe capture enter", mode, flush=True)
-        with graph_factory(*args, stream=capture_stream, **kwargs):
-            yield
-        print("probe capture returned", mode, flush=True)
-
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(torch.cuda, "graph", capture)
-        replay(run, inputs, reference)
-    print("probe three changing-input replays passed", mode, flush=True)
-
-case.__globals__["replay_three"] = replay_probe
-faulthandler.dump_traceback_later(90, exit=True)
-with published_topology(), pytest.MonkeyPatch.context() as monkeypatch:
-    case(None, monkeypatch, "fp8", 1)
-faulthandler.cancel_dump_traceback_later()
-print("FP8 capture probe PASS", mode, flush=True)
-PY
-    [ "${#FAILS[@]}" -eq 0 ] || exit 1
-done
+# Focused recheck of the original failures and all Linear dtype/token cases;
+# print their tracebacks before the broad suite can encounter another stall.
+run_seg capture_recheck 300 python3 -m pytest -vv --no-header --tb=short \
+    -o faulthandler_timeout=120 \
+    tests/kernels/test_l15_execution_chains.py::test_quantized_linear_chain \
+    'tests/kernels/test_l15_execution_chains.py::test_w8a8_int8_moe_chain[33-2]' \
+    tests/kernels/test_dsv41_compression.py
 # Transfer ownership only to a blocking matrix with an available upstream tree.
 # Observe/off modes retain the broad regression's blocking coverage.
 FAMILY_DESELECT=()

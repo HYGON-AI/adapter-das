@@ -436,6 +436,19 @@ gfx936/20261016 镜像 + dtk26.04.1 的 HSA 栈上无法完整跑完（楔死非
   不改变用例、断言或分段超时预算，完整日志仍由 CI artifact 保存。
 - L1 测试本身不写远端——无令牌只影响回帖能力。
 
+### FP8 Linear graph 捕获超时（2026-11-12）
+
+gfx938、DTK 26.10、Torch 2.13.0 的 MR CI 在
+`test_quantized_linear_chain[1-fp8]` 停滞。现场栈指向
+`apply_fp8_linear → _apply_fallback_scaled_mm → torch._scaled_mm`，
+位于 `replay_three` 的 graph 捕获体内；eager 和预热已完成。
+隔离进程对照保持原输入、数学和断言，仅改变预热 stream：默认 stream
+预热后换 stream 捕获，hipBLASLt 报 error 900（`operation not permitted
+when stream is capturing`）并阻塞；在实际捕获 stream 预热后，原用例及
+三轮变输入 replay 通过。因此 helper 显式创建同一 stream 用于预热和
+捕获，并先等待输入所在 stream；不修改 FP8 量化或生产 GEMM 分发。
+对照日志见 [CI run 43194609535](https://github.com/HYGON-AI/adapter-das/actions/runs/43194609535/job/131103153076)。
+
 ## 测试怎么归层（给提 MR 的人）
 
 | 你的改动 | 必须过 | 放哪 |

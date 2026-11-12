@@ -158,11 +158,17 @@ def check(actual, expected, *, atol=0.02):
 
 def replay_three(run, inputs, reference):
     """Capture once, mutate the same storage, and check three distinct waves."""
-    for _ in range(2):
-        run()
+    # Native BLAS handles/workspaces can be initialized per stream. Warm the
+    # actual capture stream so FP8 scaled_mm does not initialize hipBLASLt
+    # inside capture (DTK error 900 followed by a blocked native call).
+    capture_stream = torch.cuda.Stream()
+    capture_stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(capture_stream):
+        for _ in range(2):
+            run()
     torch.cuda.synchronize()
     graph = torch.cuda.CUDAGraph()
-    with torch.cuda.graph(graph):
+    with torch.cuda.graph(graph, stream=capture_stream):
         output = run()
     previous = reference()
     for wave in range(1, 4):

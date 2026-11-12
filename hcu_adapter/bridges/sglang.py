@@ -11,25 +11,36 @@ that dispatch and pins one implementation; it is allowed only with an
 inline ``JIT 唯一实现`` note (or a pointer to the alternative tier).
 """
 
+_JIT_BODY = "sglang.kernels.ops.activation.activation"
+
 
 def _bind_deepgemm_legacy_silu() -> bool:
-    """Bind the DeepGEMM runner's `_legacy_silu_and_mul` through the package face.
+    """Rebind the DeepGEMM runner's `_legacy_silu_and_mul` through the package face.
 
-    Upstream computes ``_legacy_silu_and_mul = silu_and_mul`` only on CUDA, so
-    HIP runs carry None and the DeepEP-normal prefill path dies on call.
+    Upstream binds ``_legacy_silu_and_mul`` at import time:
 
-    The import goes through ``sglang.kernels.ops.activation`` — the fused-op
-    dispatch, priority (JIT, AOT, AITER, TORCH) with JIT capability CUDA-only.
-    On HIP the JIT candidate is filtered out, so the call resolves to AOT = our
-    shadow ``sgl_kernel`` op and continues through HCU_SILU_MUL_IMPL
-    (triton/lightop/torch) like every other ``silu_and_mul`` call. Importing
-    the module body (``…activation.activation``) instead would bypass that
-    dispatch and force ``load_jit`` (a 33s ninja compile per build key —
-    observed in the L1 kernels segment). If upstream reorders the priority the
-    package face follows automatically; the bridge never pins an implementation.
+        if not (_is_npu or _is_hip) and _is_cuda:   # JIT module body
+        elif _is_musa: ...
+        else: _legacy_silu_and_mul = None            # HIP pre-seam
 
-    Returns True when the runner already has a binding or this call installed
-    one, False when the host package is absent.
+    The adapter's platform seam answers CUDA for sglang, so ``is_hip()`` is
+    False by the time the runner is imported and upstream binds the JIT module
+    body — that is the 33s ninja build (``sgl_kernel_jit_activation_*``)
+    observed in the L1 kernels segment. Only a boot order that imports the
+    runner before the seam leaves ``None``.
+
+    The bridge therefore replaces **exactly the JIT module-body function** with
+    the PACKAGE face (``sglang.kernels.ops.activation``). The fused-op dispatch
+    then runs on the real platform: its JIT candidate is CUDA-only and the
+    fused-op capability gate keeps upstream's HIP truth (see the capability
+    bridge below), so the call resolves to AOT = our shadow ``sgl_kernel`` op
+    and continues through HCU_SILU_MUL_IMPL (triton/lightop/torch) like every
+    other ``silu_and_mul`` call. Any other host binding is left untouched.
+    If upstream reorders the priority the package face follows automatically;
+    the bridge never pins an implementation.
+
+    Returns True when the runner carries a usable binding after the call,
+    False when the host package is absent.
     """
     import logging
 
@@ -37,7 +48,8 @@ def _bind_deepgemm_legacy_silu() -> bool:
     try:
         import sglang.srt.layers.moe.moe_runner.deep_gemm as _dgr
 
-        if getattr(_dgr, "_legacy_silu_and_mul", None) is not None:
+        bound = getattr(_dgr, "_legacy_silu_and_mul", None)
+        if bound is not None and getattr(bound, "__module__", "") != _JIT_BODY:
             return True
         from sglang.kernels.ops.activation import silu_and_mul as _hcu_silu
     except ImportError:
@@ -49,7 +61,7 @@ def _bind_deepgemm_legacy_silu() -> bool:
     _dgr._legacy_silu_and_mul = _hcu_silu
     log.info(
         "HCU DeepGEMM bridge: _legacy_silu_and_mul bound to "
-        "sglang silu_and_mul (upstream None on HIP)"
+        "sglang silu_and_mul (replaced %s)", "JIT body" if bound else "None"
     )
     return True
 

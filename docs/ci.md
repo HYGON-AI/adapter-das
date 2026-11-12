@@ -471,6 +471,15 @@ when stream is capturing`）并阻塞；在实际捕获 stream 预热后，原�
 `_test_aiter_moe_gate` 的 `B1-should-fallback` 失败。此轮仅定位该分发
 合同差异，未修改生产 MoE 算法、精度或全局配置，也未将 CI 记为全绿。
 
+随后修正 `hcu_adapter.aiter_moe` 的配置准入：同时检查 status 和
+`solution_type`，只接管已有的 `asm` / `moe_c` 路径；Triton（包括
+默认未调优配置）、未知实现或配置缺失均返回 `None`，由原 SGLang
+`fused_experts` 执行。显式 `HCU_FUSED_MOE_IMPL=aiter` 同样保留准入
+限制，原 ASM/moe_c 的权重布局、量化、scale、激活与归约参数透传不变。
+该修改不改算子数学或测试容差，复用现有 INT8 MoE 三个参数节点及
+`_test_aiter_moe_gate.py` 在 GitHub GPU CI 验证；压缩测试源码缺失
+属于独立问题。
+
 ## 测试怎么归层（给提 MR 的人）
 
 | 你的改动 | 必须过 | 放哪 |

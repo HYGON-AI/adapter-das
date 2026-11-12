@@ -448,6 +448,10 @@ when stream is capturing`）并阻塞；在实际捕获 stream 预热后，原�
 三轮变输入 replay 通过。因此 helper 显式创建同一 stream 用于预热和
 捕获，并先等待输入所在 stream；不修改 FP8 量化或生产 GEMM 分发。
 对照日志见 [CI run 43194609535](https://github.com/HYGON-AI/adapter-das/actions/runs/43194609535/job/131103153076)。
+修正后的两次同 stream 预热在
+[CI run 43196120630](https://github.com/HYGON-AI/adapter-das/actions/runs/43196120630/job/131108225814)
+通过 INT8、FP8、CT-FP8 × 1/17/33 token 的全部 9 个 Linear 节点，
+每个节点保留三轮变输入 replay 和原精度断言；其余失败不计为已修复。
 
 ## 测试怎么归层（给提 MR 的人）
 

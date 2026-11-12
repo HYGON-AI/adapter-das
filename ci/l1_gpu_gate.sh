@@ -174,13 +174,6 @@ run_seg() {  # name timeout_base cmd...
 # ---------------------------------------------------------------- segments
 run_seg l0      60   python3 ci/l0_gate.py
 run_seg cpu     300  python3 -m pytest tests/test_ops_cpu.py -q --no-header
-# Focused recheck of the original failures and all Linear dtype/token cases;
-# print their tracebacks before the broad suite can encounter another stall.
-run_seg capture_recheck 300 python3 -m pytest -vv --no-header --tb=short \
-    -o faulthandler_timeout=120 \
-    tests/kernels/test_l15_execution_chains.py::test_quantized_linear_chain \
-    'tests/kernels/test_l15_execution_chains.py::test_w8a8_int8_moe_chain[33-2]' \
-    tests/kernels/test_dsv41_compression.py
 # Transfer ownership only to a blocking matrix with an available upstream tree.
 # Observe/off modes retain the broad regression's blocking coverage.
 FAMILY_DESELECT=()

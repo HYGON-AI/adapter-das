@@ -34,8 +34,9 @@ def _bind_deepgemm_legacy_silu() -> bool:
     then runs on the real platform: its JIT candidate is CUDA-only and the
     fused-op capability gate keeps upstream's HIP truth (see the capability
     bridge below), so the call resolves to AOT = our shadow ``sgl_kernel`` op
-    and continues through HCU_SILU_MUL_IMPL (triton/lightop/torch) like every
-    other ``silu_and_mul`` call. Any other host binding is left untouched.
+    and continues through HCU_SILU_MUL_IMPL (auto = lightop > aiter > triton;
+    explicit lightop|aiter|triton|torch) like every other ``silu_and_mul``
+    call. Any other host binding is left untouched.
     If upstream reorders the priority the package face follows automatically;
     the bridge never pins an implementation.
 
@@ -2121,14 +2122,13 @@ def install() -> None:
                 "HCU adapter: deepgemm bridge not installed", exc_info=True
             )
 
-        # HCU kpool write emu (2026-10-15): the three pooled index-K write kernels
-        # (softmax_rotate / decode_update / tail scatter) mis-compile their int64
-        # scalar loads on gfx938 — every value arrives divided by four (signature
-        # probe: loc=[64,128,192,256] all lands at page0 tok 16/32/48/64), so the
-        # index KV cache reads back zero and GLM-5.3's DSA attention flatlines.
-        # The torch emu reproduces the healthy math bf16-round-trips/hadamard/e4m3
-        # exactly; HCU_KPOOL_WRITE_EMU=0 keeps the triton path (red gate test
-        # kernels/test_kpool_write_gfx938.py stays on watch for the DTK fix).
+        # HCU kpool write tier: the stock triton writer family is the default
+        # (2026-10-15 初判 int64 scalar-load div-4 bug was later traced to a
+        # probe-side buf layout error; the kernels are healthy on the real 2-D
+        # (pages, page_size*(D+S)) layout — see
+        # tests/kernels/test_kpool_write_gfx938.py). HCU_KPOOL_WRITE_EMU=1
+        # keeps the bit-equal torch emu as an explicit A/B fallback / DTK
+        # regression watch.
         try:
             from hcu_adapter import hcu_env as _kpw_env
 
@@ -2138,32 +2138,43 @@ def install() -> None:
                 kpool_write_emu.install_patch()
                 logging.getLogger("hcu.adapter").info(
                     "HCU adapter: kpool index-K write kernels routed to torch emu "
-                    "(gfx938 DTK int64 scalar-load div-4 bug)"
+                    "(explicit fallback; stock triton is the default)"
                 )
         except Exception:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: kpool write emu not installed", exc_info=True
             )
-        # HCU kpool read emu (2026-10-15): aiter's cp_gather_indexer_k_quant_cache
+        # HCU kpool read tiers: aiter's cp_gather_indexer_k_quant_cache
         # (GetKAndS.aiter preshuffle arm) illegal-addresses / returns zeros on
-        # gfx938, zeroing the prefill topk score chain. torch gather with the same
-        # 16-wide tile map as the writer replaces it. HCU_KPOOL_READ_EMU=0 keeps
-        # the aiter kernel.
+        # gfx93x. Default on gfx93x is the preshuffle-aware triton gather
+        # (kpool_read_triton.py, one launch, same 16-tile map as the writer);
+        # HCU_KPOOL_READ_EMU=1 keeps the torch reference as an explicit A/B
+        # fallback. Non-gfx93 platforms keep the upstream aiter kernel.
         try:
             from hcu_adapter import hcu_env as _kpr_env
 
             if _kpr_env.enabled("HCU_KPOOL_READ_EMU"):
+                mode = "emu"
+            elif _kpr_env.arch_name().startswith("gfx93"):
+                mode = "triton"
+            else:
+                mode = "aiter"
+            if mode != "aiter":
                 from hcu_adapter import kpool_write_emu as _kwe
 
-                _kwe.install_read_patch()
-                print("[HCU kprd] read-emu installed", flush=True)
+                _kwe.install_read_patch(mode)
                 logging.getLogger("hcu.adapter").info(
-                    "HCU adapter: index-K cache gather (GetKAndS.aiter) routed to "
-                    "torch emu (aiter kernel dead on gfx938)"
+                    "HCU adapter: index-K cache gather (GetKAndS.aiter) routed "
+                    "to %s tier (aiter kernel dead on gfx93x)", mode
+                )
+            else:
+                logging.getLogger("hcu.adapter").info(
+                    "HCU adapter: index-K cache gather keeps upstream aiter "
+                    "(non-gfx93 platform)"
                 )
         except Exception:
             logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: kpool read emu not installed", exc_info=True
+                "HCU adapter: kpool read tier not installed", exc_info=True
             )
         # HCU read-scope probe (2026-10-15): GetKAndS never fires on this stack —
         # watch the cache-level read hub instead and dump both branches' output.

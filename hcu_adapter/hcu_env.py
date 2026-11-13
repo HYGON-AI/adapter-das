@@ -117,6 +117,7 @@ def _auto_ar_norm_impl():
     # SGLang validates the actual communicator after device binding
     # (ar_norm_aiter AFTER hook); skip the wheel-layout gate there.
     check_layout = not (_active_host() == "sglang")
+def _auto_ar_norm_impl(*, check_layout=True):
     # fused AR+RMSNorm rides the SAME aiter GraphSafe communicator the
     # plain AR auto-rule already vets: refuse wherever HCU_AITER_AR
     # refuses (old-aiter graph-corrupting layouts), else aiter on hip.
@@ -344,6 +345,7 @@ REGISTRY = {
     "HCU_AR_NORM_IMPL": {
         "env": "HCU_AR_NORM_IMPL", "default": "auto",
         "auto": _auto_ar_norm_impl, "auto_hosts": ("sglang", "vllm"),
+        "auto_by_host": {"sglang": lambda: _auto_ar_norm_impl(check_layout=False)},
         "about": "融合 AR+RMSNorm vendor 档（R-09①，ar_norm_aiter 桥）："
                  "auto=hip 且 HCU_AITER_AR auto 规则未拒时选 aiter 候选；"
                  "SGLang 不检查模块文件，设备绑定和 TP 通信初始化后"

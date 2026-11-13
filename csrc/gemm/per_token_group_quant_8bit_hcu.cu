@@ -271,6 +271,47 @@ inline int input_dtype_kind(const at::Tensor& input) {
   TORCH_CHECK(false, "unsupported quant input dtype: ", t);
 }
 
+// output_s is reinterpret_cast to float* and addressed by the kernels as
+//   column-major: g * stride(-1) + row   (needs stride(-2) == 1)
+//   row-major:    row * groups + g       (needs the exact contiguous layout)
+// (ue8m0 packs bytes into the same slots). input/output_q get CHECK_INPUT
+// (CUDA+contiguous); output_s legitimately allows the column-major layout,
+// so validate its device/dtype/shape/strides here instead — a CPU or
+// off-device tensor, a non-float dtype, or padded/overlapping strides
+// would fault or silently corrupt the scales (review #80 P3). A size-1
+// dim's stride is never dereferenced, so it stays unconstrained (same
+// leniency as the k_rope stride(1) fix).
+void check_quant_output_s(
+    const at::Tensor& output_s,
+    const at::Tensor& input,
+    int64_t num_rows,
+    int64_t groups_per_row) {
+  TORCH_CHECK(output_s.is_cuda(), "output_s must be on an HCU device");
+  TORCH_CHECK(
+      output_s.scalar_type() == at::ScalarType::Float,
+      "output_s must be float32, got ", output_s.scalar_type());
+  TORCH_CHECK(
+      output_s.device() == input.device(),
+      "output_s must share input's device");
+  TORCH_CHECK(
+      output_s.size(-2) == num_rows && output_s.size(-1) == groups_per_row,
+      "output_s must be (rows, groups_per_row) = (", num_rows, ", ",
+      groups_per_row, "), got ", output_s.sizes());
+  const int64_t s0 = output_s.stride(-2), s1 = output_s.stride(-1);
+  if (s0 < s1) {  // same predicate the launchers use to pick column-major
+    TORCH_CHECK(
+        num_rows == 1 || s0 == 1,
+        "column-major output_s needs unit row stride, got (", s0, ", ",
+        s1, ")");
+  } else {
+    TORCH_CHECK(
+        (num_rows == 1 || s0 == groups_per_row) &&
+            (groups_per_row == 1 || s1 == 1),
+        "row-major output_s must be exactly row-contiguous (stride (",
+        groups_per_row, ", 1)), got (", s0, ", ", s1, ")");
+  }
+}
+
 }  // namespace
 
 void sgl_per_token_group_quant_8bit(
@@ -287,8 +328,10 @@ void sgl_per_token_group_quant_8bit(
   TORCH_CHECK(input.numel() % group_size == 0, "input numel must divide by group_size");
   TORCH_CHECK(output_s.dim() == 2, "output_s must be 2-D");
   const int64_t num_groups = input.numel() / group_size;
-  const bool is_column_major = output_s.stride(0) < output_s.stride(1);
   const int num_groups_per_row = input.size(input.dim() - 1) / group_size;
+  check_quant_output_s(
+      output_s, input, num_groups / num_groups_per_row, num_groups_per_row);
+  const bool is_column_major = output_s.stride(0) < output_s.stride(1);
   const int scale_stride = output_s.stride(1);
   TORCH_CHECK(!scale_ue8m0 || is_column_major, "scale_ue8m0 requires column-major output_s");
 
@@ -377,11 +420,9 @@ void launch_v2(
   const int groups_per_row = hidden / group_size;
   const int64_t num_groups = num_rows * groups_per_row;
 
+  check_quant_output_s(output_s, input, num_rows, groups_per_row);
   const bool is_column_major = output_s.stride(-2) < output_s.stride(-1);
   const int scale_stride = output_s.stride(-1);
-  TORCH_CHECK(
-      is_column_major || output_s.stride(-1) == 1,
-      "row-major output_s requires unit last-dim stride");
 
   const c10::cuda::OptionalCUDAGuard device_guard(input.device());
   cudaStream_t stream = at::cuda::getCurrentCUDAStream();

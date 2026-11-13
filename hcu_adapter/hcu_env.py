@@ -92,7 +92,29 @@ def _auto_quant_impl():
     return "stock"
 
 
+def has_aiter_custom_allreduce():
+    """Legacy host layout check without importing GPU communication code."""
+    try:
+        from importlib.util import find_spec
+        from pathlib import Path
+
+        spec = find_spec("aiter")
+        return bool(spec and spec.submodule_search_locations and any(
+            (Path(root) / "dist" / "device_communicators" / "custom_all_reduce.py").is_file()
+            for root in spec.submodule_search_locations
+        ))
+    except (ImportError, OSError, ValueError):
+        return False
+
+
+def _active_host():
+    return os.environ.get("_HCU_ADAPTER_ACTIVE_HOST")
+
+
 def _auto_ar_norm_impl():
+    # SGLang validates the actual communicator after device binding
+    # (ar_norm_aiter AFTER hook); skip the wheel-layout gate there.
+    check_layout = not (_active_host() == "sglang")
     # fused AR+RMSNorm rides the SAME aiter GraphSafe communicator the
     # plain AR auto-rule already vets: refuse wherever HCU_AITER_AR
     # refuses (old-aiter graph-corrupting layouts), else aiter on hip.
@@ -101,10 +123,11 @@ def _auto_ar_norm_impl():
 
         if getattr(torch.version, "hip", None) is None:
             return "stock"
-        from aiter.dist.device_communicators.custom_all_reduce import (  # noqa: F401
-            CustomAllreduce,
-        )
     except Exception:
+        return "stock"
+    # SGLang validates the actual communicator after device binding; retain
+    # the wheel-layout gate for hosts without that lifecycle check.
+    if check_layout and not has_aiter_custom_allreduce():
         return "stock"
     if _auto_aiter_ar().startswith("refused"):
         return "stock"
@@ -280,8 +303,10 @@ REGISTRY = {
         "env": "HCU_AR_NORM_IMPL", "default": "auto",
         "auto": _auto_ar_norm_impl, "auto_hosts": ("sglang", "vllm"),
         "about": "融合 AR+RMSNorm vendor 档（R-09①，ar_norm_aiter 桥）："
-                 "auto=hip+aiter GraphSafe 类可导入且 HCU_AITER_AR auto 规"
-                 "则未拒（旧布局图重放损坏史连带拒融合）则 aiter——对 "
+                 "auto=hip 且 HCU_AITER_AR auto 规则未拒时选 aiter 候选；"
+                 "SGLang 不检查模块文件，设备绑定和 TP 通信初始化后"
+                 "检查真实通信对象再安装融合；vLLM 保留模块文件检查；"
+                 "旧布局图重放损坏史连带拒融合。对 "
                  "fp64 精确 AR 真值 norm 1ulp/residual 0ulp（优于 rccl "
                  "3-8ulp），vs customAR+norm 1.38-2.11×（hidden=4096 "
                  "t=1..4096），图回放新鲜数据精确；仅全 TP 组目标融合"

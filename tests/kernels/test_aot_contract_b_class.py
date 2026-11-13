@@ -300,3 +300,40 @@ def test_copy_to_gpu_no_ce_gpu_values(n):
     sgl_kernel.copy_to_gpu_no_ce(src, dst)
     torch.cuda.synchronize()
     torch.testing.assert_close(dst.cpu(), src, rtol=0, atol=0)
+
+
+@requires_gpu
+def test_merge_state_v2_native_rejects_malformed_out():
+    # The native entry validates the out pair before writing through raw
+    # pointers: wrong device/shape/layout/dtype outs must raise instead of
+    # corrupting memory (review #80 R8 P2).
+    from sgl_kernel._native import native_op
+
+    # Gate on an op only OUR library defines: a foreign sgl_kernel .so
+    # (e.g. a dtk wheel) may pre-register merge_state_v2 WITHOUT these
+    # entry checks — exercising that one would fault the GPU instead of
+    # raising. If our v2 quant op is registered, our .so owns the
+    # namespace and merge_state_v2 is ours too.
+    if native_op("sgl_per_token_group_quant_8bit_v2") is None:
+        pytest.skip("shadow cpp tier not owning the sgl_kernel:: namespace")
+    op = native_op("merge_state_v2")
+
+    va = torch.randn(2, 2, 32, device="cuda", dtype=torch.bfloat16)
+    vb = torch.randn(2, 2, 32, device="cuda", dtype=torch.bfloat16)
+    sa = torch.zeros(2, 2, device="cuda")
+    sb = torch.zeros(2, 2, device="cuda")
+
+    o = torch.empty_like(va)
+    l = torch.empty(2, 2, device="cuda")
+    op(va, sa, vb, sb, o, l)  # sanity: a correct call passes
+
+    bad = [
+        ("cpu out", torch.empty(2, 2, 32), l),
+        ("short out", torch.empty(2, 2, 16, device="cuda"), l),
+        ("non-contiguous", torch.empty(2, 2, 32, 64, device="cuda")[..., :32], l),
+        ("v dtype", torch.empty(2, 2, 32, device="cuda", dtype=torch.float32), l),
+        ("lse dtype", o, torch.empty(2, 2, device="cuda", dtype=torch.float16)),
+    ]
+    for tag, bad_o, bad_l in bad:
+        with pytest.raises(RuntimeError):
+            op(va, sa, vb, sb, bad_o, bad_l)

@@ -303,6 +303,16 @@ void check_quant_output_s(
         num_rows == 1 || s0 == 1,
         "column-major output_s needs unit row stride, got (", s0, ", ",
         s1, ")");
+    // g*s1+row slots stay distinct across groups only when the column
+    // stride covers the full row extent — a short s1 (e.g. stride (1,2)
+    // on a (4,3) buffer) makes (g, r) collide with (g+1, r-s1) and the
+    // kernel silently overwrites earlier scales. A single group has no
+    // cross-group collision, so G==1 stays unconstrained (review #80
+    // R8 P3).
+    TORCH_CHECK(
+        groups_per_row == 1 || s1 >= num_rows,
+        "column-major output_s stride(-1) must be >= rows, got (", s0,
+        ", ", s1, ") for ", num_rows, " rows");
   } else {
     TORCH_CHECK(
         (num_rows == 1 || s0 == groups_per_row) &&
@@ -326,9 +336,17 @@ void sgl_per_token_group_quant_8bit(
   CHECK_INPUT(input);
   CHECK_INPUT(output_q);
   TORCH_CHECK(input.numel() % group_size == 0, "input numel must divide by group_size");
+  TORCH_CHECK(
+      input.size(input.dim() - 1) % group_size == 0,
+      "input's last dim must be a multiple of group_size (whole groups per row)");
   TORCH_CHECK(output_s.dim() == 2, "output_s must be 2-D");
   const int64_t num_groups = input.numel() / group_size;
   const int num_groups_per_row = input.size(input.dim() - 1) / group_size;
+  // size(-1) % group_size == 0 plus non-empty input; without this an empty
+  // or cross-row-group input makes num_groups_per_row 0 and the size check
+  // below would divide by zero (SIGFPE instead of a clean TORCH_CHECK;
+  // review #80 R8 P3).
+  TORCH_CHECK(num_groups_per_row >= 1, "input must be non-empty");
   check_quant_output_s(
       output_s, input, num_groups / num_groups_per_row, num_groups_per_row);
   const bool is_column_major = output_s.stride(0) < output_s.stride(1);
@@ -418,6 +436,9 @@ void launch_v2(
   const int64_t num_rows = output_q.size(-2);
   const int64_t hidden = output_q.size(-1);
   const int groups_per_row = hidden / group_size;
+  TORCH_CHECK(
+      hidden % group_size == 0 && groups_per_row >= 1,
+      "hidden must be a non-empty multiple of group_size");
   const int64_t num_groups = num_rows * groups_per_row;
 
   check_quant_output_s(output_s, input, num_rows, groups_per_row);

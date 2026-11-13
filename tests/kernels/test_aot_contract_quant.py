@@ -459,3 +459,41 @@ def test_quant_v2_masked_m_cuda_graph_replay():
     assert (q[2] == 99).all()                      # newly masked-off
     assert (q[1, 5:] == 99).all()                  # new padding rows
     assert _ref_ok(1, 5) and _ref_ok(0, 8)
+
+
+@requires_gpu
+def test_quant_native_rejects_unaddressable_output_s():
+    # The native entries validate output_s BEFORE casting its data_ptr into
+    # the kernel (review #80 P3): CPU / off-layout / wrong-dtype buffers
+    # must raise RuntimeError instead of faulting or silently corrupting
+    # the scales, while the legal layouts (column-major .t(), sliced rows
+    # with exact row stride) keep flowing through.
+    from sgl_kernel._native import native_op
+
+    v1 = native_op("sgl_per_token_group_quant_8bit")
+    v2 = native_op("sgl_per_token_group_quant_8bit_v2")
+    if v2 is None:
+        pytest.skip("native cpp tier not built in this environment")
+
+    x = torch.randn(4, 128, device="cuda")
+    q = torch.empty(4, 128, device="cuda", dtype=torch.int8)
+    rows, groups = 4, 2
+
+    good_col = torch.zeros(groups, rows, device="cuda").t()      # (1, rows)
+    good_sliced = torch.zeros(8, groups, device="cuda")[:rows]   # (2, 1)
+    v2(x, q, good_col, 64, 1e-10, -128.0, 127.0, False, False, None)
+    v2(x, q, good_sliced, 64, 1e-10, -128.0, 127.0, False, False, None)
+    if v1 is not None:
+        v1(x, q, good_col, 64, 1e-10, -128.0, 127.0, False)
+
+    bad = [
+        ("cpu scales", torch.zeros(rows, groups)),
+        ("wrong dtype", torch.zeros(rows, groups, device="cuda", dtype=torch.half)),
+        ("padded strides", torch.zeros(rows, 2 * groups, device="cuda")[:, ::2]),
+    ]
+    for tag, s in bad:
+        with pytest.raises(RuntimeError):
+            v2(x, q, s, 64, 1e-10, -128.0, 127.0, False, False, None)
+        if v1 is not None:
+            with pytest.raises(RuntimeError):
+                v1(x, q, s, 64, 1e-10, -128.0, 127.0, False)

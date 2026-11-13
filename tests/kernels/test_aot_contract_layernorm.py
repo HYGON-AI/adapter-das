@@ -233,7 +233,16 @@ def test_gemma_triton_weight_bias(gemma):
     torch.manual_seed(6)
     fn = sgl_kernel.gemma_rmsnorm if gemma else sgl_kernel.rmsnorm
     x = torch.randn(9, 512, device="cuda", dtype=torch.bfloat16)
-    w = torch.zeros(512, device="cuda", dtype=torch.bfloat16)
+    # gemma=True keeps zero weights on purpose: (w+1)==1 pins the +1 bias
+    # semantics (same point as test_gemma_weight_plus_one_cpu). gemma=False
+    # must NOT use zeros: y = (x*rstd)*w would be identically zero on both
+    # sides and assert_close(0, 0) would pass no matter what the kernel did
+    # to the normalization — use randn so the output tracks it (review #80
+    # R7 P3).
+    if gemma:
+        w = torch.zeros(512, device="cuda", dtype=torch.bfloat16)
+    else:
+        w = torch.randn(512, device="cuda", dtype=torch.bfloat16)
     y = fn(x, w)
     ref = _rms_ref(x.float(), w.float(), 1e-6, gemma)
     torch.testing.assert_close(y.float(), ref, rtol=2e-2, atol=2e-2)

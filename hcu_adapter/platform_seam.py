@@ -310,9 +310,15 @@ def install():
     from sglang.srt import platforms as _pf
     from sglang.srt.utils import common as _common
 
-    from sglang.srt.utils import device as _device
+    # sglang v0.5.22 没有 utils/device.py（main #48781 拆 common.py 才引入）
+    # ——无守卫 import 会在这里 ImportError，把整个 platform seam（含上方
+    # is_cuda 语义翻转）一并炸掉，L1 现产 0.5.22 线即此红（review #98）。
+    try:
+        from sglang.srt.utils import device as _device
+    except ImportError:
+        _device = None
 
-    if hasattr(_device, "get_nvgpu_memory_capacity"):
+    if _device is not None and hasattr(_device, "get_nvgpu_memory_capacity"):
         for name in (
             "get_nvgpu_memory_capacity", "get_device_sm", "get_device_capability",
             "get_device_core_count",
@@ -353,7 +359,8 @@ def install():
         return False
 
     _common.is_flashinfer_available = _hcu_fi_available
-    _device.is_flashinfer_available = _hcu_fi_available
+    if _device is not None:  # v0.5.22: no utils/device module (review #98)
+        _device.is_flashinfer_available = _hcu_fi_available
     from sglang.srt.utils import log_utils as _log_utils
     _log_utils.is_flashinfer_available = _hcu_fi_available
 
@@ -450,7 +457,8 @@ def install():
     import sglang.srt.utils as _pkg_utils
 
     _gates = _replace_version_gates(_common, _pkg_utils)
-    _gates += _replace_version_gates(_device, _pkg_utils)
+    if _device is not None:  # v0.5.22: no utils/device module (review #98)
+        _gates += _replace_version_gates(_device, _pkg_utils)
     if _gates:
         LOG.warning(
             "HCU adapter: %d CUDA version gates -> False (common + utils"
@@ -506,7 +514,7 @@ def install():
         "is_flashinfer_available": _hcu_fi_available,
     }
     for _n, _fn in _sync.items():
-        if hasattr(_device, _n):
+        if _device is not None and hasattr(_device, _n):
             setattr(_device, _n, _fn)
         if getattr(_pkg_utils, _n, None) is not _fn:
             setattr(_pkg_utils, _n, _fn)

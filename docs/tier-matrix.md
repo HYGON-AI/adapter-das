@@ -186,6 +186,52 @@ topk_softmax / topk_sigmoid / moe_fused_gate (contract = torch baseline)
 
 路由变量：（auto）
 
+## merge_state_v2
+
+LSE-exact merge of two partial attention states (MTP verify / cascade)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | production fp32 FMA, ±inf lse -> -inf; all-mask |
+| cpp | production setup_hip.py wheel (merge_attn_state |
+| emu | production torch fallback (CPU / no-triton); op |
+
+路由变量：（auto）
+
+## concat_mla
+
+MLA concat copies: concat_mla_k (in-place (T,128,192)), concat_mla_absorb_q (allocating (...,576))
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | production row-copy kernel; bf16/3D/unit-stride |
+| cpp | production setup_hip.py wheel: concat_mla_absor |
+| emu | production strided torch copies / torch.cat fal |
+
+路由变量：（auto）
+
+## copy_to_gpu_no_ce
+
+small pinned int32 H2D, N in {32,64,72} (upstream copy.cu)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | production setup_hip.py wheel: the REAL no-CE p |
+| emu | production output.copy_(input); the upstream no |
+
+路由变量：（auto）
+
+## per_token_group_quant_8bit
+
+sgl_per_token_group_quant_8bit bridge, v1 + v2 variants (C-class gap: the python seam was missing entirely — callers hit AttributeError)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | production setup_hip.py wheel: plain 16-lane-pe |
+| emu | production torch ports of both upstream kernels |
+
+路由变量：（auto）
+
 ## platform_detect
 
 sglang 平台判定语义（§0.5 is_cuda 路线的落地点）

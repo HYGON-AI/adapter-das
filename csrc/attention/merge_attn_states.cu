@@ -235,5 +235,20 @@ void merge_state_v2(
   CHECK_SHAPE(s_a, s_b);
   CHECK_EQ(v_a.size(0), s_a.size(0));
   CHECK_EQ(v_a.size(1), s_b.size(1));
+  // Outputs are written through raw pointers sized from the INPUTS; a
+  // malformed out (wrong shape/device/layout/dtype) would corrupt memory
+  // instead of failing cleanly. s_merged is read/written as float* (LSE is
+  // fp32), and the launcher dispatches on v_merged's dtype to cast BOTH
+  // sides, so inputs and out must share it (review #80 R8 P2).
+  CHECK_INPUT(v_merged);
+  CHECK_INPUT(s_merged);
+  CHECK_EQ(v_merged.device(), device);
+  CHECK_EQ(s_merged.device(), device);
+  CHECK_DIM(3, v_merged);
+  CHECK_DIM(2, s_merged);
+  CHECK_SHAPE(v_merged, v_a);
+  CHECK_SHAPE(s_merged, s_a);
+  CHECK_EQ(v_merged.scalar_type(), v_a.scalar_type());
+  CHECK_EQ(s_merged.scalar_type(), at::ScalarType::Float);
   DISPATCH_BY_SCALAR_DTYPE(v_merged.dtype(), CALL_MERGE_ATTN_STATES_LAUNCHER);
 }

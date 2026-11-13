@@ -497,3 +497,36 @@ def test_quant_native_rejects_unaddressable_output_s():
         if v1 is not None:
             with pytest.raises(RuntimeError):
                 v1(x, q, s, 64, 1e-10, -128.0, 127.0, False)
+
+
+@requires_gpu
+def test_quant_native_rejects_cross_row_and_overlapping_scales():
+    # R8 follow-ups to the output_s validator: a last dim that cannot form
+    # whole groups must fail cleanly (the size check divides by
+    # groups-per-row — a SIGFPE there instead of a TORCH_CHECK), and a
+    # column-major buffer with stride(-1) < rows has overlapping slots
+    # ((g, r) collides with (g+1, r-s1)) — reject instead of silently
+    # corrupting scales.
+    from sgl_kernel._native import native_op
+
+    v1 = native_op("sgl_per_token_group_quant_8bit")
+    v2 = native_op("sgl_per_token_group_quant_8bit_v2")
+    if v2 is None:
+        pytest.skip("native cpp tier not built in this environment")
+
+    # (2, 64) with group_size=128: numel divides, but the last dim cannot
+    # form whole groups (cross-row grouping is out of contract).
+    x = torch.randn(2, 64, device="cuda")
+    q = torch.empty(2, 64, device="cuda", dtype=torch.int8)
+    s = torch.zeros(1, 1, device="cuda")
+    for op, extra in ((v1, ()), (v2, (False, None))):
+        with pytest.raises(RuntimeError, match="group_size"):
+            op(x, q, s, 128, 1e-10, -128.0, 127.0, False, *extra)
+
+    # column-major with stride(-1)=2 < rows=4: slots alias across groups.
+    x = torch.randn(4, 192, device="cuda")
+    q = torch.empty(4, 192, device="cuda", dtype=torch.int8)
+    s = torch.empty_strided((4, 3), (1, 2), device="cuda")
+    for op, extra in ((v1, ()), (v2, (False, None))):
+        with pytest.raises(RuntimeError, match=">= rows"):
+            op(x, q, s, 64, 1e-10, -128.0, 127.0, False, *extra)

@@ -107,9 +107,12 @@ def _hcu_cp_gather_indexer_k_quant_cache(
     cu_seq_lens: [reqs+1] i32 cumulative pooled lengths.
     """
     # 替代档: 无（私有 _get_k_and_s_triton；DTK aiter wheel 缺该 op）
-    from sglang.kernels.ops.attention.dsa.index_buf_accessor import (
-        _get_k_and_s_triton,
-    )
+    try:
+        # 替代档: 新 sglang 走 kvcache 门面（dsa_index_k_cache 为其模块体——门面无非此档）
+        from sglang.kernels.ops.kvcache.dsa_index_k_cache import _get_k_and_s_triton
+    except ImportError:
+        # 替代档: 无（旧 sglang 树 fallback 到 index_buf_accessor 模块体）
+        from sglang.kernels.ops.attention.dsa.index_buf_accessor import _get_k_and_s_triton
 
     assert dst_k.shape[0] >= int(cu_seq_lens[-1].item()) if cu_seq_lens.numel() > 1 else True
     pages = page_indices if page_indices.dim() == 2 else page_indices.view(1, -1)

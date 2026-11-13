@@ -342,7 +342,12 @@ def install_read_patch(mode: str = "triton") -> None:
     platforms.
     """
     # 替代档: kpool_read_triton.py（本文件 torch gather emu 为显式回退）
-    from sglang.kernels.ops.attention.dsa import index_buf_accessor as iba
+    try:
+        # 替代档: 新 sglang 走 kvcache 门面（dsa_index_k_cache 为其模块体——门面无非此档）
+        from sglang.kernels.ops.kvcache import dsa_index_k_cache as iba
+    except ImportError:
+        # 替代档: kpool_read_triton.py（旧 sglang 树走 index_buf_accessor）
+        from sglang.kernels.ops.attention.dsa import index_buf_accessor as iba
 
     if mode == "triton":
         iba.GetKAndS.aiter = _aiter_triton_wrapper

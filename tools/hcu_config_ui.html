@@ -208,6 +208,7 @@
 /*==PURE-BEGIN*/
 // ---- BACKEND_CATALOG snapshot (hcu_config.py, 2026-10-14). default = first prod entry.
 const CATALOG = {
+  "minimax_h3_rotary_embedding": {"var": null, "summary": "MiniMax-H3 NeoX partial RoPE: DiT128/96 and VAE64/48; native preferred by plugin", "backends": {"triton": {"s": "candidate", "n": "BF16/FP16/FP32 old-native canonical parity passed; changed-input Graph passed; serving pending"}, "torch": {"s": "candidate", "n": "CPU contract and diagnostic fallback; no serving claim"}}},
   "flashmla_kv_indices": {"var": null, "summary": "FlashMLA static-pool page-table import compatibility", "backends": {"triton": {"s": "candidate", "n": "Reuse the existing SGLang page64 kernel; optional starts and strides; no new index math"}}},
   "w4a8_contiguous_gemm": {"var": null, "summary": "DTK W4A8 HIPC code-object ABI compatibility", "backends": {"dtk": {"s": "candidate", "n": "Optional pinned gfx936 COV5 extension; native1002 and cached aliases preserved; full P/D pending"}}},
   "vllm_sparse_indexer": {"var": "HCU_VLLM_SPARSE_INDEXER_IMPL", "summary": "vLLM 0.33 C4 sparse indexer through public OOT and official helpers", "backends": {"stock": {"s": "candidate", "n": "Default upstream dispatch; gfx936 architecture guard remains"}, "native": {"s": "candidate", "n": "Opt-in gfx936 C4 H64/D128/top512; official logits/top-k, public padded metadata; integration gates pending"}}},

@@ -318,6 +318,7 @@ def install():
     except ImportError:
         _device = None
 
+    # Restore moved helpers for callers that still use the common namespace.
     if _device is not None and hasattr(_device, "get_nvgpu_memory_capacity"):
         for name in (
             "get_nvgpu_memory_capacity", "get_device_sm", "get_device_capability",

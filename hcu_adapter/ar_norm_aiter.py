@@ -48,8 +48,8 @@ Degradation: any failure declines per-call to the saved stock functions.
 Installation is staged: bootstrap registers an AFTER hook on official
 ``initialize_model_parallel`` without importing AITER's communicator. Only
 after the worker binds its device and the host builds its TP communicator
-do we admit the consumer bindings below. Wheel presence is an early hint,
-not proof of a usable communicator or a successful kernel execution.
+do we admit the consumer bindings below. Admission uses the real communicator,
+not wheel-file presence, and does not prove successful kernel execution.
 """
 
 import logging

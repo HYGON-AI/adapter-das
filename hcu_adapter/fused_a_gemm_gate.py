@@ -42,7 +42,7 @@ _IMPORTERS = (
 )
 
 
-def _ineligible(layer):
+def _ineligible(layer, *, backend=None):
     return False
 
 

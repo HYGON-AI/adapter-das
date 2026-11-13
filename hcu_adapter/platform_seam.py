@@ -240,6 +240,16 @@ def install():
     from sglang.srt import platforms as _pf
     from sglang.srt.utils import common as _common
 
+    from sglang.srt.utils import device as _device
+
+    if hasattr(_device, "get_nvgpu_memory_capacity"):
+        for name in (
+            "get_nvgpu_memory_capacity", "get_device_sm", "get_device_capability",
+            "get_device_core_count",
+        ):
+            if not hasattr(_common, name):
+                setattr(_common, name, getattr(_device, name))
+
     #这两个 import 本身会执行 common.py 顶层 `if is_hip():` ——彼时判定
     # 还是原函数，fnuz 常量已被冻结并写进 builtins；patch 后必须重算
     # （CUDA 语义 = e4m3fn，max 448）。
@@ -273,6 +283,9 @@ def install():
         return False
 
     _common.is_flashinfer_available = _hcu_fi_available
+    _device.is_flashinfer_available = _hcu_fi_available
+    from sglang.srt.utils import log_utils as _log_utils
+    _log_utils.is_flashinfer_available = _hcu_fi_available
 
     original_memory_capacity = _common.get_nvgpu_memory_capacity
 
@@ -367,6 +380,7 @@ def install():
     import sglang.srt.utils as _pkg_utils
 
     _gates = _replace_version_gates(_common, _pkg_utils)
+    _gates += _replace_version_gates(_device, _pkg_utils)
     if _gates:
         LOG.warning(
             "HCU adapter: %d CUDA version gates -> False (common + utils"
@@ -422,6 +436,8 @@ def install():
         "is_flashinfer_available": _hcu_fi_available,
     }
     for _n, _fn in _sync.items():
+        if hasattr(_device, _n):
+            setattr(_device, _n, _fn)
         if getattr(_pkg_utils, _n, None) is not _fn:
             setattr(_pkg_utils, _n, _fn)
 

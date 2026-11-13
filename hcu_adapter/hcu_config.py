@@ -465,6 +465,22 @@ BACKEND_CATALOG = {
                               "note": "common.np.frombuffer 代理返回可写副本"},
         },
     },
+    "fused_a_gemm": {
+        "var": None,
+        "summary": "DeepSeek-V3 fused QKV-A GEMM 最小延迟路径 "
+                   "(deepseek_v2 prepare_qkv_latent / q_b_proj_forward、"
+                   "nemotron_h latent MLP)",
+        "backends": {
+            "cuda-only-kernel-off": {
+                "status": "candidate",
+                "note": "HIP 恒不具备：kernel 仅 __CUDA_ARCH__>=900，且申请"
+                        "约 192KB 动态 LDS（本机 64KB/block），capture 期 "
+                        "set_max_dynamic_smem 报 invalid argument；资格判定 "
+                        "rebind 为 False 后各层走自身 linear。注册/dispatch "
+                        "契约已覆盖，模型级验收归全量模型双机服务",
+            },
+        },
+    },
     "triton_pdl": {
         "var": None,
         "summary": "triton 编译期 PDL 指令剥离（行为还原：gfx936 无 "

@@ -627,15 +627,15 @@ if HAS_TRITON:
 def merge_state_v2(v_a, s_a, v_b, s_b, v_merged=None, s_merged=None):
     """Exact log-sum-exp merge of two partial attention states.
 
-    Upstream python wrapper contract (aot python/sgl_kernel/attention.py):
-    ``merge_state_v2(v_a, s_a, v_b, s_b, v_merged=None, s_merged=None)``
-    with OPTIONAL destination tensors; the lse output is fp32 regardless
-    of the v dtype (merge_attn_states.cu dispatches on v_merged.dtype).
-
-    Layout: v (M, H, Dv) with (M, H) lse (this module's emu convention),
-    contiguous, dtype fp32/fp16/bf16. ±inf lse lanes normalize to -inf
+    Upstream python wrapper ABI: ``merge_state_v2(v_a, s_a, v_b, s_b,
+    v_merged=None, s_merged=None)`` with OPTIONAL destination tensors
+    (sglang's chunked prefix path passes both positionally); the lse
+    output is fp32 regardless of the v dtype. Layout: v (M, H, Dv) with
+    (M, H) lse (this module's emu convention), contiguous. ±inf lse
+    lanes normalize to -inf
     (upstream convention). All-masked rows emit 0 with -inf lse (FA emu
-    contract; upstream CUDA emits NaN — see kernel comment).
+    contract; the upstream CUDA kernel emits NaN there — pinned and
+    restored, see the kernel/tier comments).
 
     Returns (v_merged, s_merged): the caller's buffers when given, fresh
     tensors otherwise.
@@ -651,16 +651,6 @@ def merge_state_v2(v_a, s_a, v_b, s_b, v_merged=None, s_merged=None):
             f"({tuple(v_a.shape)}/{tuple(s_a.shape)} vs "
             f"{tuple(v_b.shape)}/{tuple(s_b.shape)})"
         )
-    # Normalize ±inf lse to -inf BEFORE merging (upstream convention:
-    # any inf lane counts as fully masked, not as an infinite weight).
-    neg_inf = float("-inf")
-    s_a_n = torch.where(
-        torch.isposinf(s_a), torch.full_like(s_a, neg_inf), s_a
-    ).float()
-    s_b_n = torch.where(
-        torch.isposinf(s_b), torch.full_like(s_b, neg_inf), s_b
-    ).float()
-
     if v_merged is None:
         v_merged = torch.empty_like(v_a)
     else:
@@ -688,6 +678,15 @@ def merge_state_v2(v_a, s_a, v_b, s_b, v_merged=None, s_merged=None):
             raise RuntimeError(
                 f"merge_state_v2: s_merged must be float32, got {s_merged.dtype}"
             )
+    # Normalize ±inf lse to -inf BEFORE merging (upstream convention:
+    # any inf lane counts as fully masked, not as an infinite weight).
+    neg_inf = float("-inf")
+    s_a_n = torch.where(
+        torch.isposinf(s_a), torch.full_like(s_a, neg_inf), s_a
+    ).float()
+    s_b_n = torch.where(
+        torch.isposinf(s_b), torch.full_like(s_b, neg_inf), s_b
+    ).float()
 
     rows = s_a.numel()
     d = v_a.shape[-1]
@@ -700,6 +699,7 @@ def merge_state_v2(v_a, s_a, v_b, s_b, v_merged=None, s_merged=None):
         native is not None
         and v_a.is_cuda
         and v_merged.dtype in (torch.float32, torch.float16, torch.bfloat16)
+        and s_merged.dtype == torch.float32  # native TORCH_CHECKs fp32 lse
         and v_a.is_contiguous()
         and v_b.is_contiguous()
         and v_merged.is_contiguous()
@@ -743,6 +743,12 @@ def merge_state_v2(v_a, s_a, v_b, s_b, v_merged=None, s_merged=None):
         return v_merged, s_merged
 
     o, lse = _merge_acc(v_a.float(), s_a_n, v_b.float(), s_b_n)
+    # All-masked rows: pin 0/-inf (FA emu contract) in the torch tier too.
+    both_masked = torch.isinf(s_a_n) & torch.isinf(s_b_n)
+    o = torch.nan_to_num(o, nan=0.0)
+    lse = torch.nan_to_num(lse, nan=float("-inf"), posinf=float("-inf"))
+    # Pin LAST (some torch builds fold -inf through nan_to_num to -FLT_MAX).
+    lse = torch.where(both_masked, torch.full_like(lse, float("-inf")), lse)
     v_merged.copy_(o.to(v_merged.dtype))
     s_merged.copy_(lse)
     return v_merged, s_merged

@@ -45,3 +45,4 @@
   [history/l15-readiness-202611-log.md](history/l15-readiness-202611-log.md)；
   新记录追加到归档卷并在本节登记一行（日期 + 一句话）。
 - 2026-11-11：严格 L1.6 就绪 + 原生 HIP FP8 契约合入（#77），见归档卷对应小节。
+- 2026-11-11：fused QKV-A GEMM 最小延迟路径在 HIP 关闭（#98），见归档卷对应小节。

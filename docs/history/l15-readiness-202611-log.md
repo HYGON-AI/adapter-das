@@ -3464,3 +3464,31 @@ error **0.069929**、missed mass **0.006180**。
 精度阈值或改变默认 dtype 掩盖差异。后续应在真实模型边界上分别拆分
 BF16/FP8 累积、量化反量化和 CPU FP32 reference 的数值差异，取得可复现的
 算子级证据后再决定是否需要运行时修复。
+
+### fused QKV-A GEMM 最小延迟路径在 HIP 关闭（2026-11-11）
+
+include 顺序修正后，Kimi-K3.1 服务完成全部权重加载、Mamba/KV cache
+分配，在 decode CUDA graph 捕获阶段仍失败：
+`runtime.cuh:293`（`hipFuncSetAttribute(hipFuncAttributeMaxDynamicSharedMemorySize)`）
+返回 invalid argument，上层报 `Exception: Capture cuda graph failed`，
+调用链为 `prepare_qkv_latent` -> `linear_with_fused_a_gemm` ->
+`jit_dsv3_fused_a_gemm`。
+
+两个事实共同决定该路径在 HCU 不可执行：overlay 的
+`csrc/gemm/dsv3_fused_a_gemm.cuh` 是 TensorRT-LLM 的 Hopper 核，函数体
+整段位于 `__CUDA_ARCH__ >= 900` 内（16 处守卫），HIP 编译不发射任何
+device 代码；其 host 侧 `invokeFusedAGemm` 以
+`smem_stage_budget = 192 * 1024` 估算流水 stage，申请约 192 KB 动态
+LDS，而本机 `shared_memory_per_block` 为 65536，驱动直接拒绝。路径被
+选中是因为 `fused_a_gemm_weight_eligible` 以 `is_cuda() and
+get_device_sm() >= 90` 判定，而平台接缝在模型层如实回答 CUDA、SM 为 93。
+
+`hcu_adapter.fused_a_gemm_gate` 在 HIP 下把该资格判定 rebind 为 False，
+各层回落到自身 linear（模型对所有其他 shape 的既有路径），不重写
+dispatch、不改社区源码。替换对象在 gemm 模块及其已按名导入的
+`deepseek_v2` 中同步生效；`nemotron_h` 在 `_is_cuda` 下导入该名，未加载时
+以 post-load hook 覆盖。注册在发布前完成，注册被拒不会留下未上报的绑定。
+`test_fused_a_gemm_gate.py` 覆盖双命名空间、late importer、非 HIP 早退
+与注册失败四条路径（4 passed），L0 GREEN。模型级验收：全量 93 层在
+双机 TP16 上加载完成（单卡权重 101 GB）、服务就绪、chat completions 返回
+200；输出正确性未在此路线上确认。

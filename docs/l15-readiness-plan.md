@@ -38,16 +38,8 @@
 真实 checkpoint 的 TP 参数、逐设备预检和精度报告绑定方式见
 [真实模型 TP 配置验收](l15-model-smoke.md)。
 
-2026-11-03 用户新增 validation-host-a 调试授权：validation-host-a 与 validation-host-c 都使用
-`adapter-validation` 容器，代码目录相同。validation-host-a 经资源检查确认 GPU
-4–7 空闲、0–3 在用；首次回归选择物理 GPU 4，只暴露这一张卡。
-每次任务启动前重新检查空闲状态，结果单独记录节点和设备，不沿用
-validation-host-c 的环境结论；不清理或占用其他用户任务。
 
-2026-11-03 用户进一步授权 validation-host-b 的同名容器。经 validation-host-a 免密跳转确认
-代码目录相同，8 张 BW1100 均约 97% 空闲显存，本轮仅暴露物理 GPU 0。
-清理该新容器镜像残留的 SGLang 0.5.18 DTK 定制包与 kernel 包，
-核对 SGLang 从社区源码、`sgl_kernel` 从 adapter 导入；不更改其他节点环境。
+## 执行记录（归档卷）
 
 2026-11-04 用户再次确认 validation-host-b 可用于调试。三个节点的授权持续有效，
 仍在每次作业前检查资源；本次实查 validation-host-b 容器正常、计算利用率为 0，
@@ -3509,3 +3501,7 @@ error **0.069929**、missed mass **0.006180**。
 精度阈值或改变默认 dtype 掩盖差异。后续应在真实模型边界上分别拆分
 BF16/FP8 累积、量化反量化和 CPU FP32 reference 的数值差异，取得可复现的
 算子级证据后再决定是否需要运行时修复。
+- 2026-11-03 起的逐日授权、门禁验证与迁移记录已切分至
+  [history/l15-readiness-202611-log.md](history/l15-readiness-202611-log.md)；
+  新记录追加到归档卷并在本节登记一行（日期 + 一句话）。
+- 2026-11-11：严格 L1.6 就绪 + 原生 HIP FP8 契约合入（#77），见归档卷对应小节。

@@ -65,3 +65,20 @@ Portable coverage exercises the real callback and extension host with injected
 discovery/platform dependencies, missing/ambiguous requirements, malformed
 configuration, failure latching, and a real fork. It is separate from installed
 wheel and actual vLLM startup/model validation.
+
+The activation-time requirement policy is also checked before execution. The
+Adapter's thin official Worker subclass checks it before delegating
+`execute_model`, including pending PP sends and V2 FULL Graph replay. In v0.33,
+that replay does not enter `Platform.set_additional_forward_context`; checking
+only that platform hook misses changes after capture. The existing platform
+hook remains for forwards that do enter it. Both boundaries call the same
+process-local policy, without rereading requirements, activating or repairing
+owners. The official runner, Graph dispatch, collectives and sampling remain
+delegated upstream.
+
+This Worker boundary covers the configured Adapter Worker under `uni`/`mp`.
+Foreign workers, extension-selected workers that do not inherit it, and other
+executors do not acquire this coverage from an ACTIVE report. CPU tests execute
+the real official Worker and Graph-manager replay with a fake device graph,
+including checker/report drift, missing enrollment, and latched retries. Actual
+loaded compiled-model/Graph drift and clean shutdown still need native evidence.

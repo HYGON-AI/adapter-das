@@ -232,6 +232,10 @@ vLLM public forward hook 的 required-owner 健康策略在成功激活/报告�
 capability checker 与 latch-only runtime 查询语义保持独立。CPU public
 hook/bootstrap 仅验证 Python 边界，真实 loaded-compiled/live Graph
 经官方 runner 的健康与 drift 拒绝仍需单独取证。
+v0.33 V2 FULL Graph replay 不进入平台 `set_additional_forward_context`；
+required-owner 检查还须在已配置的 Adapter Worker `execute_model` 委托前执行，
+同时阻断 PP 等待/传输和 replay。复用同一冻结策略，不复制 runner 或 Graph，
+不在 forward 重读环境；第三方/扩展选择的 Worker 必须另核继承与覆盖范围。
 
 宿主启动失败须先锁存固定拒绝，再格式化异常；`__str__` 也可能抛
 `BaseException`、重入或 fork。扩展宿主先判原始 fatal 链，再安全生成唯一

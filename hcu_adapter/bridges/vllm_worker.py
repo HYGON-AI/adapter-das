@@ -4,12 +4,24 @@
 """Thin official Worker subclass; runner/loader bodies remain upstream-owned."""
 
 from vllm.config import set_current_vllm_config
+from vllm.v1.core.sched.output import SchedulerOutput
+from vllm.v1.outputs import AsyncModelRunnerOutput, ModelRunnerOutput
 from vllm.v1.worker.gpu_worker import Worker as OfficialWorker
 
 from hcu_adapter.bridges.vllm_model_load import dispatch_model_mutation, dispatch_post_model_load
 
 
 class Worker(OfficialWorker):
+    def execute_model(
+        self, scheduler_output: "SchedulerOutput"
+    ) -> ModelRunnerOutput | AsyncModelRunnerOutput | None:
+        from hcu_adapter.bridges.vllm import require_forward_healthy
+
+        # V2 FULL graph replay skips the platform forward-context hook. Check
+        # before delegating so owner drift also stops replay and PP transfers.
+        require_forward_healthy()
+        return super().execute_model(scheduler_output)
+
     def load_model(self, *, load_dummy_weights: bool = False) -> None:
         from hcu_adapter.bridges.vllm import require_runtime_healthy
 

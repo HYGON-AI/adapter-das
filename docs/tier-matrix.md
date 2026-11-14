@@ -1,6 +1,6 @@
 # 算子档位矩阵（自动生成，勿手改）
 
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-12）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
+> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-14）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
@@ -13,6 +13,83 @@ HIP driver guard for breakable prefill graph capture
 | prefill-bcg-driver-truth | candidate Breakable prefill uses the upstream  |
 
 路由变量：（auto）
+
+## vllm_flashmla_decode
+
+vLLM 0.33 V4.1 native packed-FP8 sparse decode without BF16 KV gather
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| native | candidate Default gfx938 D512 OCP 584-byte cac |
+| stock | candidate Explicit stock fallback: original de |
+
+路由变量：`HCU_VLLM_FLASHMLA_DECODE`
+
+## vllm_flashmla_prefill
+
+vLLM 0.33 V4.1 gathered-BF16 sparse prefill via native FlashMLA
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| native | candidate Default gfx936/gfx938 D512 BF16 dens |
+| stock | candidate Explicit stock fallback: unchanged o |
+
+路由变量：`HCU_VLLM_FLASHMLA_PREFILL`
+
+## vllm_fp4_indexer
+
+V41 LightOp FP4 indexer with zero-copy 64-record cache pages
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| lightop | candidate Default: applies only when the model |
+| stock | candidate Explicit stock fallback: existing FP |
+
+路由变量：`HCU_VLLM_FP4_INDEXER_IMPL`
+
+## vllm_fp4_packer
+
+Plugin-owned vLLM 0.33 E2M1 arithmetic lowering
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Default: gfx938 Plugin packer; CPU c |
+| stock | candidate Explicit stock fallback: audited ups |
+
+路由变量：`HCU_VLLM_FP4_PACKER_IMPL`
+
+## vllm_dsv41_channel_fp8
+
+vLLM 0.33 V4.1 channel-wise FP8 config via the public quantization API
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| native | candidate Register hcu_dsv41_channel_fp8 witho |
+| stock | candidate Do not register the distinct config; |
+
+路由变量：`HCU_VLLM_DSV41_CHANNEL_FP8_IMPL`
+
+## vllm_ct_w4a8
+
+vLLM 0.33 V4.1 compressed-tensors W4A8 config via the public quantization API
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| native | candidate Register hcu_dsv41_ct_w4a8; HCU MoE  |
+| stock | candidate Do not register the distinct config; |
+
+路由变量：`HCU_VLLM_CT_W4A8_IMPL`
+
+## vllm_pcp
+
+vLLM 0.33 V4.1 PCP attention owned by the adapter kernel module
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| native | candidate Adapter-owned V41 PCP backends/index |
+| stock | candidate Default: adapter builds no PCP class |
+
+路由变量：`HCU_VLLM_PCP_IMPL`
 
 ## vllm_dsv41_pcp_compat
 
@@ -37,14 +114,27 @@ vLLM 0.33 C4 sparse indexer through public OOT and official helpers
 
 ## vllm_mhc
 
-vLLM 0.33 mHC compatibility; official Torch math via public OOT
+vLLM 0.33 mHC via public OOT; AITER project with TileLang stage2 by default
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| torch | candidate Opt-in gfx936 official pre/post and  |
-| stock | candidate Default unchanged upstream; diagnost |
+| aiter | candidate Default gfx936/gfx938 AITER project  |
+| torch | candidate Opt-in gfx936/gfx938 official pre/po |
+| stock | candidate No longer the adapter default; expli |
 
 路由变量：`HCU_VLLM_MHC_IMPL`
+
+## vllm_scaled_mm
+
+vLLM native FP8/INT8 Linear execution through LightOp with official Triton fallback
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | validated Preserve official providers without  |
+| lightop | candidate Require LightOp wheel; native quanti |
+| auto | candidate LightOp when installed: INT8 gfx936/ |
+
+路由变量：（auto）
 
 ## vllm_fp8_linear
 

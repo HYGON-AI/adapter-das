@@ -229,6 +229,16 @@ TP init 广播 payload（行为还原：torch2.11 dlpack 只读 BufferError）
 
 路由变量：（auto）
 
+## fused_a_gemm
+
+DeepSeek-V3 fused QKV-A GEMM 最小延迟路径 (deepseek_v2 prepare_qkv_latent / q_b_proj_forward、nemotron_h latent MLP)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cuda-only-kernel-off | candidate HIP 恒不具备：kernel 仅 __CUDA_ARCH__>=900 |
+
+路由变量：（auto）
+
 ## triton_pdl
 
 triton 编译期 PDL 指令剥离（行为还原：gfx936 无 griddepcontrol）

@@ -260,6 +260,12 @@ def require_extension_healthy(capability: str) -> None:
     _RUNTIME_ACTIONS.require_extension_healthy(capability)
 
 
+def require_forward_healthy() -> None:
+    """Check built-in owners and the activation-time requested-owner policy."""
+    require_runtime_healthy()
+    _RUNTIME_ACTIONS.require_requested_extensions_healthy()
+
+
 def install() -> None:
     """Defer vLLM activation to its official plugin discovery lifecycle."""
 
@@ -276,6 +282,11 @@ def _hcu_platform_class() -> type:
         """Reuse official ROCm behavior under an HCU platform identity."""
 
         device_name = "hcu"
+
+        @classmethod
+        def set_additional_forward_context(cls, *args, **kwargs):
+            require_forward_healthy()
+            return super().set_additional_forward_context(*args, **kwargs)
 
         @classmethod
         def get_unquantized_aiter_moe_compatibility(cls):
@@ -461,6 +472,7 @@ def hcu_runtime_plugin() -> None:
             _RUNTIME_ACTIONS.record_extension_reports(exc.reports)
             raise
         _RUNTIME_ACTIONS.record_extension_reports(reports)
+        _RUNTIME_ACTIONS.record_forward_extension_policy(context)
 
     _RUNTIME_ACTIONS.run_once("vllm-runtime", initialize)
     require_runtime_healthy()

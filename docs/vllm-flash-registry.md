@@ -33,6 +33,36 @@ bindings, while incomplete or failed runtime/health state remains refused.
 All selector routes check the runtime latch. Public registry writes have no
 CAS: these checks do not promise atomicity against arbitrary concurrent writers.
 
+At the vLLM public `HcuPlatform.set_additional_forward_context` boundary,
+`require_forward_healthy()` preserves those built-in checks and calls the shared
+`require_requested_extensions_healthy()` transaction before delegating arguments
+and the result unchanged to `RocmPlatform`. After successful extension activation
+and report publication, the runtime callback calls
+`record_forward_extension_policy(context)` without running any checker. It freezes
+the requested entry-point names and capabilities, their exact ACTIVE owner union,
+original checker bindings (or explicit API1 no-checker markers), PID and report
+generation. Each selected owner is checked once, outside the host lock; unrequested
+optional owners are outside this group. Names refer to `entry_point_name`, not the
+extension's declared name. Capability ownership retains the strict unique-ACTIVE
+selection rule. An enrolled `check_health=None` owner remains compatible, while the
+separate strict `require_extension_healthy(capability)` still requires a checker.
+
+Forward requires completed current-PID runtime activation and trusted enrollment,
+even with no requested owners. Preactivation, incomplete activation and cleared
+healthy-fork enrollment refuse; the normal child runtime plugin must activate
+first. Failed/inflight fork state remains refused. `require_runtime_healthy()`
+continues to read the failure latch only, without proving activation completed.
+Requests are frozen at activation, so forward neither rereads environment policy
+nor activates or repairs owners. Every later report publication invalidates the
+forward policy, including republication of the same report objects. Missing or
+replaced bindings cannot become no-checker markers or be revived by remove/readd.
+The existing strict capability API retains its separate publication semantics.
+
+CPU lifecycle, public-hook ordering and bootstrap regressions are source evidence.
+Genuine loaded compiled-model execution and live Graph replay through the official
+runner, healthy then after controlled owner drift in disposable workers, remain
+separate open acceptance gates; Python fixtures do not establish those results.
+
 The host also checks each built-in mHC and sparse-indexer owner separately.
 Importing both `require_healthy` callables into one local name loses the first
 check; use distinct bindings. Regress both owner failures and the all-healthy

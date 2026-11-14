@@ -15,8 +15,9 @@ from hcu_adapter.bridges import vllm as host
 from hcu_adapter.bridges import vllm_mhc, vllm_sparse_indexer
 
 
+@pytest.mark.parametrize('boundary', ['runtime', 'forward'])
 @pytest.mark.parametrize('failed_owner', [None, 'mhc', 'indexer'])
-def test_runtime_health_checks_each_builtin_owner(monkeypatch, failed_owner):
+def test_runtime_health_checks_each_builtin_owner(monkeypatch, failed_owner, boundary):
     calls = []
 
     def check(name):
@@ -25,13 +26,17 @@ def test_runtime_health_checks_each_builtin_owner(monkeypatch, failed_owner):
             raise RuntimeError(name + ' owner unhealthy')
 
     monkeypatch.setattr(host, '_RUNTIME_ACTIONS',
-                        SimpleNamespace(require_runtime_healthy=lambda: check('host')))
+                        SimpleNamespace(require_runtime_healthy=lambda: check('host'),
+                                        require_requested_extensions_healthy=lambda: check('requested')))
     monkeypatch.setattr(vllm_mhc, 'require_healthy', lambda: check('mhc'))
     monkeypatch.setattr(vllm_sparse_indexer, 'require_healthy', lambda: check('indexer'))
+    guard = host.require_forward_healthy if boundary == 'forward' else host.require_runtime_healthy
     if failed_owner is None:
-        host.require_runtime_healthy()
+        guard()
     else:
         with pytest.raises(RuntimeError, match=failed_owner + ' owner unhealthy'):
-            host.require_runtime_healthy()
+            guard()
     expected = ['host', 'mhc'] if failed_owner == 'mhc' else ['host', 'mhc', 'indexer']
+    if boundary == 'forward' and failed_owner is None:
+        expected.append('requested')
     assert calls == expected

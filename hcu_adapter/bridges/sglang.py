@@ -1620,9 +1620,15 @@ def install() -> None:
                 )
 
         elif _ar_val == "1" or str(_ar_val).startswith("allowed"):
-            from hcu_adapter import sglang_allreduce
+            try:
+                from hcu_adapter import sglang_allreduce
 
-            sglang_allreduce.install()
+                sglang_allreduce.install()
+            except Exception:
+                logging.getLogger("hcu.adapter").warning(
+                    "HCU adapter: SGLang AITER all-reduce bridge not installed",
+                    exc_info=True,
+                )
 
         # gfx936-class HCUs have no fp8 matrix unit and the DTK aiter MQA-logits
         # kernels hard-gate on gfx942/950: emulate paged/ragged fp8 MQA logits in

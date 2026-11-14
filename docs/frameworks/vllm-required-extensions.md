@@ -80,5 +80,23 @@ This Worker boundary covers the configured Adapter Worker under `uni`/`mp`.
 Foreign workers, extension-selected workers that do not inherit it, and other
 executors do not acquire this coverage from an ACTIVE report. CPU tests execute
 the real official Worker and Graph-manager replay with a fake device graph,
-including checker/report drift, missing enrollment, and latched retries. Actual
-loaded compiled-model/Graph drift and clean shutdown still need native evidence.
+including checker/report drift, missing enrollment, and latched retries.
+
+Installed validation on 2026-11-14 used Core `ae5ebff332`, Adapter `1c2b33e77e`
+and Plugin `01dee6db8a` on gfx936, with normally resolved wheel dependencies.
+The affected installed CPU suites passed 175 tests. A compiled
+Qwen2-0.5B-Instruct TP1 model replayed an existing FULL graph 35 times; controlled
+same-report republication then stopped the next Worker execution, with zero
+subsequent runner or Graph entries. The observer/fault injector was external
+test material, not installed production code. This checks report-generation
+drift; it does not claim actual vendor registry or kernel fault coverage.
+
+The matched platform-only/Worker-guard HumanEval 0-31 runs produced identical
+raw and normalized sample bytes: both scored 0/32 raw and 15/32 after the fixed
+format normalization. No new failure was observed for this Worker change;
+model accuracy remains unaccepted. Both used default Graph, BF16, seed 0,
+8192 context, one sequence, 256 batched tokens, explicit 320 MiB KV and a 0.045
+memory fraction. This is not a Core-change A/B or a performance qualification.
+Both API processes returned zero, but framework worker-grace/EngineCore
+force-kill warnings remained; clean shutdown is not accepted. Project GPU CI
+and the repository's review requirements remain separate merge gates.

@@ -14,6 +14,16 @@ HIP driver guard for breakable prefill graph capture
 
 路由变量：（auto）
 
+## vllm_dsv41_pcp_compat
+
+vLLM V4.1 compatibility for the opt-in PCP extension
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| scoped | candidate FP8 SHUFFLE scoring, delayed mHC and |
+
+路由变量：（auto）
+
 ## vllm_sparse_indexer
 
 vLLM 0.33 C4 sparse indexer through public OOT and official helpers

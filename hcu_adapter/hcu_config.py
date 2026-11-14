@@ -76,6 +76,12 @@ BACKEND_CATALOG = {
             },
         },
     },
+    "vllm_dsv41_pcp_compat": {
+        "var": None,
+        "summary": "vLLM V4.1 compatibility for the opt-in PCP extension",
+        "backends": {"scoped": {"status": "candidate",
+            "note": "FP8 SHUFFLE scoring, delayed mHC and empty CT linear on the owned eager model."}},
+    },
     "vllm_sparse_indexer": {
         "var": "HCU_VLLM_SPARSE_INDEXER_IMPL",
         "summary": "vLLM 0.33 C4 sparse indexer through public OOT and official helpers",

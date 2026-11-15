@@ -1,43 +1,9 @@
 import unittest
-import json
-from pathlib import Path
 import torch
 from sgl_kernel import minimax_h3_rotary_embedding
 
 
 class H3RotaryCpuTests(unittest.TestCase):
-    def test_old_native_canonical_all_dtype_fixtures(self):
-        data = json.loads((Path(__file__).parent / "fixtures/minimax_h3_native_all_dtypes.json").read_text())
-        for case in data["cases"]:
-            dtype = getattr(torch, case["dtype"].split(".")[-1])
-            q = torch.tensor(case["q_input"], dtype=dtype, device='cpu')
-            k = torch.tensor(case["k_input"], dtype=dtype, device='cpu')
-            cache = torch.tensor(case["cache"], dtype=dtype, device='cpu')
-            minimax_h3_rotary_embedding(torch.arange(2, device='cpu'), q, k, case["head_size"], cache, True)
-            for name, actual in (("q", q), ("k", k)):
-                expected = torch.tensor(case[name+"_expected"], dtype=dtype)
-                torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
-
-    def test_old_native_vae_bf16_fixture(self):
-        fixture = json.loads((Path(__file__).parent / "fixtures/minimax_h3_vae_native_bf16.json").read_text())
-        q = torch.tensor(fixture["q"], dtype=torch.bfloat16, device='cpu')
-        k = torch.tensor(fixture["k"], dtype=torch.bfloat16, device='cpu')
-        cache = torch.tensor(fixture["cache"], dtype=torch.bfloat16, device='cpu')
-        positions = torch.arange(2, device='cpu')
-        minimax_h3_rotary_embedding(positions, q, k, 64, cache, True)
-        torch.testing.assert_close(q.cpu(), torch.tensor(fixture["q_expected"], dtype=q.dtype), rtol=0, atol=0)
-        torch.testing.assert_close(k.cpu(), torch.tensor(fixture["k_expected"], dtype=k.dtype), rtol=0, atol=0)
-
-    def test_old_native_bf16_fixture(self):
-        fixture = json.loads((Path(__file__).parent / "fixtures/minimax_h3_native_bf16.json").read_text())
-        q = torch.tensor(fixture["q"], dtype=torch.bfloat16, device="cpu")
-        k = torch.tensor(fixture["k"], dtype=torch.bfloat16, device="cpu")
-        cache = torch.tensor(fixture["cache"], dtype=torch.bfloat16, device="cpu")
-        positions = torch.arange(2, device="cpu")
-        minimax_h3_rotary_embedding(positions, q, k, 128, cache, True)
-        torch.testing.assert_close(q.cpu(), torch.tensor(fixture["q_expected"], dtype=q.dtype), rtol=0, atol=0)
-        torch.testing.assert_close(k.cpu(), torch.tensor(fixture["k_expected"], dtype=k.dtype), rtol=0, atol=0)
-
     def reference(self, value, positions, cache, head_size=128):
         half = cache.shape[1] // 2
         result = value.clone()

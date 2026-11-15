@@ -38,7 +38,7 @@ release `87f91522113f35e0f361747c644b29389e3d0d75` /
 `b45972b1e10c85a92de09a6f6e5d277161cd041e`。
 
 - 两种几何乘以 BF16/FP16/FP32，共六组完整 Q/K 与旧 native 逐位一致。
-  输入与输出共同固定，避免跨环境 RNG 生成差异。fixtures 保留独立参考切片与哈希。
+  输入与输出共同固定，避免跨环境 RNG 生成差异。独立归档保留参考输入、输出与哈希，当前 PR 不携带大体积 JSON。
 - 旧候选设备测试覆盖原位和尾部保护、Q/K 视图、变输入/位置/cache 的 Graph replay。
   首版 BF16 舍入差异与 JIT 编译错误已保留原始失败，未用同源参考替代 native 对拍。
 - 与配套 plugin 组合，T2VA、FL2VA 三种关键帧输入及 Ref2VA 五种输入组合，
@@ -50,7 +50,7 @@ release `87f91522113f35e0f361747c644b29389e3d0d75` /
   新 DTK 配套环境下输出仍有数值差异，单样本 VBench 六维已评估；本算子不修改
   blaslt 调优表，不以全局关闭 LT 作为修复。
 
-本 PR 已迁到最新 release 分支；专用实现与上述固定候选保持一致。上游并入部分
+本 PR 已迁到官方 main 来源分支；专用实现与上述固定候选保持一致。上游并入部分
 另做 CPU/结构检查，不能据此把历史 GPU 结果改写为合并后完整镜像重测。
 测试包含 vendor Torch2.11/Triton3.6；release 元数据的 Torch2.13/Triton3.7 组合
 未在本任务实测，安装时保留所选 DTK 配套依赖。catalog 仍标 candidate，不新增泛化承诺。
@@ -70,3 +70,9 @@ CPU：`python3 -m unittest discover -s tests -p 'test_minimax_h3_rotary_cpu.py' 
 
 安装接入与任务选择见 [阅读指南](reading-guide.md)，开关见 [配置](config.md)。
 当前提交的检查日志随评审说明提供；未测条件和完整质量容差保留验证边界。
+
+PR 精简（2026-11-15）：旧 native 数值 fixtures 及其读取用例移出 PR，保留独立原始证据；
+仓内保留轻量 CPU 参数/尾部/别名契约、GPU 数值与 DiT/VAE Graph 测试。
+运行时源码与 main 来源 T2VA 两步实测候选逐文件一致，两种 AdaLN 实际请求及完整音视频解码通过。
+短程结果不替代标准步数质量或性能验证。
+精简后检查：L0 与 diff 检查通过；CPU pytest 42 项通过。原生 fixture 对拍仍属于归档历史证据，未在本次重跑。

@@ -131,7 +131,9 @@ greedy 一致不能豁免分布 FAIL，不能绕过社区 CT 对整模型 FP32 �
 7. **平台语义走 is_cuda 分支**（governance §0.5）：上游平台判定统一回答
    CUDA——新模型/新功能上游先落 CUDA 分支，追新是卡商关键路径；HCU 缺的
    NVIDIA 库符号按四级路由接（lightop → aiter → triton 先行 → 响亮 stub）；
-   fp8 fnuz 等语义护栏白名单锁定不随翻。
+   fp8 fnuz 等语义护栏白名单锁定不随翻。社区已有算子的 CUDA-only 实现不支持
+   HIP 时，按 [CUDA 语义下的算子兼容](references/cuda-semantics-operators.md)
+   选择现有实现与最窄 seam，保持原接口和实际 HIP 设备身份。
 8. **新容器先灭镜像包**：每次创建/新用容器，先把镜像自带的 sglang(das
    定制线)和 sgl_kernel/sglang_kernel 从 dist-packages 删干净再干活；
    残留会与 PYTHONPATH 的官方源/ adapter 混栈（症状：奇怪的
@@ -216,6 +218,7 @@ optional 误判为 fatal。保留 callback 原有捕获边界，不新增恢复�
 | 你要做的事 | 先读 |
 |---|---|
 | 新增/修改一个算子垫片或影子库 | `references/shadow-matrix.md` |
+| CUDA 语义下缺符号、CuTeDSL 不支持 HIP、算子资源超限 | [CUDA 语义下的算子兼容](references/cuda-semantics-operators.md)（先分类，再选实现和 dispatch/ABI seam） |
 | 加一座桥（改官方代码行为：换绑/断言放宽/判定词 wrap）或新能力选位 | `docs/governance.md`（双仓判别 + 裁决链 + registry 登记） |
 | 写或改任何 kernel / 测试 | `references/test-suite.md` |
 | 加一个快关（kill switch） | `references/kill-switches.md` |

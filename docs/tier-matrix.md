@@ -1,6 +1,6 @@
 # 算子档位矩阵（自动生成，勿手改）
 
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-13）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
+> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-14）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
@@ -161,6 +161,38 @@ DSA paged MQA logits
 | deepgemm | broken deepgemm wheel direct call via mqa_v |
 
 路由变量：`1`/`triton`/`vendor`
+
+## diffusion_residual_norm_scale_shift
+
+Diffusion residual + norm + scale/shift; HCU CUDA dispatch
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate HIP contiguous fp16/bf16/fp32 layer/ |
+| emu | candidate Torch staged residual, norm and modu |
+
+路由变量：（auto）
+
+## diffusion_norm_scale_shift
+
+Diffusion norm + scale/shift; HCU CUDA-dispatch kernel
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate gfx936 BF16 affine-free LN, D4096/51 |
+| emu | candidate Torch layer/RMS norm and general bro |
+
+路由变量：（auto）
+
+## flashinfer_rope
+
+FlashInfer cached Q/K RoPE ABI; sgl_kernel in-place Triton
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate FP32 [cos/sin] cache, GPT-J/NeoX, po |
+
+路由变量：（auto）
 
 ## rotary_embedding
 

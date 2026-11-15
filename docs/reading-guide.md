@@ -16,6 +16,7 @@
 |---|---|
 | **第一次接触本仓** | 本文 → README → docs/architecture.md（§1-§3 机制图）→ docs/governance.md |
 | 提 MR / 改代码 | docs/governance.md（§1 分工授权 / §5.0 squash 合入 / §7 协作红线与共建边界）→ docs/ci.md |
+| CUDA 语义下缺算子或 CUDA-only 实现不支持 HIP | [算子兼容流程](../skills/hcu-adapter-dev/references/cuda-semantics-operators.md) → shadow-matrix / test-suite；归属依据 governance §0 |
 | 加/改一个算子 | skills/…/SKILL.md → references/shadow-matrix.md → references/test-suite.md（命名与档位归档见 governance §3b，改完跑 gen_tier_matrix） |
 | 加一座桥 / 新功能选位 | docs/governance.md（§0 双仓判别 → §3 裁决链 → §4 登记/dump → §7 接入时序/共建） |
 | 向算子组/供应商提需求 | docs/operator-requests.md（锚定 sglang 契约面，机器数据先行） |
@@ -31,6 +32,8 @@
 | 设计性能 A/B、路由统计或代码退役 | docs/test-route-governance.md → docs/test-route-implementation-plan.md（MR-00～MR-12）→ docs/autotune.md → docs/governance.md |
 | 按测试治理路线开工 / 查依赖和验收 | docs/test-route-implementation-plan.md → 对应 MR 段的依赖、DoD 与验收命令 |
 | 判断一项工作归哪仓 / 开发插件新能力 | docs/governance.md §0 判别 → 本文「姊妹仓地图」→ sglang-plugin-das docs/ |
+
+SGLang diffusion 的 Torch custom-op 适配实例见 [diffusion norm 接入](sglang-diffusion-norm.md)。
 
 ## 算子目录入口
 

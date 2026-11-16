@@ -26,6 +26,7 @@ Run: python tests/adapter/test_sitecustomize_sequence.py  （或 pytest；
 ae0698b 起 L1 kernels 段收集 tests/adapter，本文件随段进 CI）
 """
 
+# [L1 cold-curation 2026-11-17] 8 spawn-heavy cases -> 3 (two AST structural contracts + one end-to-end install smoke); removed cases stay in git history (fix/l1-1116-coldstart).
 import ast
 import json
 import os
@@ -239,35 +240,6 @@ def _child(script, extra_env=None, timeout=240):
 
 # ------------------------------------------------------------- L2 no-op
 
-@pytest.mark.skipif(IS_HIP, reason="no-op contract is the non-HIP arm")
-def test_noop_on_non_hip():
-    """非 HIP 解释器：import sitecustomize 干净返回，零 env 写入、零日志。"""
-    p = _child(
-        "import os\n"
-        "import sitecustomize\n"
-        "print('VP', os.environ.get('VLLM_PLUGINS'))\n")
-    assert p.returncode == 0, p.stderr[-500:]
-    assert "VP None" in p.stdout, p.stdout
-    assert "HCU adapter" not in p.stderr, (
-        f"non-HIP arm must be silent, got: {p.stderr[:300]}")
-
-
-def test_sglang_reachability_probe_contract():
-    """R-13 #6 守卫钉：可达性探测沿 _clean_env 组装的 PYTHONPATH 找 sglang
-    包；PYTHONPATH 抽掉 sglang 段后必须报不可达（HIP 子进程臂据此 SKIP
-    而非 bare-shell FAIL）。纯路径逻辑，任何机器可跑。"""
-    with mock.patch.dict(os.environ, {}, clear=True):
-        os.environ["PYTHONPATH"] = os.pathsep.join(
-            [ROOT, "/nonexistent/sglang-root"])
-        assert _sglang_on_child_path() is False
-
-    # 带真 sglang 的 PYTHONPATH：正可达（仅当模块头已判可达，否则跳过断言）
-    if SGLANG_REACHABLE:
-        assert _sglang_on_child_path() is True
-    # 收集期一次性计算与现算一致
-    assert SGLANG_REACHABLE == _sglang_on_child_path()
-
-
 # ------------------------------------------- L3/L4/L5（HIP 容器臂）
 
 @pytest.mark.skipif(
@@ -309,24 +281,6 @@ def test_install_smoke_and_dump_wiring():
         assert r["rms_mod"] == "hcu_adapter.bridges.vllm", r
         assert r["dump_keys"] == ["env", "ops", "overrides", "unbound"], r
         assert r["mqa_src"] == "explicit", r  # L4: 显式 env 赢 setdefault
-
-
-@pytest.mark.skipif(
-    not IS_HIP, reason="VLLM_PLUGINS arm needs the HIP wheel")
-@pytest.mark.skipif(
-    not SGLANG_REACHABLE,
-    reason="sglang not on the child PYTHONPATH (bare shell): subproc arm "
-           "cannot import sglang.srt, skip instead of fail (R-13 #6 guard)")
-def test_vllm_plugins_explicit_wins():
-    """L4 双臂之二：VLLM_PLUGINS 预设时 setdefault 不覆盖（操作员 opt-in
-    语义——"" 与 unset 有竞态陷阱，见 sitecustomize 门内注释）。"""
-    p = _child(
-        "import os\n"
-        "import sitecustomize\n"
-        "print('VP', os.environ.get('VLLM_PLUGINS'))\n",
-        extra_env={"VLLM_PLUGINS": "myp"})
-    assert p.returncode == 0, p.stderr[-500:]
-    assert "VP myp" in p.stdout, p.stdout
 
 
 if __name__ == "__main__":

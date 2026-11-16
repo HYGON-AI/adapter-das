@@ -4,6 +4,16 @@
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
+## mamba_state_scatter
+
+SGLang Mamba verify-state copy launch geometry
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate gfx936 FP32 entries >=1024: flatten  |
+
+路由变量：（auto）
+
 ## qsa_prefill
 
 QSA sparse prefill launch geometry on HCU

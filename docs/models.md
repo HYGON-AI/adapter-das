@@ -326,3 +326,7 @@ adapter环境重跑通过；不把前次collection error记为skip或通过。L0
 完整评测输出：`/home/scripts/acc_test/nmz_DeepSeek-V4.1-Flash-Channel-FP8/20261112_125007/humaneval`。
 容器运行证据：`/tmp/hcu-humaneval-clamp-fixed.kojfa_ba`；诊断对照：
 `/tmp/hcu-humaneval-nmz18-resume.vwcy4A`。
+
+## HY3 INT8：原生分发入口
+
+SGLang 兼容包装保留原生量化分发入口，配套 Plugin 可显式传递 INT8 类型，既有 BF16/FP8 参数语义不变。运行修改位于 `hcu_adapter/bridges/sglang.py`，回归复用 `tests/adapter/test_deepep_dispatch_scale.py`。这只处理分发接线，不修改通信或矩阵乘法内核；同步主仓后的组合验证另记。

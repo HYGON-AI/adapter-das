@@ -509,6 +509,15 @@ model mutation 契约。原生 kernel 段会初始化 HIP，不能与这些要�
 文件只是转移执行段，任一段失败仍使整个 L1 失败，原断言不变。
 `VLLM_TARGET_ROOT` 的显式配置优先；未配置时使用当前解释器安装的 vLLM
 包根目录，保留真实 Worker/runner 的源码与签名检查。
+CPU 段同时声明 `AR_ADAPTER_ROOT`，默认对应 CI 的源码接入阶段；独立 wheel
+验证可显式指定安装根目录，原来源断言仍拒绝错误的组合。
+
+AR 的 CPU 哈希测试只替换 Inductor 的硬件描述采样，继续执行真实普通/AOT
+collector 与其余编译因子，保留 mega artifact 开关和禁止 GPU 查询的守卫。
+metadata discovery 夹具另建真实 venv，保留 Adapter/Core/vendor 依赖并移除
+其他扩展发行包的可见文件；通过原始 entry-point discovery 精确断言三个探针
+及唯一 Adapter 入口，不替换 metadata API。交付镜像中已装的独立 Plugin 不应
+参与这个刻意隔离的生命周期探针；Plugin 组合仍由独立测试和 E2E 验证。
 
 model mutation 的 CPU 夹具提供真实 `nn.Module`、transfer engine 的模型引用
 和 MRV2 的 `speculator=None` 状态；继续执行官方方法与模型更新预检，不复制

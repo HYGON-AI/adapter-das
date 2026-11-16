@@ -150,7 +150,8 @@ def make_runner(monkeypatch, cfg, version, events, fail_at=None):
     """Execute the complete real runner load_model with CPU provider doubles."""
     module = v1 if version == 1 else v2
     runner = object.__new__(module.GPUModelRunner)
-    model = NS()  # No torch model or checkpoint is created/loaded.
+    from torch.nn import Module
+    model = Module()  # No checkpoint or device tensors; real update traversal.
     def load_target(**kwargs):
         assert kwargs["vllm_config"] is cfg
         events.append("target-pack")

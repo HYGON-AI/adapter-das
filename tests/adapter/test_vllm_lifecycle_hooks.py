@@ -74,6 +74,7 @@ def test_public_pair_real_load_then_real_mutation_entry(monkeypatch, version, op
     runner.reset_encoder_cache = lambda: events.append("reset-encoder")
     runner.reset_mm_cache = lambda: events.append("reset-mm")
     worker.weight_transfer_engine = NS(
+        model=runner.model,
         supports_draft_weight_update=True,
         start_weight_update=lambda: events.append("CPU-transfer-start"),
         reset_weight_update_target=lambda: events.append("CPU-transfer-reset"),

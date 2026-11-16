@@ -198,6 +198,7 @@ print(Path(importlib.util.find_spec("vllm").origin).resolve().parent.parent)
 run_seg cpu_vllm 600 env HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES=-1 \
     ROCR_VISIBLE_DEVICES=-1 CUDA_VISIBLE_DEVICES=-1 \
     VLLM_TARGET_ROOT="$TARGET_ROOT" \
+    AR_ADAPTER_ROOT="${AR_ADAPTER_ROOT:-$ROOT}" \
     python3 -m pytest "${CPU_VLLM_CONTRACTS[@]}" -vv --no-header \
     -o faulthandler_timeout=580 --tb=short
 # Transfer ownership only to a blocking matrix with an available upstream tree.

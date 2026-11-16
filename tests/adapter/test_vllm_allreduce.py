@@ -309,6 +309,12 @@ def isolated(monkeypatch):
     monkeypatch.setattr(vllm_fp8, "install", lambda: False)
     for name in ("_lazy_init", "init", "current_device", "get_device_properties"):
         monkeypatch.setattr(torch.cuda, name, lambda *a, **k: pytest.fail("CPU contract queried GPU"))
+    # The real AOT collector also hashes hardware when mega artifacts are ON.
+    # Double only this independent hardware descriptor; retain both actual
+    # hash collectors, their environment factors and the no-GPU assertions.
+    from torch._inductor.codecache import CacheBase
+    monkeypatch.setattr(CacheBase, "get_system", staticmethod(
+        lambda: {"device": "cpu-contract"}))
     yield
     envs.disable_envs_cache()
     # Undo test-local replacements before restoring the original class bindings;

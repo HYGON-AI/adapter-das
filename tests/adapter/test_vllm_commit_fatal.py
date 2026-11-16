@@ -50,6 +50,18 @@ def startup(monkeypatch):
     monkeypatch.setattr(bridge, "_require_vllm_hip_runtime_abi", lambda: None)
     from hcu_adapter.bridges import vllm_fp8
     monkeypatch.setattr(vllm_fp8, "install", lambda: None)
+    # Isolate optional-extension failure from independent built-in providers.
+    # Their actual health/publication contracts run in their own CPU suites.
+    import importlib
+    for name, action in (("vllm_allreduce", "prepare_runtime"),
+                         ("vllm_scaled_mm", "install"), ("vllm_mhc", "install"),
+                         ("vllm_sparse_indexer", "install"),
+                         ("vllm_flashmla", "install"),
+                         ("vllm_flashmla_decode", "install"), ("vllm_pcp", "install")):
+        owner = importlib.import_module("hcu_adapter.bridges." + name)
+        monkeypatch.setattr(owner, action, lambda: None)
+        if hasattr(owner, "require_healthy"):
+            monkeypatch.setattr(owner, "require_healthy", lambda: None)
     monkeypatch.setattr(bridge, "_installed_adapter_version", lambda: "cpu")
     points = []
     monkeypatch.setattr(ext, "_entry_points", lambda: points)

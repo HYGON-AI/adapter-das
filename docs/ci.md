@@ -515,6 +515,11 @@ CPU 段同时声明 `AR_ADAPTER_ROOT`，默认对应 CI 的源码接入阶段；
 各自解析后的路径；不能要求安装包仍位于 checkout 根内，也不能仅用包根前缀
 接受另一个同名模块。源码与安装态的 Core 字节检查保持独立且必跑。
 
+新 built-in owner 并入主线时，同步更新 AR/extension-fatal 的 CPU seam
+夹具，隔离不属于该契约的 provider 安装与 owner health；不能让新增默认
+provider 初始化设备、抢先失败而掩盖原测试。AR、宿主失败锁存和官方哈希
+collector 保持真实，新 owner 的独立 admission/publication 测试也须同跑。
+
 AR 的 CPU 哈希测试只替换 Inductor 的硬件描述采样，继续执行真实普通/AOT
 collector 与其余编译因子，保留 mega artifact 开关和禁止 GPU 查询的守卫。
 metadata discovery 夹具另建真实 venv，保留 Adapter/Core/vendor 依赖并移除

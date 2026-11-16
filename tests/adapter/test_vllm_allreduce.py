@@ -311,6 +311,16 @@ def isolated(monkeypatch):
     from hcu_adapter.bridges import vllm_fp8
     monkeypatch.setattr(bridge, "_require_vllm_hip_runtime_abi", lambda: None)
     monkeypatch.setattr(vllm_fp8, "install", lambda: False)
+    # New main owners have independent CPU admission/publication suites. Keep
+    # their device providers and health state outside this AR-only fixture;
+    # the real AR preparation, host latch and both hash collectors stay live.
+    import importlib
+    for name in ("vllm_scaled_mm", "vllm_mhc", "vllm_sparse_indexer",
+                 "vllm_flashmla", "vllm_flashmla_decode", "vllm_pcp"):
+        owner = importlib.import_module("hcu_adapter.bridges." + name)
+        monkeypatch.setattr(owner, "install", lambda: False)
+        if hasattr(owner, "require_healthy"):
+            monkeypatch.setattr(owner, "require_healthy", lambda: None)
     for name in ("_lazy_init", "init", "current_device", "get_device_properties"):
         monkeypatch.setattr(torch.cuda, name, lambda *a, **k: pytest.fail("CPU contract queried GPU"))
     # The real AOT collector also hashes hardware when mega artifacts are ON.

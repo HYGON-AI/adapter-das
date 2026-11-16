@@ -1,6 +1,6 @@
 # 算子档位矩阵（自动生成，勿手改）
 
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-12）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
+> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-16）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
@@ -21,6 +21,47 @@ vLLM V4.1 compatibility for the opt-in PCP extension
 | 档位 | 状态 / 备注 |
 |---|---|
 | scoped | candidate FP8 SHUFFLE scoring, delayed mHC and |
+
+路由变量：（auto）
+
+## qsa_prefill
+
+QSA sparse prefill launch geometry on HCU
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate gfx936 uses 64/1 through 64 rows and |
+
+路由变量：（auto）
+
+## qsa_mqa
+
+QSA indexer MQA on HCU
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| torch | candidate Official Torch reference for unsuppo |
+| boltops | candidate gfx936 BF16 QSA indexer with four 12 |
+
+路由变量：（auto）
+
+## qsa_scatter
+
+QSA state and compressed-key row stores on HCU
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate No host sync; duplicate destination  |
+
+路由变量：（auto）
+
+## mapped_host_view
+
+DTK mapped CPU allocation exposed as a device tensor
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| dtk | candidate INT8/BF16/FP8 live-ID Graph replay p |
 
 路由变量：（auto）
 
@@ -83,8 +124,9 @@ gated activation out = silu(x[:,:d]) * x[:,d:]
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| triton | production default (auto); fp32 accumulate |
-| lightop | validated lightop.fuse_silu_and_mul (input, ou |
+| triton | production auto ladder fallback (lightop > aite |
+| aiter | candidate real wheel aiter.silu_and_mul(out, i |
+| lightop | validated auto first when lightop imports; lig |
 | torch | production reference path, eager debug |
 
 路由变量：`HCU_SILU_MUL_IMPL`
@@ -95,9 +137,9 @@ RMSNorm (plain); the fused-add family is its own op below
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| triton | production default |
-| aiter | candidate aiter.rmsnorm_forward(x,w,eps,traini |
-| lightop | candidate Public BF16 plain RMSNorm; other dty |
+| triton | production auto ladder fallback (lightop > aite |
+| aiter | candidate auto second; aiter.rmsnorm_forward(x |
+| lightop | candidate auto first when lightop imports; Pub |
 | torch | production reference path |
 
 路由变量：`HCU_RMS_NORM_IMPL`
@@ -108,8 +150,8 @@ residual += input; input = rmsnorm(residual)*w, in-place
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| triton | production default (auto) |
-| lightop | validated lightop.fused_add_rms_norm(x, residu |
+| triton | production auto ladder fallback (lightop > trit |
+| lightop | validated auto first (2026-11 tier order) for  |
 | torch | production reference path |
 
 路由变量：`HCU_FUSED_ADD_RMS_IMPL`
@@ -155,13 +197,24 @@ DSA paged MQA logits
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| triton | production homegrown triton kernel (mqa_logits_ |
+| triton | production auto ladder landing tier (lightop is |
 | emu | production torch emulation — correct opt-out (H |
 | aiter | planned probed absent 2026-10-18: the on-box |
-| lightop | planned lightop.attention.paged_mqa_logits;  |
+| lightop | planned lightop.gemmopt.paged_mqa_logits wir |
 | deepgemm | broken deepgemm wheel direct call via mqa_v |
 
 路由变量：`1`/`triton`/`vendor`
+
+## minimax_h3_rotary_embedding
+
+MiniMax-H3 NeoX partial RoPE: DiT128/96 and VAE64/48; native preferred by plugin
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate BF16/FP16/FP32 old-native canonical  |
+| torch | candidate CPU contract and diagnostic fallback |
+
+路由变量：（auto）
 
 ## rotary_embedding
 
@@ -184,6 +237,52 @@ topk_softmax / topk_sigmoid / moe_fused_gate (contract = torch baseline)
 | triton | production no switch needed |
 | aiter | planned moe_fused_gate_sqrtsoftplus_v41_hcu  |
 | lightop | planned fast_topk_transform_* family |
+
+路由变量：（auto）
+
+## merge_state_v2
+
+LSE-exact merge of two partial attention states (MTP verify / cascade)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | production fp32 FMA, ±inf lse -> -inf; all-mask |
+| cpp | production setup_hip.py wheel (merge_attn_state |
+| emu | production torch fallback (CPU / no-triton); op |
+
+路由变量：（auto）
+
+## concat_mla
+
+MLA concat copies: concat_mla_k (in-place (T,128,192)), concat_mla_absorb_q (allocating (...,576))
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | production row-copy kernel; bf16/3D/unit-stride |
+| cpp | production setup_hip.py wheel: concat_mla_absor |
+| emu | production strided torch copies / torch.cat fal |
+
+路由变量：（auto）
+
+## copy_to_gpu_no_ce
+
+small pinned int32 H2D, N in {32,64,72} (upstream copy.cu)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | production setup_hip.py wheel: the REAL no-CE p |
+| emu | production output.copy_(input); the upstream no |
+
+路由变量：（auto）
+
+## per_token_group_quant_8bit
+
+sgl_per_token_group_quant_8bit bridge, v1 + v2 variants (C-class gap: the python seam was missing entirely — callers hit AttributeError)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | production setup_hip.py wheel: plain 16-lane-pe |
+| emu | production torch ports of both upstream kernels |
 
 路由变量：（auto）
 
@@ -288,8 +387,8 @@ GDN/gated-delta-rule 线性注意力（sglang fla 面）
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| triton | production 上游 fla triton 核（auto 默认；gfx93x wave6 |
-| aiter | validated DTK aiter CK/triton 核路由（fwd_h 状态递推 b |
+| triton | production 上游 fla triton 核（auto 末档 / aiter 失败回退 |
+| aiter | validated auto 首选（2026-11 档位：aiter > triton）：D |
 
 路由变量：`HCU_LINEAR_ATTN_GDN`
 
@@ -373,7 +472,7 @@ per-token fp8/int8 quant (dynamic)
 | 档位 | 状态 / 备注 |
 |---|---|
 | aiter | candidate R-09③ 2026-10-19 落位（quant_aiter 桥，au |
-| lightop | planned per-token quant family |
+| lightop | planned per-token quant family wired through |
 | torch | production upstream natives（scaled_fp8_quant to |
 
 路由变量：`HCU_QUANT_IMPL`

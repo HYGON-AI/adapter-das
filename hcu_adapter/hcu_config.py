@@ -15,11 +15,14 @@ Schema (hcu_adapter.yaml, first hit wins in discovery order):
 
     version: 1
     ops:
-      silu_and_mul: triton      # triton | lightop | torch
-      rms_norm: aiter           # triton | aiter | lightop | torch
-      fused_add_rms_norm: triton  # triton | lightop | torch
+      # unset/auto = lightop > aiter > jit > triton (silu and the norm
+      # family run lightop > aiter > triton; the sglang activation JIT is
+      # excluded, 33-49 s cold ninja build)
+      silu_and_mul: lightop     # lightop | aiter | triton | torch
+      rms_norm: lightop         # lightop | aiter | triton | torch
+      fused_add_rms_norm: lightop  # lightop | triton | torch
       allreduce: aiter          # aiter | nccl (custom AR retired 2026-10-19)
-      paged_mqa_logits: triton   # triton (DEFAULT, R-13 #4) | emu | vendor
+      paged_mqa_logits: triton   # triton (auto landing, R-13 #4) | emu | vendor
 
 Discovery: $HCU_CONFIG > ./hcu_adapter.{yaml,yml,json} >
 <adapter root>/hcu_adapter.{yaml,yml,json}. No file -> pure legacy
@@ -79,6 +82,27 @@ BACKEND_CATALOG = {
         "backends": {"scoped": {"status": "candidate",
             "note": "FP8 SHUFFLE scoring, delayed mHC and empty CT linear on the owned eager model."}},
     },
+    "qsa_prefill": {
+        "var": None, "summary": "QSA sparse prefill launch geometry on HCU",
+        "backends": {"triton": {"status": "candidate", "note": "gfx936 uses 64/1 through 64 rows and 32/2 above to fit the 64 KiB LDS budget; conservative for all head dimensions."}},
+    },
+    "qsa_mqa": {
+        "var": None, "summary": "QSA indexer MQA on HCU",
+        "backends": {
+            "boltops": {"status": "candidate", "note": "gfx936 BF16 QSA indexer with four 128-wide query heads; ragged prefill and paged decode. HCU_DISABLE_OPS=qsa_mqa selects the Torch reference."},
+            "torch": {"status": "candidate", "note": "Official Torch reference for unsupported geometry or disabled BoltOPs; in-tree HIP TileLang remains disabled."},
+        },
+    },
+    "qsa_scatter": {
+        "var": None,
+        "summary": "QSA state and compressed-key row stores on HCU",
+        "backends": {"triton": {"status": "candidate", "note": "No host sync; duplicate destination zero is a reserved dump slot"}},
+    },
+    "mapped_host_view": {
+        "var": None,
+        "summary": "DTK mapped CPU allocation exposed as a device tensor",
+        "backends": {"dtk": {"status": "candidate", "note": "INT8/BF16/FP8 live-ID Graph replay passed on gfx936; caller retains host allocation"}},
+    },
     "vllm_sparse_indexer": {
         "var": "HCU_VLLM_SPARSE_INDEXER_IMPL",
         "summary": "vLLM 0.33 C4 sparse indexer through public OOT and official helpers",
@@ -124,10 +148,18 @@ BACKEND_CATALOG = {
         "summary": "gated activation out = silu(x[:,:d]) * x[:,d:]",
         "backends": {
             "triton": {"status": "production",
-                       "note": "default (auto); fp32 accumulate"},
+                       "note": "auto ladder fallback (lightop > aiter > "
+                               "triton); fp32 accumulate. JIT is excluded "
+                               "from this op's ladder: 33-49 s cold ninja "
+                               "build (PR #96)"},
             "lightop": {"status": "validated",
-                        "note": "lightop.fuse_silu_and_mul "
+                        "note": "auto first when lightop imports; "
+                                "lightop.fuse_silu_and_mul "
                                 "(input, output, mask_m, expect_m)"},
+            "aiter": {"status": "candidate",
+                      "note": "real wheel aiter.silu_and_mul(out, input, "
+                              "limit=0.0) only — the adapter's aiter stub "
+                              "delegates back here and is skipped"},
             "torch": {"status": "production",
                       "note": "reference path, eager debug"},
         },
@@ -136,12 +168,18 @@ BACKEND_CATALOG = {
         "var": "HCU_RMS_NORM_IMPL",
         "summary": "RMSNorm (plain); the fused-add family is its own op below",
         "backends": {
-            "triton": {"status": "production", "note": "default"},
+            "triton": {"status": "production",
+                       "note": "auto ladder fallback (lightop > aiter > "
+                               "triton); also the dtype fallback when "
+                               "lightop/aiter cannot serve the call"},
             "aiter": {"status": "candidate",
-                      "note": "aiter.rmsnorm_forward(x,w,eps,training) "
-                              "-> (out, ..); plain rmsnorm only"},
+                      "note": "auto second; aiter.rmsnorm_forward(x,w,eps,"
+                              "training) -> (out, ..); plain bf16/fp16 "
+                              "rmsnorm only"},
             "lightop": {"status": "candidate",
-                        "note": "Public BF16 plain RMSNorm; other dtypes/Gemma use Triton"},
+                        "note": "auto first when lightop imports; Public "
+                                "BF16 plain RMSNorm; other dtypes/Gemma use "
+                                "the lower tiers"},
             "torch": {"status": "production",
                       "note": "reference path"},
         },
@@ -150,15 +188,20 @@ BACKEND_CATALOG = {
         "var": "HCU_FUSED_ADD_RMS_IMPL",
         "summary": "residual += input; input = rmsnorm(residual)*w, in-place",
         "backends": {
-            "triton": {"status": "production", "note": "default (auto)"},
+            "triton": {"status": "production",
+                       "note": "auto ladder fallback (lightop > triton; "
+                               "aiter exports no fused-add face); also the "
+                               "dtype fallback"},
             "lightop": {"status": "validated",
-                        "note": "lightop.fused_add_rms_norm(x, residual, w, "
-                                "eps, limit=-1) in-place; gemma variant "
-                                "gemma_fused_add_rmsnorm; parity + cuda-graph "
-                                "replay passed 2026-11-03 (dtk2610/BW200, "
-                                "py3.10 wheel has both fns too); perf 0.76x "
-                                "vs triton @4096x7168 bf16 — triton stays "
-                                "default; one-strike fallback on a raise"},
+                        "note": "auto first (2026-11 tier order) for "
+                                "bf16/fp16; lightop.fused_add_rms_norm(x, "
+                                "residual, w, eps, limit=-1) in-place; gemma "
+                                "variant gemma_fused_add_rmsnorm; parity + "
+                                "cuda-graph replay passed 2026-11-03 "
+                                "(dtk2610/BW200, py3.10 wheel has both fns "
+                                "too); perf 0.76x vs triton @4096x7168 bf16 "
+                                "(standby: HCU_FUSED_ADD_RMS_IMPL=triton); "
+                                "one-strike fallback on a raise"},
             "torch": {"status": "production",
                       "note": "reference path"},
         },
@@ -257,10 +300,14 @@ BACKEND_CATALOG = {
                     "note": "torch emulation — correct opt-out "
                             "(HCU_MQA_LOGITS_IMPL=vec; pre-R-13#4 default)"},
             "triton": {"status": "production",
-                       "note": "homegrown triton kernel (mqa_logits_triton.py, "
-                               "R-02 2026-10-18) — DEFAULT since R-13 #4 "
-                               "promotion 2026-10-18 (HCU_MQA_LOGITS_IMPL, "
-                               "was emu-vec). Reads the production "
+                       "note": "auto ladder landing tier (lightop is "
+                               "explicit-only above it, aiter planned): "
+                               "homegrown triton kernel "
+                               "(mqa_logits_triton.py, R-02 2026-10-18) — "
+                               "effective default since R-13 #4 promotion "
+                               "2026-10-18 (HCU_MQA_LOGITS_IMPL=auto "
+                               "delegates here; was emu-vec). Reads the "
+                               "production "
                                "pool layout (writer census: GLM-5.3 "
                                "IndexerKPool/kpool=4 writes via the kpool "
                                "family + SetKAndS under the forced "
@@ -294,8 +341,12 @@ BACKEND_CATALOG = {
                               "wheel ships no paged_mqa_logits API -- "
                               "revisit when the wheel grows one"},
             "lightop": {"status": "planned",
-                        "note": "lightop.attention.paged_mqa_logits; "
-                                "gate pending"},
+                        "note": "lightop.gemmopt.paged_mqa_logits wired "
+                                "through HCU_MQA_LOGITS_IMPL=lightop only "
+                                "(explicit A/B); auto skips it until the "
+                                "gate lands — an unvalidated kernel that "
+                                "does not raise would silently corrupt the "
+                                "auto ladder"},
             "deepgemm": {"status": "broken",
                          "note": "deepgemm wheel direct call via "
                                  "mqa_vendor.py bridge. Layout contract "
@@ -322,6 +373,14 @@ BACKEND_CATALOG = {
                                  "tests/kernels/test_mqa_vendor_gfx938.py"},
         },
     },
+    "minimax_h3_rotary_embedding": {
+        "var": None,
+        "summary": "MiniMax-H3 NeoX partial RoPE: DiT128/96 and VAE64/48; native preferred by plugin",
+        "backends": {
+            "triton": {"status": "candidate", "note": "BF16/FP16/FP32 old-native canonical parity passed; changed-input Graph passed; serving pending"},
+            "torch": {"status": "candidate", "note": "CPU contract and diagnostic fallback; no serving claim"},
+        },
+    },
     "rotary_embedding": {
         "var": None,
         "summary": "RoPE NeoX triton in place; GPT-J interleave = torch",
@@ -344,6 +403,90 @@ BACKEND_CATALOG = {
                               "biased_grouped_topk"},
             "lightop": {"status": "planned",
                         "note": "fast_topk_transform_* family"},
+        },
+    },
+    "merge_state_v2": {
+        "var": None,
+        "summary": "LSE-exact merge of two partial attention states "
+                   "(MTP verify / cascade)",
+        "backends": {
+            "triton": {"status": "production",
+                       "note": "fp32 FMA, ±inf lse -> -inf; all-masked "
+                               "rows -> 0/-inf (FA emu contract; upstream "
+                               "CUDA wheel emits NaN there — anchored "
+                               "divergence, see "
+                               "tests/kernels/test_aot_contract_b_class.py)"},
+            "cpp": {"status": "production",
+                    "note": "setup_hip.py wheel (merge_attn_states.cu port "
+                            "from sglang-das); all-masked rows arrive NaN "
+                            "from the kernel and are nan_to_num'd to the "
+                            "pinned 0/-inf in the python wrapper"},
+            "emu": {"status": "production",
+                    "note": "torch fallback (CPU / no-triton); optional "
+                            "v_merged/s_merged out params per upstream "
+                            "python wrapper"},
+        },
+    },
+    "concat_mla": {
+        "var": None,
+        "summary": "MLA concat copies: concat_mla_k (in-place "
+                   "(T,128,192)), concat_mla_absorb_q (allocating "
+                   "(...,576))",
+        "backends": {
+            "triton": {"status": "production",
+                       "note": "row-copy kernel; bf16/3D/unit-stride/16B "
+                               "contract checks mirror concat_mla.cu"},
+            "cpp": {"status": "production",
+                    "note": "setup_hip.py wheel: concat_mla_absorb_q_hcu.cu "
+                            "(as-is from sglang-das) + concat_mla_k_hcu.cu "
+                            "(plain uint4 rewrite — the CUDA original rides "
+                            "NV PTX no-allocate intrinsics)"},
+            "emu": {"status": "production",
+                    "note": "strided torch copies / torch.cat fallback"},
+        },
+    },
+    "copy_to_gpu_no_ce": {
+        "var": None,
+        "summary": "small pinned int32 H2D, N in {32,64,72} "
+                   "(upstream copy.cu)",
+        "backends": {
+            "emu": {"status": "production",
+                    "note": "output.copy_(input); the upstream no-CE trick "
+                            "(values in kernel launch params) is "
+                            "CUDA-runtime-only — numerically identical, "
+                            "mechanism differs (no triton equivalent)"},
+            "cpp": {"status": "production",
+                    "note": "setup_hip.py wheel: the REAL no-CE path "
+                            "(copy.cu InputArray — values ride the kernel "
+                            "launch parameters, which the HIP runtime "
+                            "supports too)"},
+        },
+    },
+    "per_token_group_quant_8bit": {
+        "var": None,
+        "summary": "sgl_per_token_group_quant_8bit bridge, v1 + v2 "
+                   "variants (C-class gap: the python seam was missing "
+                   "entirely — callers hit AttributeError)",
+        "backends": {
+            "emu": {"status": "production",
+                    "note": "torch ports of both upstream kernels; v1: "
+                            "eps-floor amax, x/y_s division, int8 cast "
+                            "TRUNCATES; v2: eps==1e-10 enforced, min/max "
+                            "must match dst dtype, two scale directions "
+                            "(stored dequant scale_inv; the quant "
+                            "multiplier is its reciprocal), ue8m0 via "
+                            "DeepEP fast_log2_ceil bits, fuse_silu_and_mul "
+                            "in input dtype, DeepEP masked_m layout read "
+                            "ON DEVICE (graph-capturable). "
+                            "Contract anchors: "
+                            "tests/kernels/test_aot_contract_quant.py"},
+            "cpp": {"status": "production",
+                    "note": "setup_hip.py wheel: plain 16-lane-per-group "
+                            "ports of both variants (no flashinfer vec_t / "
+                            "PDL / NV PTX); contracts bit-identical incl. "
+                            "int8 truncation and packed ue8m0 column-major "
+                            "scales; masked_m row limit read on device "
+                            "(per-expert row guard) — graph-capturable"},
         },
     },
     "platform_detect": {
@@ -494,15 +637,17 @@ BACKEND_CATALOG = {
         "summary": "GDN/gated-delta-rule 线性注意力（sglang fla 面）",
         "backends": {
             "triton": {"status": "production",
-                       "note": "上游 fla triton 核（auto 默认；gfx93x "
-                               "wave64 友好，BT=64）"},
+                       "note": "上游 fla triton 核（auto 末档 / aiter 失败"
+                               "回退；gfx93x wave64 友好，BT=64）"},
             "aiter": {"status": "validated",
-                      "note": "DTK aiter CK/triton 核路由（fwd_h 状态递推 "
+                      "note": "auto 首选（2026-11 档位：aiter > triton）："
+                              "DTK aiter CK/triton 核路由（fwd_h 状态递推 "
                               "blockdim64 + packed decode 同契约直换绑，"
                               "K=V=128）：门禁 6/6（h 逐位一致、状态池写回 "
                               "≤1e-4 fp32 舍入）+ Qwen3.5-27B TP4 e2e 四锚点"
                               "全对（2026-10-13 bw7）；decode graph 36 桶捕"
-                              "获 577s→20.9s；=aiter 显式启用"} ,
+                              "获 577s→20.9s；=aiter 显式启用，=triton "
+                              "强制上游核"} ,
         },
     },
     "fused_moe": {
@@ -516,7 +661,7 @@ BACKEND_CATALOG = {
                       "note": "DTK aiter_moe; blockwise->ASM tuned csv, "
                               "channelwise->moe_c; rel 0.02-0.04 gate "
                               "PASS (validation-host-18 gfx938); unlisted shapes "
-                              "auto-fallback to triton"},
+                              "auto-fallback to triton; swiglu_limit overrides gemm1_clamp_limit at the vendor boundary"},
         },
     },
     "flashmla_kv_indices": {
@@ -650,7 +795,10 @@ BACKEND_CATALOG = {
                               "异形臂恒走上游、aiter 失败 log-once 回退；"
                               "production 晋级待 fp8 模型 serving A/B"},
             "lightop": {"status": "planned",
-                        "note": "per-token quant family"},
+                        "note": "per-token quant family wired through "
+                                "HCU_QUANT_IMPL=lightop (explicit A/B; "
+                                "group/rowwise/fused probe the wheel and "
+                                "fall back per arm); auto stays aiter"},
         },
     },
 }

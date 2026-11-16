@@ -36,6 +36,7 @@ def _hcu_alloc_decode_kernel_fallback(
     page_size: int,
 ) -> None:
     """Use the upstream Triton allocator when the HCU op is absent."""
+    # 替代档: sgl_kernel.alloc_decode_kernel（HCU cpp 档；此处为 absent 回退）
     from sglang.kernels.ops.memory.allocator import alloc_decode_kernel
 
     alloc_decode_kernel[(bs,)](
@@ -58,6 +59,7 @@ def _hcu_alloc_extend_kernel_fallback(
     page_size: int,
 ) -> None:
     """Use the upstream Triton allocator when the HCU op is absent."""
+    # 替代档: sgl_kernel.alloc_extend_kernel（HCU cpp 档；此处为 absent 回退）
     from sglang.kernels.ops.memory.allocator import alloc_extend_kernel
 
     alloc_extend_kernel[(bs,)](
@@ -113,16 +115,34 @@ def _hcu_assign_extend_cache_locs_fallback(
     pool_len: int,
     bs: int,
 ) -> None:
-    """Compatibility alias for speculative variable-length cache writes."""
-    _hcu_assign_req_to_token_pool_fallback(
-        req_pool_indices,
-        req_to_token,
-        start_offset,
-        end_offset,
-        out_cache_loc,
-        pool_len,
-        bs,
-    )
+    """Gather speculative cache locations into the caller's output buffer."""
+    if bs == 0:
+        return
+
+    if req_to_token.is_cuda:
+        # JIT 唯一实现（spec KV extend cache-loc gather；宿主无 AOT 档）
+        from sglang.kernels.ops.speculative.cache_locs import assign_extend_cache_locs
+
+        assign_extend_cache_locs[(bs,)](
+            req_pool_indices,
+            req_to_token,
+            start_offset,
+            end_offset,
+            out_cache_loc,
+            pool_len,
+            1 << (bs - 1).bit_length(),
+        )
+        return
+
+    cursor = 0
+    for row in range(bs):
+        start = int(start_offset[row].item())
+        end = int(end_offset[row].item())
+        length = end - start
+        if length > 0:
+            req = int(req_pool_indices[row].item())
+            out_cache_loc[cursor : cursor + length].copy_(req_to_token[req, start:end])
+            cursor += length
 
 
 _FALLBACKS: dict[str, Callable[..., object]] = {

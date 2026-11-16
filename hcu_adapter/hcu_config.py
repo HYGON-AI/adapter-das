@@ -321,6 +321,32 @@ BACKEND_CATALOG = {
                                  "tests/kernels/test_mqa_vendor_gfx938.py"},
         },
     },
+    "diffusion_residual_norm_scale_shift": {
+        "var": None,
+        "summary": "Diffusion residual + norm + scale/shift; HCU CUDA dispatch",
+        "backends": {
+            "triton": {"status": "candidate", "note": "HIP contiguous fp16/bf16/fp32 layer/RMS, independent broadcast operands; gfx936 tested"},
+            "emu": {"status": "candidate", "note": "Torch staged residual, norm and modulation fallback"},
+        },
+    },
+    "diffusion_norm_scale_shift": {
+        "var": None,
+        "summary": "Diffusion norm + scale/shift; HCU CUDA-dispatch kernel",
+        "backends": {
+            "triton": {"status": "candidate",
+                       "note": "gfx936 BF16 affine-free LN, D4096/5120, FP32 batch modulation; community Welford port"},
+            "emu": {"status": "candidate",
+                    "note": "Torch layer/RMS norm and general broadcast fallback"},
+        },
+    },
+    "flashinfer_rope": {
+        "var": None,
+        "summary": "FlashInfer cached Q/K RoPE ABI; sgl_kernel in-place Triton",
+        "backends": {
+            "triton": {"status": "candidate",
+                       "note": "FP32 [cos|sin] cache, GPT-J/NeoX, positions, partial rotation; in-place Q/K"},
+        },
+    },
     "rotary_embedding": {
         "var": None,
         "summary": "RoPE NeoX triton in place; GPT-J interleave = torch",
@@ -407,7 +433,7 @@ BACKEND_CATALOG = {
     },
     "flash_attention": {
         "var": "HCU_FA_IMPL",
-        "summary": "fa3 backend 注意力面（kvcache 分页/统一窗 + varlen prefill）",
+        "summary": "fa3 backend 注意力面（kvcache 分页/统一窗 + varlen prefill；dense 保留官方 FA2 回退）",
         "backends": {
             "vendor": {"status": "candidate",
                        "note": "DTK flash_attn 2.8.4 wheel（gfx93x kernel）；"

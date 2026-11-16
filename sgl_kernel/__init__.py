@@ -26,6 +26,7 @@ from sgl_kernel.layernorm import (
     rmsnorm,
 )
 from sgl_kernel.rotary import rotary_embedding
+from sgl_kernel.rope_triton import apply_rope_with_cos_sin_cache_inplace
 from sgl_kernel.moe import (
     moe_align_block_size,
     moe_fused_gate,
@@ -121,6 +122,7 @@ __all__ = [
     "gemma_fused_add_rmsnorm",
     # rope
     "rotary_embedding",
+    "apply_rope_with_cos_sin_cache_inplace",
     # gemm
     "fp8_scaled_mm",
     "int8_scaled_mm",

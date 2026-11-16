@@ -172,6 +172,38 @@ DSA paged MQA logits
 
 路由变量：`1`/`triton`/`vendor`
 
+## diffusion_residual_norm_scale_shift
+
+Diffusion residual + norm + scale/shift; HCU CUDA dispatch
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate HIP contiguous fp16/bf16/fp32 layer/ |
+| emu | candidate Torch staged residual, norm and modu |
+
+路由变量：（auto）
+
+## diffusion_norm_scale_shift
+
+Diffusion norm + scale/shift; HCU CUDA-dispatch kernel
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate gfx936 BF16 affine-free LN, D4096/51 |
+| emu | candidate Torch layer/RMS norm and general bro |
+
+路由变量：（auto）
+
+## flashinfer_rope
+
+FlashInfer cached Q/K RoPE ABI; sgl_kernel in-place Triton
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate FP32 [cos/sin] cache, GPT-J/NeoX, po |
+
+路由变量：（auto）
+
 ## rotary_embedding
 
 RoPE NeoX triton in place; GPT-J interleave = torch
@@ -260,7 +292,7 @@ triton extra.cuda libdevice -> hip/OCML 重定向（is_cuda 语义选路修正�
 
 ## flash_attention
 
-fa3 backend 注意力面（kvcache 分页/统一窗 + varlen prefill）
+fa3 backend 注意力面（kvcache 分页/统一窗 + varlen prefill；dense 保留官方 FA2 回退）
 
 | 档位 | 状态 / 备注 |
 |---|---|

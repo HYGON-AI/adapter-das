@@ -33,6 +33,22 @@
 - 本地路径：`hcu_adapter/fla_hcu/conv1d_triton.py`
 - HYGON 修改：同上（import 重写、fork 的 HCU 修复）。
 
+### SGLang diffusion Triton 算子（Apache-2.0）
+
+- 仓库：<https://github.com/sgl-project/sglang>（Apache-2.0）
+- 固定来源：commit `baa9befa381511cd4d56f83980951e5a45fffc6d`。
+- 来源与本地路径：
+  - `python/sglang/kernels/ops/diffusion/rope/rotary_triton.py` →
+    `sgl_kernel/rope_triton.py`：保留 cached RoPE 计算，改为原地更新 Q/K，
+    添加 restore-safe autotune、输入契约及无额外写回的接口。
+  - `python/sglang/kernels/kda_kernels/layernorm_modulate_triton.py` →
+    `sgl_kernel/norm_scale_shift_triton.py`：移植 Welford 归约与调制，
+    将 NVIDIA 指令替换为 HIP 可执行原语，保留 dtype 舍入点并增加广播回退。
+  - `python/sglang/kernels/ops/diffusion/norm/scale_residual_norm_scale_shift_triton.py` →
+    `sgl_kernel/residual_norm_scale_shift_triton.py`：扩展 LayerNorm/RMSNorm、
+    独立广播布局及残差/归一化中间 dtype 舍入。
+- 原许可声明保留；这些移植不声明 NVIDIA CUDA 输出逐位一致，当前状态为 candidate。
+
 ## 2. HYGON 内部仓库移植（同集团血缘，非外部第三方）
 
 > 这些来源属 HYGON 团队自有仓库，无外部许可证义务；为满足来源可追溯

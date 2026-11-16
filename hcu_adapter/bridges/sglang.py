@@ -93,6 +93,14 @@ def install() -> None:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: scheduler device bridge not installed", exc_info=True
             )
+        try:
+            from hcu_adapter import diffusion_norm
+
+            diffusion_norm.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: diffusion norm CUDA dispatch not registered", exc_info=True
+            )
         # TP init-broadcast payload fix (torch2.11 dlpack readonly BufferError);
         # runtime binding retains imported aliases without source writes;
         # needs sglang.srt.utils.common importable -- after the seam above.

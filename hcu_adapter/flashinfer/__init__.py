@@ -34,6 +34,7 @@ Per-subtask #229/#234 findings, the main import surfaces covered:
 """
 
 from hcu_adapter._base import ABSENT, LibStubFinder, is_registered
+from sgl_kernel.rope_triton import apply_rope_with_cos_sin_cache_inplace
 from sgl_kernel.layernorm import (
     fused_add_rmsnorm as _sgl_fused_add_rmsnorm,
     rmsnorm as _sgl_rmsnorm,
@@ -58,6 +59,9 @@ class _FlashInferFinder(LibStubFinder):
                 "flashinfer.norm": {
                     "rmsnorm": rmsnorm,
                     "fused_add_rmsnorm": fused_add_rmsnorm,
+                },
+                "flashinfer.rope": {
+                    "apply_rope_with_cos_sin_cache_inplace": apply_rope_with_cos_sin_cache_inplace,
                 },
                 "flashinfer.comm": {
                     "allreduce_fusion": ABSENT,
@@ -107,6 +111,13 @@ def register() -> None:
             target="flashinfer.norm:fused_add_rmsnorm",
             mechanism=_reg.MECH_SEAM,
             detail="sgl_kernel.layernorm fused add+rmsnorm compatibility",
+        )
+        _reg.register(
+            "flashinfer_rope",
+            apply_rope_with_cos_sin_cache_inplace,
+            target="flashinfer.rope:apply_rope_with_cos_sin_cache_inplace",
+            mechanism=_reg.MECH_SEAM,
+            detail="sgl_kernel cached in-place Triton RoPE; restore-safe autotune",
         )
     except Exception:
         pass

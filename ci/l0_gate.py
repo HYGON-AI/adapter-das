@@ -536,7 +536,7 @@ def check_impl_naming(r):
         return
     try:
         proc = subprocess.run(
-            [sys.executable, gen, "--check"],
+            [sys.executable, "-I", "-S", gen, "--check"],
             capture_output=True, text=True, timeout=60,
         )
         if proc.returncode != 0:

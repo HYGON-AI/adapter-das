@@ -497,6 +497,10 @@ when stream is capturing`）并阻塞；在实际捕获 stream 预热后，原�
 
 ## vLLM CPU 契约的进程隔离
 
+L0 的 tier matrix 生成子进程也使用 `-I -S`，直接读取被检查源码的 catalog；
+父进程的隔离参数不会自动传给子进程。旧系统 Adapter 的 sitecustomize 提前
+导入 catalog 会产生假的“文档过期”失败，不能通过重写正确的生成文档修复。
+
 `ci/l1_gpu_gate.sh` 的 `cpu_vllm` 段在新解释器中隐藏设备并设置
 `HCU_ADAPTER_HOST=none`，执行公开 AR、lifecycle、metadata discovery 和
 model mutation 契约。原生 kernel 段会初始化 HIP，不能与这些要求

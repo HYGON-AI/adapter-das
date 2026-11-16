@@ -1,5 +1,11 @@
 # 自动化测试套件要求
 
+DSA writer 回归见 `tests/kernels/test_mqa_triton_gfx938.py`：在调用时解析
+新 kvcache/旧 attention 路径，区分页跨度 ABI；依赖导入错误不能当作接口迁移
+而隐藏。pytest 必须实际执行两种池布局、融合写入和派发的数值/top-k 断言，
+并恢复临时环境和 dtype 绑定，不能仅消除收集错误。
+LightOp metadata 的 Graph 对拍须传真实设备的计算单元数，不能硬编码为64。
+
 共享机制的 framework-free 契约覆盖 import 和调用两个阶段。模型 lifecycle
 测试须在新解释器阻断 vLLM、SGLang、Torch 导入后，执行真实注册、原子预检、
 post-load/guard dispatch；另以真实 vLLM Worker/config 验证桥上的原覆盖查询、

@@ -70,14 +70,15 @@ def test_dense_batch_public_dispatch_output_lse_and_changed_input_graph(native_a
 @pytest.mark.parametrize('dtype', [torch.float16, torch.bfloat16])
 @pytest.mark.parametrize('single', [False, True])
 def test_native_diffusion_packed_consumer_uses_dense_and_ragged_contracts(native_attention, dtype, single):
-    from sglang.multimodal_gen.runtime.managers.forward_context import set_forward_context
+    from sglang.multimodal_gen.runtime.managers.forward_context import get_forward_context, set_forward_context
     cls, _ = native_attention
     impl = cls(2, 64, False, 64**-0.5)
     torch.manual_seed(919)
     q, k, v = [torch.randn(32, 2, 64, device='cuda', dtype=dtype) for _ in range(3)]
     bounds = (0, 32) if single else (0, 8, 32)
     cu = torch.tensor(bounds, dtype=torch.int32, device='cuda')
-    with set_forward_context(0, None, quality='exact'):
+    with set_forward_context(0, None):
+        assert getattr(get_forward_context(), 'quality', 'exact') == 'exact'
         actual = impl.forward_varlen(q, k, v, cu_seqlens=cu, max_seqlen=32, cu_seqlens_host=bounds)
     refs = [reference(q[a:b][None], k[a:b][None], v[a:b][None], False)[0][0] for a, b in zip(bounds, bounds[1:])]
     torch.testing.assert_close(actual.float().cpu(), torch.cat(refs), atol=.02, rtol=.02)

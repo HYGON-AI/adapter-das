@@ -13,6 +13,13 @@ CPU 子进程须自己声明隔离条件，不能依赖父 pytest 的 HOSTnone�
 可能在测试代码之前启动宿主。保留原子进程 timeout，以真实继承宿主的
 RED/GREEN 对照验证隔离；启动/metadata/spawn 门禁仍在各自集成测试执行。
 
+Triton CPU interpreter 的 predicate 数据与 handle dtype 也须一致。部分 DTK
+实现的比较返回 bool 数据却沿用 int32 operand dtype，广播后 mask 会变成整数。
+`cases/vllm_dsv41_indexer_cpu.py` 仅在测试夹具里将比较 handle 标为 int1，
+不改数据、算术或生产 kernel；12种比较与普通加法分开检查。保留未修夹具的
+失败，并以 `tests/kernels/test_shuffle_mqa_logits.py` 在真实设备独立 CPU FP64
+参考及变输入 Graph 对拍，不能把解释器修正作为 GPU 或整模型通过的证据。
+
 共享机制的 framework-free 契约覆盖 import 和调用两个阶段。模型 lifecycle
 测试须在新解释器阻断 vLLM、SGLang、Torch 导入后，执行真实注册、原子预检、
 post-load/guard dispatch；另以真实 vLLM Worker/config 验证桥上的原覆盖查询、

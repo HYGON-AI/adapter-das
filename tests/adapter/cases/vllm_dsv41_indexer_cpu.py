@@ -10,15 +10,59 @@ B, D, HEADS = 16, 128, 2
 
 @pytest.fixture(autouse=True)
 def interpret_gpu_score_on_cpu(monkeypatch):
-    from triton.runtime.interpreter import InterpretedFunction
+    import numpy as np
+    import triton.language as tl
+    from triton.runtime.interpreter import (
+        InterpretedFunction, InterpreterBuilder, TensorHandle)
     from triton.runtime.jit import JITFunction
     from hcu_adapter.kernels import shuffle_mqa_logits_triton as gpu
+    binary_op = InterpreterBuilder.binary_op
+    comparisons = (np.less, np.less_equal, np.greater, np.greater_equal,
+                   np.equal, np.not_equal)
+
+    def typed_comparison(self, lhs, rhs, op):
+        result = binary_op(self, lhs, rhs, op)
+        if op in comparisons:
+            # DTK's interpreter keeps the operand dtype in a comparison handle,
+            # although its data and the public tl.tensor type are boolean.
+            # Broadcast then converts this predicate to int32 and masked load
+            # refuses it. Correct only the interpreter's result metadata; keep
+            # all predicate bytes, kernel code and arithmetic unchanged.
+            assert result.data.dtype == np.bool_
+            return TensorHandle(result.data, tl.int1)
+        return result
+
+    monkeypatch.setattr(InterpreterBuilder, "binary_op", typed_comparison)
     # tl.sum and its nested helpers were imported before this fixture.
     monkeypatch.setattr(JITFunction, "__call__",
         lambda self, *args, **kwargs: InterpretedFunction(self.fn)(*args, **kwargs))
     monkeypatch.setattr(gpu, "_paged_scores", InterpretedFunction(gpu._paged_scores.fn))
     yield
     assert not torch.cuda.is_initialized()
+
+
+@pytest.mark.parametrize("operation", ["icmpSLT", "icmpSLE", "icmpSGT", "icmpSGE",
+                                       "icmpEQ", "icmpNE", "fcmpOLT", "fcmpOLE",
+                                       "fcmpOGT", "fcmpOGE", "fcmpOEQ", "fcmpUNE"])
+def test_interpreter_comparison_handles_preserve_predicate_bytes(operation):
+    import numpy as np
+    import triton.language as tl
+    from triton.runtime.interpreter import InterpreterBuilder, TensorHandle
+    builder = InterpreterBuilder()
+    floating = operation.startswith("fcmp")
+    dtype, numpy_dtype = (tl.float32, np.float32) if floating else (tl.int32, np.int32)
+    lhs = TensorHandle(np.array([-2, 0, 3], dtype=numpy_dtype), dtype)
+    rhs = TensorHandle(np.array([0, 0, 1], dtype=numpy_dtype), dtype)
+    result = getattr(builder, "create_" + operation)(lhs, rhs)
+    comparator = {"LT": np.less, "LE": np.less_equal, "GT": np.greater,
+                  "GE": np.greater_equal, "EQ": np.equal,
+                  "NE": np.not_equal}[operation[-2:]]
+    assert result.dtype == tl.int1 and result.data.dtype == np.bool_
+    np.testing.assert_array_equal(result.data, comparator(lhs.data, rhs.data))
+    # The fixture must leave ordinary arithmetic's dtype and values unchanged.
+    total = builder.create_fadd(lhs, rhs) if floating else builder.create_add(lhs, rhs)
+    assert total.dtype == dtype and total.data.dtype == numpy_dtype
+    np.testing.assert_array_equal(total.data, np.array([-2, 0, 4], dtype=numpy_dtype))
 
 def pack(seed):
     g=torch.Generator().manual_seed(seed)

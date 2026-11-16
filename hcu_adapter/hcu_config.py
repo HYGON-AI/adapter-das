@@ -59,6 +59,19 @@ class HcuConfigError(RuntimeError):
 # backends   selectable backend -> {status, note}
 
 BACKEND_CATALOG = {
+    "mamba_state_scatter": {
+        "var": None,
+        "summary": "SGLang Mamba verify-state copy launch geometry",
+        "backends": {
+            "triton": {
+                "status": "candidate",
+                "note": "gfx936 FP32 entries >=1024: flatten request/block grid, "
+                        "retain source-row mapping and upstream validation. "
+                        "Other contracts keep stock. Startup fallback: "
+                        "HCU_DISABLE_OPS=mamba_state_scatter.",
+            },
+        },
+    },
     "qsa_prefill": {
         "var": None, "summary": "QSA sparse prefill launch geometry on HCU",
         "backends": {"triton": {"status": "candidate", "note": "gfx936 uses 64/1 through 64 rows and 32/2 above to fit the 64 KiB LDS budget; conservative for all head dimensions."}},
@@ -499,6 +512,22 @@ BACKEND_CATALOG = {
                               "≤1e-4 fp32 舍入）+ Qwen3.5-27B TP4 e2e 四锚点"
                               "全对（2026-10-13 bw7）；decode graph 36 桶捕"
                               "获 577s→20.9s；=aiter 显式启用"} ,
+        },
+    },
+    "linear_attn_gdn_verify": {
+        "var": "HCU_LINEAR_ATTN_GDN_VERIFY",
+        "summary": "SGLang GDN MTP target verification",
+        "backends": {
+            "auto": {"status": "production",
+                     "note": "default policy: qualified gfx936/DTK2610 stack, BF16 packed "
+                             "H8/HV24, FP32 state/snapshots, N1..18, draft4 -> AITER; "
+                             "other environments/contracts retain upstream"},
+            "triton": {"status": "production",
+                       "note": "explicit upstream rollback; also auto fallback"},
+            "aiter": {"status": "validated",
+                      "note": "vendor verify bridge in gdn_aiter.py; BF16 K=V=128, FP32 "
+                              "contiguous state/snapshots; gfx936 eager/Graph reference "
+                              "and Qwen3.6 TP2 MATH500/serving passed 2026-11-14"},
         },
     },
     "fused_moe": {

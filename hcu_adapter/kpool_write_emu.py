@@ -265,23 +265,19 @@ def cp_gather_indexer_k_quant_cache_emu(
         + (col % tile)
     )
 
-    page_acc = []
-    row_acc = []
     n_rows = int(page_indices.shape[0])
-    for r in range(n_rows):
-        page = int(page_indices[r])
-        lo = int(cu_seq_lens[r])
-        hi = int(cu_seq_lens[r + 1])
-        for g in range(lo, hi):
-            t = g - lo
-            page_acc.append(page)
-            row_acc.append(g)
-    pages_t = torch.tensor(page_acc, device=kv_cache.device, dtype=torch.int64)
-    rows_t = torch.tensor(row_acc, device=kv_cache.device, dtype=torch.int64)
-    slots = (rows_t - torch.repeat_interleave(
-        cu_seq_lens[:n_rows].to(torch.int64),
-        (cu_seq_lens[1:] - cu_seq_lens[:n_rows]).to(torch.int64),
-    )).to(torch.int64)
+    lengths = (cu_seq_lens[1:] - cu_seq_lens[:-1]).to(torch.int64)
+    request_ids = torch.repeat_interleave(
+        torch.arange(n_rows, device=kv_cache.device), lengths,
+        output_size=k_out.shape[0],
+    )
+    positions = torch.arange(k_out.shape[0], device=kv_cache.device) - cu_seq_lens[request_ids]
+    if page_indices.ndim == 2:
+        pages_t = page_indices[request_ids, positions // page_size].to(torch.int64)
+        slots = positions % page_size
+    else:
+        pages_t = page_indices[request_ids].to(torch.int64)
+        slots = positions
     byte_off = (
         (pages_t * page_bytes).unsqueeze(1) + slot_off[slots]
     )  # [R, d]
@@ -317,10 +313,10 @@ def install_read_patch() -> None:
     except ImportError:
         from sglang.kernels.ops.attention.dsa import index_buf_accessor as iba
 
-    iba.GetKAndS.aiter = _aiter_emu_wrapper
+    iba.GetKAndS.aiter = classmethod(_aiter_emu_wrapper)
 
 
-def _aiter_emu_wrapper(cls, *args, **kwargs):
+def _aiter_emu_wrapper(cls, pool, buf, page_indices, seq_len_tensor, seq_len_sum, max_seq_len):
     if not getattr(_aiter_emu_wrapper, "_hit", 0):
         _aiter_emu_wrapper._hit = 1
         print("[HCU kprd] aiter-arm -> torch gather emu", flush=True)
@@ -329,8 +325,7 @@ def _aiter_emu_wrapper(cls, *args, **kwargs):
         print("[HCU kprd] called", flush=True)
     else:
         _aiter_emu_wrapper._hit += 1
-    pool, buf, page_indices, seq_len_tensor, seq_len_sum, max_seq_len = args
-    page_size = pool.page_size
+    page_size = pool.index_page_size if hasattr(pool, "index_page_size") else pool.page_size
     index_head_dim = pool.index_head_dim
     quant_block_size = pool.quant_block_size
     scale_elems = index_head_dim // quant_block_size

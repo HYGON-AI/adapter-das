@@ -280,3 +280,14 @@ on the validated gfx936 path materializes `0` before workers spawn; an already
 cached conflicting value is refused. This keeps valid expert IDs for padded
 Graph rows without changing the selected graph mode. See
 [vLLM AITER candidate](frameworks/vllm033-aiter-moe.md) for admission limits.
+
+## Kimi K3.1 prefill candidates
+
+| Variable | Default | Effect |
+|---|---|---|
+| `HCU_MQA_RAGGED_REDUCE_HEADS` | `0` | Contract weighted query heads before FP32 MQA GEMM; opt-in measured prefill path. |
+| `HCU_SLIMQUANT_FUSED_GROUP_QUANT` | `0` | Fuse group64 FP32 absmax/127 activation INT8 quantization; retain existing codes/scales. |
+
+Unset these variables (or set `0`) to retain the existing dispatch paths.
+See [Kimi prefill delivery](kimi31-prefill-delivery.md) for the measured shapes,
+fixed upstream revision and validation boundaries.

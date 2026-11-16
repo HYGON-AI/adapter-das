@@ -587,6 +587,14 @@ REGISTRY = {
                  " 合同与逻辑 scale 布局；=0 在安装桥时保留 vendor 入口"
                  "及未验证布局拒绝，仅作诊断对照，不代表 vendor 数值通过。",
     },
+    "HCU_MQA_RAGGED_REDUCE_HEADS": {
+        "env": "HCU_MQA_RAGGED_REDUCE_HEADS", "default": "0",
+        "about": "Ragged MQA linear weighted-head contraction before FP32 GEMM; opt-in Kimi K3.1 prefill candidate.",
+    },
+    "HCU_SLIMQUANT_FUSED_GROUP_QUANT": {
+        "env": "HCU_SLIMQUANT_FUSED_GROUP_QUANT", "default": "0",
+        "about": "Opt-in fused FP32 absmax/127 group64 activation INT8 quantizer; preserves existing SlimQuant codes/scales.",
+    },
     "HCU_KDA_PREFILL_IMPL": {
         "env": "HCU_KDA_PREFILL_IMPL", "default": "fork",
         "about": "GLM-5.x KDA prefill（chunk_kda，42 层）内核选择："

@@ -406,6 +406,19 @@ def triton_ragged_mqa_logits(q_fp8, kv, kv_scales, weights, cu_starts, cu_ends):
     ks = cu_starts.to(torch.int32).reshape(-1).contiguous()
     ke = cu_ends.to(torch.int32).reshape(-1).contiguous()
     sf = kv_scales.reshape(-1).to(torch.float32).contiguous()
+    import os
+    if os.environ.get("HCU_MQA_RAGGED_REDUCE_HEADS") == "1":
+        q_reduced = (q_b * w.unsqueeze(-1)).sum(dim=1)
+        k_decoded = k_u8.view(torch.float8_e4m3fn).to(torch.float32)
+        out = torch.mm(q_reduced, k_decoded.t())
+        out.mul_(sf.unsqueeze(0))
+        columns = torch.arange(T, device=out.device)
+        tile = 256
+        for start in range(0, N, tile):
+            end = min(start + tile, N)
+            valid = (columns.unsqueeze(0) >= ks[start:end].unsqueeze(1)) & (columns.unsqueeze(0) < ke[start:end].unsqueeze(1))
+            out[start:end].masked_fill_(~valid, float("-inf"))
+        return out
     out = torch.empty((N, T), dtype=torch.float32, device=q_b.device)
     if N == 0 or T == 0:
         return out

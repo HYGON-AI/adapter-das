@@ -43,6 +43,7 @@ new private-format support starts in the plugin repo directly.
 """
 
 import logging
+import os
 import re
 import types
 
@@ -264,6 +265,18 @@ def _build_kernel():
 
         off_experts = tl.load(expert_ids_ptr + pid_m).to(tl.int64)
         if off_experts == -1:
+            # Standard EP dispatch maps nonlocal assignments to -1. Their
+            # slots still participate in activation and the final top-k sum;
+            # both GEMMs must define those slots as zero, not uninitialized.
+            inactive_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+            inactive_c = (
+                c_ptr + offs_token[:, None] * stride_cm
+                + inactive_n[None, :] * stride_cn
+            )
+            tl.store(
+                inactive_c, tl.full((BLOCK_SIZE_M, BLOCK_SIZE_N), 0, compute_type),
+                mask=token_mask[:, None] & (inactive_n[None, :] < N),
+            )
             return
 
         offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N).to(tl.int64)) % N
@@ -328,6 +341,13 @@ def _per_token_group_quant_int8(x, group=64):
     """Dynamic per-token-k-group int8 quant (NPU w4a8 style, no static
     input_scale in these checkpoints). CUDA-graph-safe pure torch ops."""
     M, K = x.shape
+    if (os.environ.get("HCU_SLIMQUANT_FUSED_GROUP_QUANT") == "1"
+            and group == 64 and K > 0 and K % 64 == 0
+            and x.is_cuda and x.dtype in (torch.bfloat16, torch.float32)
+            and x.stride(1) == 1):
+        from .kernels.slimquant_group_quant_triton import quantize
+
+        return quantize(x)
     xg = x.float().view(M, K // group, group)
     s = (xg.abs().amax(dim=-1, keepdim=True) / 127.0).clamp(min=1e-10)
     q = torch.round(xg / s).clamp(-127, 127).to(torch.int8)

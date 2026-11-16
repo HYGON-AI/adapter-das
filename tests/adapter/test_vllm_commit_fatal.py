@@ -417,12 +417,18 @@ def test_fresh_interpreter_does_not_inherit_failed_runtime(startup):
         bridge.hcu_runtime_plugin()
     result = subprocess.run(
         [sys.executable, "-B", "-c",
+         "import sys; "
+         "assert not ({'vllm', 'sglang'} & sys.modules.keys()); "
          "from hcu_adapter.bridges import vllm as b; "
          "b.require_runtime_healthy(); "
          "assert b.extension_reports() == (); "
          "b._RUNTIME_ACTIONS.run_once('vllm-runtime', lambda: None); "
          "b.require_runtime_healthy()"],
         capture_output=True, text=True, timeout=10,
+        # This child checks process-local lifecycle state, not host startup.
+        # A device suite may have propagated sglang/vLLM into its environment;
+        # importing those bridges before -c would precede this CPU contract.
+        env=dict(os.environ, HCU_ADAPTER_HOST="none"),
     )
     assert result.returncode == 0, result.stderr
     with pytest.raises(bridge.LatchedVllmRuntimeError):

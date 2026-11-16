@@ -6,6 +6,13 @@
 纳入/排除并保留失败门禁。真实 Worker 的合成夹具须跟随目标源码的模型和
 runner 状态，继续执行官方委托链与预检，不用伪造方法返回值遮盖接口漂移。
 
+CPU 子进程须自己声明隔离条件，不能依赖父 pytest 的 HOSTnone：设备套件可能
+已传播 SGLang/vLLM 宿主。仅检查进程私有状态的子进程显式传
+`HCU_ADAPTER_HOST=none`；只需标准库的惰性工具导入探针使用 `-I -S`，
+并确认 blocker 安装前没有加载框架。`-I` 仍执行 installed sitecustomize，
+可能在测试代码之前启动宿主。保留原子进程 timeout，以真实继承宿主的
+RED/GREEN 对照验证隔离；启动/metadata/spawn 门禁仍在各自集成测试执行。
+
 共享机制的 framework-free 契约覆盖 import 和调用两个阶段。模型 lifecycle
 测试须在新解释器阻断 vLLM、SGLang、Torch 导入后，执行真实注册、原子预检、
 post-load/guard dispatch；另以真实 vLLM Worker/config 验证桥上的原覆盖查询、

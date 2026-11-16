@@ -27,6 +27,7 @@ def test_activation_requires_actual_supported_hip_identity(detection, monkeypatc
     assert diffusion.platform_plugin() == diffusion._PLATFORM_CLASS
     monkeypatch.setattr(diffusion.hcu_env, 'arch_name', lambda: 'gfx950')
     assert diffusion.platform_plugin() is None
+    monkeypatch.setattr(diffusion.hcu_env, 'arch_name', lambda: 'gfx936')
     detection.version.hip = None
     assert diffusion.platform_plugin() is None
 

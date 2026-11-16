@@ -109,3 +109,7 @@ Adapter 只提供配置/catalog/快关，数学实现位于独立 `vllm-plugin-d
 ### MLA HiCache 地址表传输
 
 `hicache_mla_transfer` 当前使用 candidate Triton 实现：按字节处理 device pointer table、pinned host buffer、layer-first/page-first 布局，不将地址值当作缓存数据索引。GPU 路径不读取地址表到 CPU。2026-11-01 定向诊断覆盖 528/8448/33792/65537 字节行、1/7/65 行、三层、双向拷贝与三次变输入 Graph 回放，逐字节一致；完整模型的驱逐回载与性能仍待验收。
+
+### HY3 prefill Graph 兼容开关
+
+`HCU_DISABLE_OPS=prefill_graph_driver` 在新进程中跳过流状态查询适配，保留安装前的绑定。默认启用适配；只改变驱动查询，保留 prefill Graph，不改变硬件身份。

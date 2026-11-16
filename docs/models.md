@@ -330,3 +330,7 @@ adapter环境重跑通过；不把前次collection error记为skip或通过。L0
 ## HY3 INT8：原生分发入口
 
 SGLang 兼容包装保留原生量化分发入口，配套 Plugin 可显式传递 INT8 类型，既有 BF16/FP8 参数语义不变。运行修改位于 `hcu_adapter/bridges/sglang.py`，回归复用 `tests/adapter/test_deepep_dispatch_scale.py`。这只处理分发接线，不修改通信或矩阵乘法内核；同步主仓后的组合验证另记。
+
+## HY3：保留 prefill Graph
+
+只将 breakable Graph 的驱动查询绑定到 HIP，替代整体关闭 prefill Graph 的旧方案。修改位于 `prefill_bcg_gate.py`，沿主仓先注册后发布原则；`HCU_DISABLE_OPS=prefill_graph_driver` 在新进程中跳过安装。复用现有测试覆盖 HIP、非 HIP、重复安装、注册失败及停用。其他模型/架构的 Graph 支持不据此宣称通过。

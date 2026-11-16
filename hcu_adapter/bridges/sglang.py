@@ -325,11 +325,8 @@ def install() -> None:
                 "HCU adapter: attention-backend registry gate not installed",
                 exc_info=True,
             )
-        # Breakable prefill CUDA graph (sglang main): its runtime probes
-        # stream-capture status through cuda-python, which needs a CUDA
-        # driver HCU does not have (error 35 mid capture, bw47 graph/mla
-        # 2026-11-05). Driver-layer HIP truth: route breakable prefill to
-        # the eager runner; decode FULL graphs stay on.
+        # Breakable graph stream queries need hardware HIP truth even when
+        # the model-level platform seam presents CUDA semantics.
         try:
             from hcu_adapter import prefill_bcg_gate
 

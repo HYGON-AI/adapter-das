@@ -413,3 +413,12 @@ curl -s http://127.0.0.1:30000/v1/chat/completions \
 配套 plugin 分支 feat/qwen38-pd-prefill-opt-v0522 基于 81315b299ff4620205372e1b9997b226e3fb650b，官方 SGLang 保持 release/v0.5.22 的 baa9befa381511cd4d56f83980951e5a45fffc6d。此前 2026-11-16 服务 smoke/质量及三长度短测使用旧 plugin 28861d1、adapter 2e723cc；属于旧证据，不外推到本次上游同步后的新组合。新分支未重启服务、未执行 GPU/Graph/模型性能验收；本次离线检查结果另列。
 
 本次离线检查：bootstrap、multimem、上游AITER MoE bridge和JIT sources共79项通过、16项跳过；显式指定官方SGLang树运行multimem消费者契约，未执行GPU编译或真实collective。L0为GREEN（31条提示，未宣称strict通过），源码/空白检查通过。完整日志在外部实验目录pd-disag/codex-work/upstream-pr-20261116/logs，服务和模型验证仍pending。
+### SGLang 0.5.22: composing the Breakable Prefill driver gate with plugins
+
+The adapter's installed `capture_prefill_graph` wrapper exposes a callable
+`_hcu_prefill_bcg_gate` marker. Use it on the effective original callable when
+composing an AROUND hook; it is true only when this capture resolves to
+Breakable Prefill. Invoke that original to use the existing eager target or
+no-runner draft fallback. Other Prefill backends and Decode Graph ownership are
+unchanged. A plugin that captures through a private copy of the entry point
+cannot see this guard and will enter the CUDA driver path on HCU.

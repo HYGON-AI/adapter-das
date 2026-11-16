@@ -474,6 +474,7 @@ def _install_triton_decode(_sk_fa, registry):
     # ops-layer rebind (kwargs-stable), mirroring the vendor branch but
     # delegating varlen straight to the emu (widow windows keep emu)
     try:
+        # 替代档: ops 重绑挂载面——分档入口在包面（HCU_FA_IMPL），包面无 vendor 重绑出口
         import sglang.kernels.ops.attention.flash_attention_v3 as _fa3v
 
         def _ops_kvcache(
@@ -513,6 +514,7 @@ def _install_triton_decode(_sk_fa, registry):
         # module attr above does not affect its module global. The fa3
         # backend calls the *dispatcher*, so rebind the dispatcher's global
         # too (graph-safe: attribute assignment, no sync).
+        # 替代档: ops 重绑挂载面——分档入口在包面（HCU_FA_IMPL），包面无 vendor 重绑出口
         import sglang.kernels.ops.attention.flash_attention as _fapub
 
         if hasattr(_fapub, "fa3_flash_attn_with_kvcache"):
@@ -595,6 +597,7 @@ def _install_triton_decode(_sk_fa, registry):
     # ops-layer rebind (kwargs-stable), mirroring the vendor branch: the
     # v3 wrapper module's python kwargs contract is stable and documented.
     try:
+        # 替代档: ops 重绑挂载面——分档入口在包面（HCU_FA_IMPL），包面无 vendor 重绑出口
         import sglang.kernels.ops.attention.flash_attention_v3 as _fa3v
 
         def _ops_varlen(q, k, v, cu_seqlens_q, cu_seqlens_k,
@@ -636,6 +639,7 @@ def _install_triton_decode(_sk_fa, registry):
         # the public dispatcher copied the v3 symbol at import time
         # (from-import); rebind its module global too so backend calls
         # land in this route (graph-safe attribute assignment)
+        # 替代档: ops 重绑挂载面——分档入口在包面（HCU_FA_IMPL），包面无 vendor 重绑出口
         import sglang.kernels.ops.attention.flash_attention as _fapub
 
         for _attr in ("fa3_flash_attn_varlen_func",
@@ -868,6 +872,7 @@ def install():
     # stable and documented — sidesteps both. The kvcache spread is
     # reassembled into the same keyword set our facade speaks.
     try:
+        # 替代档: ops 重绑挂载面——分档入口在包面（HCU_FA_IMPL），包面无 vendor 重绑出口
         import sglang.kernels.ops.attention.flash_attention_v3 as _fa3v
 
         def _ops_kvcache(
@@ -961,7 +966,7 @@ def install():
 
         # The public dispatcher keeps a from-import copy. Native diffusion
         # may import it before bootstrap installs the selected provider.
-        import sglang.kernels.ops.attention.flash_attention as _fapub
+        import sglang.kernels.ops.attention.flash_attention as _fapub  # 替代档: hcu_adapter/fa_vendor.py；包面不暴露 dispatcher 的缓存全局，需原位重绑。
         _fapub.fa3_flash_attn_varlen_func = _ops_varlen
         registry.register(
             'flash_attention', _ops_varlen,

@@ -82,6 +82,27 @@ BACKEND_CATALOG = {
         "backends": {"scoped": {"status": "candidate",
             "note": "FP8 SHUFFLE scoring, delayed mHC and empty CT linear on the owned eager model."}},
     },
+    "qsa_prefill": {
+        "var": None, "summary": "QSA sparse prefill launch geometry on HCU",
+        "backends": {"triton": {"status": "candidate", "note": "gfx936 uses 64/1 through 64 rows and 32/2 above to fit the 64 KiB LDS budget; conservative for all head dimensions."}},
+    },
+    "qsa_mqa": {
+        "var": None, "summary": "QSA indexer MQA on HCU",
+        "backends": {
+            "boltops": {"status": "candidate", "note": "gfx936 BF16 QSA indexer with four 128-wide query heads; ragged prefill and paged decode. HCU_DISABLE_OPS=qsa_mqa selects the Torch reference."},
+            "torch": {"status": "candidate", "note": "Official Torch reference for unsupported geometry or disabled BoltOPs; in-tree HIP TileLang remains disabled."},
+        },
+    },
+    "qsa_scatter": {
+        "var": None,
+        "summary": "QSA state and compressed-key row stores on HCU",
+        "backends": {"triton": {"status": "candidate", "note": "No host sync; duplicate destination zero is a reserved dump slot"}},
+    },
+    "mapped_host_view": {
+        "var": None,
+        "summary": "DTK mapped CPU allocation exposed as a device tensor",
+        "backends": {"dtk": {"status": "candidate", "note": "INT8/BF16/FP8 live-ID Graph replay passed on gfx936; caller retains host allocation"}},
+    },
     "vllm_sparse_indexer": {
         "var": "HCU_VLLM_SPARSE_INDEXER_IMPL",
         "summary": "vLLM 0.33 C4 sparse indexer through public OOT and official helpers",
@@ -350,6 +371,14 @@ BACKEND_CATALOG = {
                                  "HCU_MQA_LOGITS_IMPL=vendor stays for "
                                  "triage. Dual-fact watchtower: "
                                  "tests/kernels/test_mqa_vendor_gfx938.py"},
+        },
+    },
+    "minimax_h3_rotary_embedding": {
+        "var": None,
+        "summary": "MiniMax-H3 NeoX partial RoPE: DiT128/96 and VAE64/48; native preferred by plugin",
+        "backends": {
+            "triton": {"status": "candidate", "note": "BF16/FP16/FP32 old-native canonical parity passed; changed-input Graph passed; serving pending"},
+            "torch": {"status": "candidate", "note": "CPU contract and diagnostic fallback; no serving claim"},
         },
     },
     "rotary_embedding": {
@@ -632,7 +661,7 @@ BACKEND_CATALOG = {
                       "note": "DTK aiter_moe; blockwise->ASM tuned csv, "
                               "channelwise->moe_c; rel 0.02-0.04 gate "
                               "PASS (validation-host-18 gfx938); unlisted shapes "
-                              "auto-fallback to triton"},
+                              "auto-fallback to triton; swiglu_limit overrides gemm1_clamp_limit at the vendor boundary"},
         },
     },
     "flashmla_kv_indices": {

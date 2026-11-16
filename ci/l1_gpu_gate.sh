@@ -12,7 +12,8 @@
 # Segments (each independently timed out; all must pass):
 #   l0        structural gate (no GPU) -- fast fail before touching the card
 #   cpu       tests/test_ops_cpu.py            pure-torch contract paths
-#   kernels   tests/kernels + tests/adapter    triton numerics vs torch refs
+#   cpu_vllm  lifecycle/AR/mutation contracts in a device-hidden interpreter
+#   kernels   remaining tests/kernels + tests/adapter; native numerics
 #   l15_up    upstream registered/attention/unittests (dsa+kda+dense+mla)
 #             via pinned PYTHONPATH; tilelang variants excluded (DTK bug)
 #   l15_manifest  L1.5 v2 manifest collect/verify shadow (non-blocking by
@@ -174,6 +175,31 @@ run_seg() {  # name timeout_base cmd...
 # ---------------------------------------------------------------- segments
 run_seg l0      60   python3 ci/l0_gate.py
 run_seg cpu     300  python3 -m pytest tests/test_ops_cpu.py -q --no-header
+# These contracts assert that the interpreter has never initialized a GPU.
+# Keep them in a fresh, device-hidden process; kernels below initialize HIP.
+# Every transferred file is still mandatory and contributes to FAILS.
+CPU_VLLM_CONTRACTS=(
+    tests/adapter/test_vllm_allreduce.py
+    tests/adapter/test_vllm_allreduce_provider_inputs.py
+    tests/adapter/test_vllm_allreduce_invariants.py
+    tests/adapter/test_vllm_lifecycle_hooks.py
+    tests/adapter/test_vllm_commit_fatal_discovery.py
+    tests/adapter/test_model_mutation.py
+)
+CPU_VLLM_IGNORE=()
+for contract in "${CPU_VLLM_CONTRACTS[@]}"; do
+    CPU_VLLM_IGNORE+=(--ignore "$contract")
+done
+TARGET_ROOT="${VLLM_TARGET_ROOT:-$(env HCU_ADAPTER_HOST=none python3 -c '
+import importlib.util
+from pathlib import Path
+print(Path(importlib.util.find_spec("vllm").origin).resolve().parent.parent)
+')}"
+run_seg cpu_vllm 600 env HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES=-1 \
+    ROCR_VISIBLE_DEVICES=-1 CUDA_VISIBLE_DEVICES=-1 \
+    VLLM_TARGET_ROOT="$TARGET_ROOT" \
+    python3 -m pytest "${CPU_VLLM_CONTRACTS[@]}" -vv --no-header \
+    -o faulthandler_timeout=580 --tb=short
 # Transfer ownership only to a blocking matrix with an available upstream tree.
 # Observe/off modes retain the broad regression's blocking coverage.
 FAMILY_DESELECT=()
@@ -204,7 +230,8 @@ PY
     done <<< "$family_nodes"
     echo "L1: kernels transfers $((${#FAMILY_DESELECT[@]} / 2)) cases to blocking matrix"
 fi
-run_seg kernels 900  python3 -m pytest tests/kernels tests/adapter -vv --no-header \
+run_seg kernels 900  python3 -m pytest tests/kernels tests/adapter \
+    "${CPU_VLLM_IGNORE[@]}" -vv --no-header \
     --tb=short -o faulthandler_timeout=120 \
     "${FAMILY_DESELECT[@]}"
 
@@ -254,6 +281,22 @@ if [ -n "$UP_TREE" ]; then
     for d in gdn hybrid_linear mamba swa lightning dsv4; do
         [ -d "$UP/$d" ] && MECH="$MECH $UP/$d"
     done
+    # v0.5.23 face drift: cutedsl_gdn_mtp_ring imports cuda.bindings at
+    # module level, so collecting gdn/test_gdn_cutedsl_ring_verify.py dies
+    # with ModuleNotFoundError on HCU containers (no cuda python pkg) and
+    # takes the whole l15_mech segment down at collection. Probe the import
+    # under the segment's own path contract; on failure ignore that one
+    # file loudly. Platform-bug ledger treatment, same spirit as
+    # `-k "not tilelang"` (docs/ci.md L1.5b).
+    MECH_IGNORE=""
+    GDN_VERIFY="$UP/gdn/test_gdn_cutedsl_ring_verify.py"
+    if [ -f "$GDN_VERIFY" ] && ! env HCU_DEEPGEMM_BRIDGE=1 \
+            PYTHONPATH="$UP_TREE/python:$ROOT" \
+            python3 -c "import sglang.kernels.ops.attention.cutedsl_gdn_mtp_ring" \
+            >/dev/null 2>&1; then
+        MECH_IGNORE="--ignore=$GDN_VERIFY"
+        echo "L1: l15_mech ignores $GDN_VERIFY (cutedsl_gdn_mtp_ring not importable on this stack; ledger docs/ci.md L1.5b)"
+    fi
     if [ -n "$MECH" ]; then
         # Batch A first-run triage (2026-10-19): baseline 38 failed / 99
         # passed -- every one ledgered in docs/ci.md L1.5b (gdn cuteDSL
@@ -270,7 +313,7 @@ if [ -n "$UP_TREE" ]; then
         rc=0
         timeout $(( 1200 * TSCALE )) env HCU_DEEPGEMM_BRIDGE=1 \
             PYTHONPATH="$UP_TREE/python:$ROOT" \
-            python3 -m pytest $MECH -q --no-header \
+            python3 -m pytest $MECH $MECH_IGNORE -q --no-header \
             -k "not tilelang" -rs -o faulthandler_timeout=580 --tb=line \
             > /tmp/l1_l15_mech.log 2>&1 || rc=$?
         kill "$hbpid" 2>/dev/null; wait "$hbpid" 2>/dev/null

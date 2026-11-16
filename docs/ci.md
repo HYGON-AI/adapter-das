@@ -495,6 +495,21 @@ when stream is capturing`）并阻塞；在实际捕获 stream 预热后，原�
 [governance.md](governance.md)；运行时归因用 `HCU_ADAPTER_DUMP`（JSON：
 每算子活跃实现+机制+env 生效值），集成问题的配置级二分以它为起点。
 
+## vLLM CPU 契约的进程隔离
+
+`ci/l1_gpu_gate.sh` 的 `cpu_vllm` 段在新解释器中隐藏设备并设置
+`HCU_ADAPTER_HOST=none`，执行公开 AR、lifecycle、metadata discovery 和
+model mutation 契约。原生 kernel 段会初始化 HIP，不能与这些要求
+`torch.cuda.is_initialized() == False` 的测试共享进程。
+同一份显式文件数组同时生成 CPU 执行列表和 kernel 段的 `--ignore` 参数；
+文件只是转移执行段，任一段失败仍使整个 L1 失败，原断言不变。
+`VLLM_TARGET_ROOT` 的显式配置优先；未配置时使用当前解释器安装的 vLLM
+包根目录，保留真实 Worker/runner 的源码与签名检查。
+
+model mutation 的 CPU 夹具提供真实 `nn.Module`、transfer engine 的模型引用
+和 MRV2 的 `speculator=None` 状态；继续执行官方方法与模型更新预检，不复制
+方法体或绕过 owner guard。该夹具验证入口契约，不代替真实模型热更新验收。
+
 ## 设计取舍备忘
 
 - **L0 刻意零依赖**（不用 pytest/torch）：云端 runner 免装环境、秒级出结果、

@@ -1,5 +1,11 @@
 # 自动化测试套件要求
 
+要求未初始化 GPU 的 CPU 契约应在独立、隐藏设备且 HOSTnone 的解释器运行。
+已执行 native kernel 的 pytest 进程不能恢复这一前提；不要替换
+`torch.cuda.is_initialized` 或放宽守卫。迁移执行段时用同一清单驱动两段的
+纳入/排除并保留失败门禁。真实 Worker 的合成夹具须跟随目标源码的模型和
+runner 状态，继续执行官方委托链与预检，不用伪造方法返回值遮盖接口漂移。
+
 共享机制的 framework-free 契约覆盖 import 和调用两个阶段。模型 lifecycle
 测试须在新解释器阻断 vLLM、SGLang、Torch 导入后，执行真实注册、原子预检、
 post-load/guard dispatch；另以真实 vLLM Worker/config 验证桥上的原覆盖查询、

@@ -243,6 +243,9 @@ vLLM worker/executor/env-cache 覆盖查询归 `bridges.vllm_model_load`，薄 W
 `docs/frameworks/vllm032-post-model-load.md`。
 
 vLLM public registry/extension health 修改先读 `docs/vllm-flash-registry.md`。
+安装态 CI 的 checkout package 可能是指向 wheel 的符号链接；来源门禁应比较
+声明的精确模块与实际模块解析后的路径，不能把 checkout 根包含关系作为
+安装包必须留在源码树内的要求。仍须核对固定 Core 字节与真实 wheel 来源。
 共享 lifecycle 机制放 `runtime_lifecycle.py`，不能长在宿主薄桥内；改动须
 回归双宿主 bootstrap/import 与共享 consumer 契约，并保持真实 vLLM probes。
 回归必须覆盖真实官方 selector 在 clear/foreign 后的拒绝、零实参签名预检、

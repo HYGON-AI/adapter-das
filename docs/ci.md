@@ -510,7 +510,10 @@ model mutation 契约。原生 kernel 段会初始化 HIP，不能与这些要�
 `VLLM_TARGET_ROOT` 的显式配置优先；未配置时使用当前解释器安装的 vLLM
 包根目录，保留真实 Worker/runner 的源码与签名检查。
 CPU 段同时声明 `AR_ADAPTER_ROOT`，默认对应 CI 的源码接入阶段；独立 wheel
-验证可显式指定安装根目录，原来源断言仍拒绝错误的组合。
+验证可显式指定安装根目录。PR wheel CI 会把 checkout 的 `hcu_adapter/`
+换成安装包的符号链接，因此来源断言比较声明根下的精确模块文件与实际模块
+各自解析后的路径；不能要求安装包仍位于 checkout 根内，也不能仅用包根前缀
+接受另一个同名模块。源码与安装态的 Core 字节检查保持独立且必跑。
 
 AR 的 CPU 哈希测试只替换 Inductor 的硬件描述采样，继续执行真实普通/AOT
 collector 与其余编译因子，保留 mega artifact 开关和禁止 GPU 查询的守卫。

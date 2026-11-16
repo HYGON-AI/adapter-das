@@ -263,6 +263,8 @@ def silu_and_mul(input: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
     """out = silu(input[..., :d]) * input[..., d:]"""
     global _AITER_IMPL
     if input.is_cuda:
+        # Vendor dispatch must retain the same pre-launch AOT contract.
+        _check_aot_alignment(input)
         choice = _resolve_impl()
         if choice == "torch":
             return _gated_mul_impl(input, out, "silu", force_native=True)

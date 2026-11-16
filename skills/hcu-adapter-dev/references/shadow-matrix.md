@@ -49,6 +49,11 @@ vendor 出新轮。轮子就位后 `tests/vendor/test_flash_attn.py` 的探针�
 每个算子出口按优先级路由，出口签名逐字对齐社区版（含 `out=`、
 destination-passing、占位参数）：
 
+宿主 wrapper 的输入契约必须在 vendor 探测、输出写入和内核发射前验证，
+不能只放在 Triton/Torch fallback。SiLU 16-byte tail 对齐须覆盖 LightOp/AITER
+派发前拒绝与合法边界委托；CPU metadata double 只验证此顺序，设备数值和
+变输入 Graph 仍使用真实张量与实际 provider 单独验收。
+
 1. **triton（生产主力）**：自研移植，fp32 累加、graph-safe、无主机同步。
 2. **vendor（转发档）**：DTK wheel 里真包已有且经过我们的压测+守卫的
    （如 aiter 部分 kernel、lightop）。接入条件 = 过场景压测 + 注册快关。

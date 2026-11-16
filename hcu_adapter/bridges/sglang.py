@@ -81,6 +81,22 @@ def __getattr__(name):
     raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
 
+def _install_idle_verify_metadata(verify_type):
+    from hcu_adapter import registry
+    from hcu_adapter.kill_switch import op_disabled
+
+    if op_disabled("nextn_idle_metadata") or hasattr(verify_type, "kv_indptr"):
+        return False
+    registry.register(
+        "platform_detect", "spec-idle-kv-metadata",
+        target="sglang.srt.speculative.eagle_info.EagleVerifyInput.kv_indptr",
+        mechanism=registry.MECH_REBIND,
+        detail="missing optional decode metadata defaults to None",
+    )
+    verify_type.kv_indptr = None
+    return True
+
+
 def install() -> None:
     """Install the existing sglang bridge sequence without changing its order."""
     """HCU compatibility bridges for the upstream sglang stack.
@@ -325,8 +341,6 @@ def install() -> None:
                 "HCU adapter: attention-backend registry gate not installed",
                 exc_info=True,
             )
-        # Breakable graph stream queries need hardware HIP truth even when
-        # the model-level platform seam presents CUDA semantics.
         try:
             from hcu_adapter import prefill_bcg_gate
 
@@ -3337,6 +3351,20 @@ def install() -> None:
         except Exception:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: native HCU MTP sampling policy not installed", exc_info=True,
+            )
+
+        try:
+            if torch.version.hip is not None:
+                from sglang.srt.speculative.eagle_info import EagleVerifyInput
+                from hcu_adapter import registry
+
+                if _install_idle_verify_metadata(EagleVerifyInput):
+                    logging.getLogger("hcu.adapter").warning(
+                        "HCU adapter: absent idle verify KV metadata defaults to None"
+                    )
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: idle verify metadata not installed", exc_info=True,
             )
 
         try:

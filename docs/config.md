@@ -113,3 +113,7 @@ Adapter 只提供配置/catalog/快关，数学实现位于独立 `vllm-plugin-d
 ### HY3 prefill Graph 兼容开关
 
 `HCU_DISABLE_OPS=prefill_graph_driver` 在新进程中跳过流状态查询适配，保留安装前的绑定。默认启用适配；只改变驱动查询，保留 prefill Graph，不改变硬件身份。
+
+### NEXTN 空闲批次字段开关
+
+`HCU_DISABLE_OPS=nextn_idle_metadata` 在新进程中跳过缺失字段补齐。默认只为没有 `kv_indptr` 的类型提供 `None`，不改已有字段、实例值或实际 attention 后端。注册失败时不发布字段。两个停用项可用逗号合并。

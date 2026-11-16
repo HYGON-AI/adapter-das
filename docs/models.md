@@ -334,3 +334,7 @@ SGLang 兼容包装保留原生量化分发入口，配套 Plugin 可显式传�
 ## HY3：保留 prefill Graph
 
 只将 breakable Graph 的驱动查询绑定到 HIP，替代整体关闭 prefill Graph 的旧方案。修改位于 `prefill_bcg_gate.py`，沿主仓先注册后发布原则；`HCU_DISABLE_OPS=prefill_graph_driver` 在新进程中跳过安装。复用现有测试覆盖 HIP、非 HIP、重复安装、注册失败及停用。其他模型/架构的 Graph 支持不据此宣称通过。
+
+## HY3 NEXTN：空闲对象缺字段
+
+缺少 `kv_indptr` 的空闲验证对象在读取时抛出 AttributeError；现于已有 SGLang 桥中仅补缺失类字段 None，不覆盖现有字段或实例值。先注册成功再发布字段；停用项为 `HCU_DISABLE_OPS=nextn_idle_metadata`。回归合入已有 `test_spec_h2d_pin.py`，保留主仓精简后的既有用例，不重新引入已删除的历史测试。

@@ -181,3 +181,48 @@ def test_explicit_vendor_public_dispatch_reaches_real_provider(native_attention,
     expected, _ = reference(q, k, v, False)
     torch.testing.assert_close(actual.float().cpu(), expected, atol=.02, rtol=.02)
     assert calls == [(17, 4, 64)]
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason='requires HCU/CUDA')
+@pytest.mark.parametrize('dtype', [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize('dense', [False, True])
+def test_vendor_operand_rejection_and_neutral_defaults_graph(native_attention, dtype, dense):
+    from hcu_adapter import hcu_env, kill_switch
+    from sgl_kernel.flash_attn import flash_attn_varlen_func
+    if hcu_env.resolve('HCU_FA_IMPL')[0] != 'vendor' or kill_switch.op_disabled('vendor_fa'):
+        pytest.skip('only the explicit vendor arm')
+    q, k, v = [torch.randn(2, length, heads, 64, device='cuda', dtype=dtype)
+               for length, heads in ((7, 4), (11, 2), (11, 2))]
+    cu_q, cu_k = (None, None) if dense else (
+        torch.tensor([0, 7, 14], device='cuda', dtype=torch.int32),
+        torch.tensor([0, 11, 22], device='cuda', dtype=torch.int32),
+    )
+    operands = (q, k, v) if dense else tuple(t.flatten(0, 1) for t in (q, k, v))
+    out = torch.full_like(operands[0], float('nan'))
+
+    def execute(**kwargs):
+        return flash_attn_varlen_func(*operands, cu_q, cu_k, 7, 11, out=out, **kwargs)
+
+    for extra in ({'alibi_slopes': torch.ones(4, device='cuda')}, {'dropout_p': 0.25}):
+        with pytest.raises(NotImplementedError, match='ALiBi|dropout'):
+            execute(**extra)
+        assert torch.isnan(out).all()
+    with pytest.raises(TypeError, match='unexpected_bias'):
+        execute(unexpected_bias=torch.ones(4, device='cuda'))
+    assert torch.isnan(out).all()
+    execute(alibi_slopes=None, dropout_p=0.0)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        captured = execute(alibi_slopes=None, dropout_p=0.0)
+    for _ in range(3):
+        for tensor in (q, k, v):
+            tensor.copy_(torch.randn_like(tensor))
+        expected = reference(q, k, v, False)[0]
+        expected = expected if dense else expected.flatten(0, 1)
+        eager = execute(alibi_slopes=None, dropout_p=0.0).clone()
+        graph.replay()
+        torch.cuda.synchronize()
+        assert captured is out
+        tolerance = .02 if dtype == torch.bfloat16 else .003
+        torch.testing.assert_close(out.float().cpu(), expected, atol=tolerance, rtol=tolerance)
+        assert torch.equal(out, eager)

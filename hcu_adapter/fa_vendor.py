@@ -813,6 +813,12 @@ def install():
         return ret
 
     def flash_attn_varlen_func(*args, **kw):
+        unexpected = kw.keys() - _VARLEN_NAMES - {'alibi_slopes', 'dropout_p'}
+        if unexpected:
+            raise TypeError('flash_attn (HCU vendor): unexpected keyword(s): '
+                            + ', '.join(sorted(unexpected)))
+        if kw.get('alibi_slopes') is not None or kw.get('dropout_p', 0.0) != 0.0:
+            raise NotImplementedError('flash_attn (HCU vendor): ALiBi and nonzero dropout are unsupported')
         p = dict(zip(_VARLEN_NAMES, args))
         p.update(kw)
         q, k, v = (p.get(name) for name in ('q', 'k', 'v'))

@@ -10,11 +10,15 @@
 - 更新公开 dispatcher 的 from-import 缓存，覆盖预导入的真实 diffusion 消费者。
 - FA3-only 参数不得静默丢弃，未支持的非分页接口交回原 emulation；
   不捕获 vendor 运行错误后重试。
+- vendor 桥只接受已声明关键字，以及中性的 `alibi_slopes=None`、`dropout_p=0`；
+  非空 ALiBi 或非零 dropout 显式报 `NotImplementedError`，其他未声明关键字
+  报 `TypeError`。原 emulation 会忽略这些 FA2 参数，不能以回退代替拒绝。
 
 新进程使用 `HCU_FA_IMPL=triton` 回退；快关与优先级统一见
 [快关注册表](../skills/hcu-adapter-dev/references/kill-switches.md#hcu_disable_ops快关总闸)。
 设备测试入口为 `tests/kernels/test_fa_dense_batch.py` 与
-`tests/vendor/test_flash_attn.py`，回归约束见
+`tests/vendor/test_flash_attn.py`，CPU 参数路由回归见
+`tests/adapter/test_fa_vendor_kwargs.py`，回归约束见
 [测试参考](../skills/hcu-adapter-dev/references/test-suite.md#非分页-diffusion-接口回归)。
 模型启动、性能表、图像复现限制及证据目录统一见
 [MiniMax-H3 部署第8节](image-dtk2610.md#8-minimax-h3-image-的原生-diffusion-平台候选)。

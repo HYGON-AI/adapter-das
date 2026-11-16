@@ -1,0 +1,20 @@
+{
+  "date": "2026-11-16",
+  "scope": "Local delivery of retained measured prefill optimizations; no service restart or fresh GPU benchmark.",
+  "sglang_unchanged_commit": "ce0d5d18abfc3c15d8d526453c4f00b24f45e4c6",
+  "checks": {
+    "l0": {
+      "exit_code": 0,
+      "tail": "u_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:1467 reads HCU_DUMP_TOPK via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:1628 reads HCU_MQA_EMU via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:1650 reads HCU_DUMP_LAYERS via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:1732 reads HCU_DUMP_INNER via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:1763 reads HCU_DUMP_INNER via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:2109 reads HCU_DUMP_TOPK via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:2149 reads HCU_DUMP_TOPK via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:2198 reads HCU_DUMP_TOPK via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:2243 reads HCU_DUMP_TOPK via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:2327 reads HCU_DUMP_TOPK via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:2655 reads HCU_MHC_UNFUSE via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:2767 reads HCU_DUMP_LAYERS via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:2948 reads HCU_MHC_EMU via os.environ; use hcu_env.resolve\nWARN [bare-environ] hcu_adapter/bridges/sglang.py:2998 reads HCU_SPEC_LOC_SAFE via os.environ; use hcu_env.resolve\nl0 gate: GREEN (33 warn)\n"
+    }
+  },
+  "source_manifest_sha256_verified": true,
+  "changed_python_ast_parse": "passed",
+  "git_diff_cached_check": "passed",
+  "validation_method": "Clean index export excludes unrelated dirty files and ignored AppleDouble metadata.",
+  "not_executed": [
+    "fresh GPU/graph/service benchmark of these local commits",
+    "browser visual review of regenerated documentation guide"
+  ],
+  "native_gemm_artifacts": "Native binary libraries remain external; complete file SHA256 manifests committed."
+}

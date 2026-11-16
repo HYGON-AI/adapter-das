@@ -879,6 +879,8 @@ def chunk_kda_fwd(
     dt_bias: Optional[torch.Tensor] = None,
     lower_bound: Optional[float] = None,
     return_intermediate_state: bool = False,
+    track_state: Optional[torch.Tensor] = None,
+    track_chunk_idx: Optional[torch.Tensor] = None,
 ):
     chunk_size = 64
     # Pre-compute chunk indices once and thread through all downstream kernels.
@@ -951,6 +953,8 @@ def chunk_kda_fwd(
         gk=g,
         initial_state=initial_state,
         initial_state_indices=initial_state_indices,
+        track_state=track_state,
+        track_chunk_idx=track_chunk_idx,
         cu_seqlens=cu_seqlens,
         chunk_indices=chunk_indices,
     )
@@ -992,6 +996,8 @@ def chunk_kda(
     dt_bias: Optional[torch.Tensor] = None,
     lower_bound: Optional[float] = None,
     return_intermediate_state: bool = False,
+    track_state: Optional[torch.Tensor] = None,
+    track_chunk_idx: Optional[torch.Tensor] = None,
     **kwargs,
 ):
     if scale is None:
@@ -1010,6 +1016,8 @@ def chunk_kda(
         scale=scale,
         initial_state=initial_state,
         initial_state_indices=initial_state_indices,
+        track_state=track_state,
+        track_chunk_idx=track_chunk_idx,
         cu_seqlens=cu_seqlens,
         A_log=A_log,
         dt_bias=dt_bias,

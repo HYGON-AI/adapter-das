@@ -1,0 +1,43 @@
+{
+  "scope": "Retained32-GPU source with packaging-only Triton module rename; unrelated KDA edits excluded.",
+  "sglang_commit": "ce0d5d18abfc3c15d8d526453c4f00b24f45e4c6",
+  "files": [
+    {
+      "path": "hcu_adapter/hcu_env.py",
+      "snapshot_sha256": "439ee64cba93f7b584e4c4d1a3632dd02438fb2308812040b0f7667e45f106de",
+      "sha256": "439ee64cba93f7b584e4c4d1a3632dd02438fb2308812040b0f7667e45f106de"
+    },
+    {
+      "path": "hcu_adapter/jit_sources.py",
+      "snapshot_sha256": "06f6d59711d3220560b07ec7ec3833934ae88804342e3321cbf86e8398ecdb8a",
+      "sha256": "06f6d59711d3220560b07ec7ec3833934ae88804342e3321cbf86e8398ecdb8a"
+    },
+    {
+      "path": "hcu_adapter/mqa_logits_triton.py",
+      "snapshot_sha256": "643f3bd70a3ea857f399d486316bb61794ecba4182547201d5c27571f6e3415c",
+      "sha256": "643f3bd70a3ea857f399d486316bb61794ecba4182547201d5c27571f6e3415c"
+    },
+    {
+      "path": "hcu_adapter/sglang_layernorm.py",
+      "snapshot_sha256": "2dd8babadf7db12a77c704ba76a2bc8133c9309cc44a98a0ddba4e57a6bedc27",
+      "sha256": "2dd8babadf7db12a77c704ba76a2bc8133c9309cc44a98a0ddba4e57a6bedc27"
+    },
+    {
+      "path": "hcu_adapter/slimquant.py",
+      "snapshot_sha256": "bff95dd888817bf407cbaf1c6a36767332796bc53d84998cab366e2d87bf4d00",
+      "sha256": "22ffae749035692847cea4c61daaa63993b72c3086d31b5d4e22e0231b3a73c5"
+    },
+    {
+      "path": "hcu_adapter/kpool_write_emu.py",
+      "snapshot_sha256": "a8f990c89a7c07d53dc0c0e32890bdfd5321d9f6c9943d2aca58a45852367fda",
+      "sha256": "a8f990c89a7c07d53dc0c0e32890bdfd5321d9f6c9943d2aca58a45852367fda"
+    },
+    {
+      "path": "hcu_adapter/kernels/slimquant_group_quant_triton.py",
+      "snapshot_sha256": "d3f99628e7b567fdb17e62220bd871f2bf54ce45594f5687033edd70f79b8b6a",
+      "snapshot_path": "hcu_adapter/kernels/slimquant_group_quant.py",
+      "sha256": "d3f99628e7b567fdb17e62220bd871f2bf54ce45594f5687033edd70f79b8b6a"
+    }
+  ],
+  "packaging_transform": "Rename slimquant_group_quant.py to slimquant_group_quant_triton.py and adjust its sole import; kernel bytes unchanged."
+}

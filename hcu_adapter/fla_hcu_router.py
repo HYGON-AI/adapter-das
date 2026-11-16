@@ -84,6 +84,8 @@ def _install_kda_prefill(impl: str) -> None:
             dt_bias=kwargs.get("dt_bias"),
             lower_bound=kwargs.get("lower_bound"),
             return_intermediate_state=bool(kwargs.get("return_intermediate_states")),
+            track_state=kwargs.get("track_state"),
+            track_chunk_idx=kwargs.get("track_chunk_idx"),
         )
 
     TritonKDAKernel.extend = extend

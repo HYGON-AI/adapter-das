@@ -41,6 +41,9 @@ def _community_root(root):
     for candidate in (root, *root.parents):
         if (candidate / ".git").exists():
             return candidate
+    for candidate in (root, *root.parents):
+        if (candidate / "python/sglang").is_dir() and (candidate / "python/pyproject.toml").is_file():
+            return candidate
     return root
 
 

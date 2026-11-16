@@ -69,6 +69,10 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
     h,
     initial_state,
     initial_state_indices,
+    track_state,
+    track_chunk_idx,
+    stride_track_state: tl.constexpr,
+    TRACK_STATE: tl.constexpr,
     stride_init_state: tl.constexpr,
     cu_seqlens,
     chunk_offsets,
@@ -152,6 +156,13 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
             )
             b_h4 += tl.load(p_h0_4, boundary_check=(0, 1)).to(tl.float32)
 
+    if TRACK_STATE:
+        i_track = tl.load(track_chunk_idx + i_n).to(tl.int32)
+        track_base = track_state + (i_n * stride_track_state + i_h * V * K).to(tl.int64)
+    else:
+        i_track = -1
+        track_base = track_state
+
     # main recurrence
     for i_t in range(NT):
         p_h1 = tl.make_block_ptr(
@@ -173,6 +184,27 @@ def chunk_gated_delta_rule_fwd_kernel_h_blockdim64(
                 h + i_t * stride_h, (V, K), (K, 1), (i_v * BV, 192), (BV, 64), (1, 0)
             )
             tl.store(p_h4, b_h4.to(p_h4.dtype.element_ty), boundary_check=(0, 1))
+
+        if TRACK_STATE and i_t == i_track:
+            p_track1 = tl.make_block_ptr(
+                track_base, (V, K), (K, 1), (i_v * BV, 0), (BV, 64), (1, 0)
+            )
+            tl.store(p_track1, b_h1, boundary_check=(0, 1))
+            if K > 64:
+                p_track2 = tl.make_block_ptr(
+                    track_base, (V, K), (K, 1), (i_v * BV, 64), (BV, 64), (1, 0)
+                )
+                tl.store(p_track2, b_h2, boundary_check=(0, 1))
+            if K > 128:
+                p_track3 = tl.make_block_ptr(
+                    track_base, (V, K), (K, 1), (i_v * BV, 128), (BV, 64), (1, 0)
+                )
+                tl.store(p_track3, b_h3, boundary_check=(0, 1))
+            if K > 192:
+                p_track4 = tl.make_block_ptr(
+                    track_base, (V, K), (K, 1), (i_v * BV, 192), (BV, 64), (1, 0)
+                )
+                tl.store(p_track4, b_h4, boundary_check=(0, 1))
 
         p_w = tl.make_block_ptr(
             w, (T, K), (stride_w, 1), (i_t * BT, 0), (BT, 64), (1, 0)
@@ -315,7 +347,12 @@ def chunk_gated_delta_rule_fwd_h(
     save_new_value: bool = True,
     cu_seqlens: Optional[torch.LongTensor] = None,
     chunk_indices: Optional[torch.LongTensor] = None,
+    track_state: Optional[torch.Tensor] = None,
+    track_chunk_idx: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    assert (track_state is None) == (track_chunk_idx is None)
+    if track_state is not None:
+        assert track_state.dtype == torch.float32
     B, T, Hg, K, V = *k.shape, u.shape[-1]
     H = u.shape[-2]
     BT = CHUNK_SIZE
@@ -334,7 +371,7 @@ def chunk_gated_delta_rule_fwd_h(
     assert K <= 256, "current kernel does not support head dimension larger than 256."
 
     contiguous_state = initial_state is None or initial_state.stride(0) == H * V * K
-    if contiguous_state and _should_use_aiter_chunk_gated_delta_h_hip(K, V, BT):
+    if track_state is None and contiguous_state and _should_use_aiter_chunk_gated_delta_h_hip(K, V, BT):
         try:
             import aiter
 
@@ -369,7 +406,7 @@ def chunk_gated_delta_rule_fwd_h(
     def grid(meta):
         return (triton.cdiv(V, meta["BV"]), N * H)
 
-    if not _use_prefill_aiter_linear_attn or not contiguous_state:
+    if track_state is not None or not _use_prefill_aiter_linear_attn or not contiguous_state:
         chunk_gated_delta_rule_fwd_kernel_h_blockdim64[grid](
             k=k,
             v=u,
@@ -380,6 +417,10 @@ def chunk_gated_delta_rule_fwd_h(
             h=h,
             initial_state=initial_state,
             initial_state_indices=initial_state_indices,
+            track_state=track_state,
+            track_chunk_idx=track_chunk_idx,
+            stride_track_state=track_state.stride(0) if track_state is not None else 0,
+            TRACK_STATE=track_state is not None,
             stride_init_state=initial_state.stride(0)
             if initial_state is not None
             else H * V * K,

@@ -55,8 +55,9 @@ def install() -> None:
     ):
         return _adapter_fused(input, residual, weight, eps=eps)
 
-    _ops.RMSNormOp.forward_aiter = _rms_forward_aiter
-    _ops.FusedAddRMSNormOp.forward_aiter = _fused_forward_aiter
+    if hasattr(_ops, "RMSNormOp") and hasattr(_ops, "FusedAddRMSNormOp"):
+        _ops.RMSNormOp.forward_aiter = _rms_forward_aiter
+        _ops.FusedAddRMSNormOp.forward_aiter = _fused_forward_aiter
     logging.getLogger("hcu.adapter").info(
         "HCU adapter: sglang layernorm JIT faces routed to adapter kernels"
     )

@@ -3041,5 +3041,14 @@ def install() -> None:
                 exc_info=True,
             )
 
+        try:
+            from hcu_adapter import multimem_gate
+
+            multimem_gate.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: multimem probe gate not installed", exc_info=True,
+            )
+
         from hcu_adapter import qsa_pool
         qsa_pool.install()

@@ -167,6 +167,12 @@ aicc --version 的完整输出；继承 SGLang PYTHONPATH 时，Python helper �
 并清空 PYTHONPATH；主测试进程继续使用真实 SGLang 环境。保留编译参数、
 数值断言和原始 FAIL，此隔离不能作为放宽门禁的理由。
 
+channel-FP8 MoE 的三组 swiglu-clamp 用例位于 tests/kernels/test_aiter_moe.py。
+gfx936 当前没有可执行的 AITER channel-FP8 MoE provider，测试在执行时读取
+当前分配设备的真实 gcnArchName（去掉冒号后的 feature suffix），于分配 tensor
+前明确 skip；不在模块收集阶段初始化设备。其他架构继续要求 AITER 实际执行，
+并保留原数值阈值与变输入 Graph 检查，不能因 provider 返回 None 而通用跳过。
+
 Mamba2 graph 数值门见 `test_l15_execution_chains.py` 的
 `test_mamba2_decode_fresh_input_graph`：独立 CPU FP32 计算投影、卷积、
 SSM 与门控归一化，保留激活存储 dtype。捕获后连续三轮改变输入与

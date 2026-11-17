@@ -1,6 +1,6 @@
 # 算子档位矩阵（自动生成，勿手改）
 
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-16）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
+> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-17）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
@@ -38,11 +38,11 @@ vLLM 0.33 V4.1 gathered-BF16 sparse prefill via native FlashMLA
 
 ## vllm_fp4_indexer
 
-V41 LightOp FP4 indexer with zero-copy 64-record cache pages
+V41 LightOp FP4 indexer with variable allocator pages
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| lightop | candidate Default: applies only when the model |
+| lightop | candidate Default for FP4 cache only; PCP1 eag |
 | stock | candidate Explicit stock fallback: existing FP |
 
 路由变量：`HCU_VLLM_FP4_INDEXER_IMPL`
@@ -174,6 +174,27 @@ vLLM native FP8/INT8 Linear execution through LightOp with official Triton fallb
 | triton | validated Preserve official providers without  |
 | lightop | candidate Require LightOp wheel; native quanti |
 | auto | candidate LightOp when installed: INT8 gfx936/ |
+
+路由变量：（auto）
+
+## vllm_minimax_prefill
+
+MiniMax PCP8 native-MSA prefill and static-selector fusion (Plugin provider)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Default in the admitted MiniMax path |
+| stock | candidate Explicit startup comparison: preserv |
+
+路由变量：（auto）
+
+## vllm_minimax_qknorm_abi
+
+vLLM MiniMax fused qknorm native ABI compatibility
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| native-25 | candidate Exact audited wrapper and old native |
 
 路由变量：（auto）
 

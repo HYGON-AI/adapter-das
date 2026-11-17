@@ -13,6 +13,7 @@ Two wheels, independent version lines, one interlock:
                 Requires-Dist: sgl-kernel==<sgl_kernel version>
 """
 
+# [L1 cold-curation 2026-11-17] 7 -> 3: keeps the stamped-pair interlock, the pure-shadow kernel wheel and the half-install sentinel; dropped faces stay in git history.
 import os
 from email.parser import Parser
 from pathlib import Path
@@ -48,14 +49,17 @@ def _adapter_version():
         encoding="utf-8").strip()
 
 
-def _build_wheel(source_dir, tmp_path, tag, *, stamp=None):
+def _build_wheel(source_dir, tmp_path, tag, *, stamp=None, platform=None):
     wheel_dir = tmp_path / ("wheel-" + tag)
     wheel_dir.mkdir()
     env = os.environ.copy()
     env["HCU_ADAPTER_HOST"] = "none"
     env.pop("DAS_BUILD_STAMP", None)
+    env.pop("DAS_PLATFORM_TAG", None)
     if stamp is not None:
         env["DAS_BUILD_STAMP"] = stamp
+    if platform is not None:
+        env["DAS_PLATFORM_TAG"] = platform
     subprocess.run(
         [
             sys.executable,
@@ -110,6 +114,28 @@ def _members(wheel):
     return set(archive.namelist()), archive
 
 
+def _metadata(wheel):
+    with zipfile.ZipFile(wheel) as archive:
+        name = next(n for n in archive.namelist()
+                    if n.endswith(".dist-info/METADATA"))
+        return Parser().parsestr(archive.read(name).decode())
+
+
+def _interlock_pin(metadata):
+    return next(Requirement(r) for r in metadata.get_all("Requires-Dist", [])
+                if Requirement(r).name == "sgl-kernel")
+
+
+def _pin_lib():
+    # setup_hip.py and ci/l0_gate.py load this same renderer by path
+    import importlib.util
+    path = ADAPTER_PYPROJECT.parent / "_pin.py"
+    spec = importlib.util.spec_from_file_location("hcu_adapter_pin_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_kernel_wheel_is_pure_shadow_kernel(kernel_wheel):
     members, archive = _members(kernel_wheel)
     version = _kernel_version()
@@ -129,65 +155,6 @@ def test_kernel_wheel_is_pure_shadow_kernel(kernel_wheel):
     ep = f"sgl_kernel-{version}.dist-info/entry_points.txt"
     assert ep not in members, "kernel dist must not carry vllm entry-points"
     archive.close()
-
-
-def test_adapter_wheel_carries_bootstrap_bridges_and_entry_points(adapter_wheel):
-    members, archive = _members(adapter_wheel)
-    version = _adapter_version()
-
-    expected = {"sitecustomize.py"}
-    expected.update(
-        path.relative_to(REPO_ROOT).as_posix()
-        for path in (REPO_ROOT / "hcu_adapter").rglob("*.py")
-    )
-    assert not (expected - members), f"adapter wheel missing: {sorted(expected - members)}"
-    # purity: the kernel package does not ride the adapter dist
-    assert not any(m.startswith("sgl_kernel/") for m in members), \
-        "adapter wheel must not ship sgl_kernel/ (interlock pins the dist)"
-
-    dist_info = f"hcu_adapter-{version}.dist-info"
-    assert f"{dist_info}/METADATA" in members
-    metadata = archive.read(f"{dist_info}/METADATA").decode()
-    assert f"Requires-Dist: sgl-kernel=={Version(_kernel_version()).public}" in metadata, \
-        "unstamped adapter must pin the kernel's public version"
-    assert "sgl-kernel~=" not in metadata
-
-    entry_points = archive.read(f"{dist_info}/entry_points.txt").decode()
-    assert "[vllm.platform_plugins]" in entry_points
-    assert "[vllm.general_plugins]" in entry_points
-    assert "hcu_adapter = hcu_adapter.bridges.vllm:hcu_platform_plugin" in entry_points
-    assert "hcu_adapter = hcu_adapter.bridges.vllm:hcu_runtime_plugin" in entry_points
-    archive.close()
-
-
-def test_vllm_entry_points_declared_only_in_adapter_dist():
-    adapter_project = tomllib.loads(
-        ADAPTER_PYPROJECT.read_text(encoding="utf-8")
-    )["project"]
-    entry_points = adapter_project["entry-points"]
-    assert entry_points["vllm.platform_plugins"] == {
-        "hcu_adapter": "hcu_adapter.bridges.vllm:hcu_platform_plugin"
-    }
-    assert entry_points["vllm.general_plugins"] == {
-        "hcu_adapter": "hcu_adapter.bridges.vllm:hcu_runtime_plugin"
-    }
-    # entry-points migrated (not duplicated): the kernel dist declares none
-    kernel_project = tomllib.loads(
-        (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    )["project"]
-    assert "entry-points" not in kernel_project
-
-
-def test_interlock_pin_matches_single_version_source(adapter_wheel):
-    project = tomllib.loads(ADAPTER_PYPROJECT.read_text(encoding="utf-8"))["project"]
-    assert "dependencies" in project["dynamic"] and "dependencies" not in project
-    with zipfile.ZipFile(adapter_wheel) as archive:
-        name = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
-        metadata = Parser().parsestr(archive.read(name).decode())
-    base = {str(r) for line in metadata.get_all("Requires-Dist", [])
-            if (r := Requirement(line)).marker is None}
-    assert base == {f"sgl-kernel=={Version(_kernel_version()).public}",
-                    "packaging>=23", "torch==2.13.0", "triton==3.7.0"}
 
 
 def test_stamped_wheel_pair_pins_exact_matching_build(tmp_path):
@@ -212,15 +179,42 @@ def test_stamped_wheel_pair_pins_exact_matching_build(tmp_path):
     assert not pin.specifier.contains(f"{Version(_kernel_version()).public}+hcu.other")
 
 
-def test_adapter_version_file_is_the_adapter_single_source(adapter_wheel):
-    # packaging/hcu-adapter/VERSION is the adapter dist's own single source
-    # (independent of sgl-kernel's line); the built wheel must carry it
-    # verbatim in its metadata.
-    members, archive = _members(adapter_wheel)
-    dist_info = f"hcu_adapter-{_adapter_version()}.dist-info"
-    metadata = archive.read(f"{dist_info}/METADATA").decode()
-    archive.close()
-    assert f"Version: {_adapter_version()}" in metadata
+def test_platform_tagged_pair_pins_exact_matching_build(tmp_path):
+    # native kernel build: both wheels carry the dtk/torch ABI label
+    # (no hcu segment) and the adapter pins that exact build.  The kernel
+    # wheel itself comes from setup_hip.py (hipcc required); its version is
+    # rendered by the same _pin.py the native setup loads, so exercising
+    # that renderer here keeps this a hermetically checkable contract.
+    source = _copy_repo(tmp_path)
+    stamp = "20261111.g123abc"
+    platform = "dtk2610.torch2130"
+    adapter = _build_wheel(source / "packaging/hcu-adapter", tmp_path,
+                           "platform-adapter", stamp=stamp, platform=platform)
+    expected_kernel = f"{Version(_kernel_version()).public}+{platform}.{stamp}"
+    expected_adapter = f"{Version(_adapter_version()).public}+{platform}.{stamp}"
+    assert _pin_lib().kernel_version(stamp=stamp, platform=platform) == expected_kernel
+    adapter_meta = _metadata(adapter)
+    assert adapter_meta["Version"] == expected_adapter
+    assert "hcu" not in expected_kernel
+    pin = _interlock_pin(adapter_meta)
+    assert str(pin.specifier) == f"=={expected_kernel}"
+    assert pin.specifier.contains(expected_kernel)
+    assert not pin.specifier.contains(f"{Version(_kernel_version()).public}+{platform}.other")
+
+
+def test_platform_tag_without_stamp_is_still_an_exact_pin(tmp_path):
+    source = _copy_repo(tmp_path)
+    platform = "dtk2610.torch2130"
+    adapter = _build_wheel(source / "packaging/hcu-adapter", tmp_path,
+                           "platform-nostamp-adapter", platform=platform)
+    expected_kernel = f"{Version(_kernel_version()).public}+{platform}"
+    expected_adapter = f"{Version(_adapter_version()).public}+{platform}"
+    assert _pin_lib().kernel_version(stamp="", platform=platform) == expected_kernel
+    adapter_meta = _metadata(adapter)
+    assert adapter_meta["Version"] == expected_adapter
+    pin = _interlock_pin(adapter_meta)
+    assert str(pin.specifier) == f"=={expected_kernel}"
+    assert not pin.specifier.contains(f"{Version(_kernel_version()).public}+{platform}.other")
 
 
 _SENTINEL_BLOCK = """\

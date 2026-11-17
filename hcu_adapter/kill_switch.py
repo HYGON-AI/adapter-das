@@ -33,6 +33,7 @@ LOG = logging.getLogger("hcu.adapter")
 
 # canonical name -> (what gets blocked, opt-in env that re-enables it)
 SWITCHES = {
+    "vendor_fa": ("DTK FlashAttention routes; fresh-process triton fallback", "HCU_FA_IMPL"),
     "vllm_flashmla_decode": ("vLLM V4.1 native packed sparse decode; fresh-process stock fallback", None),
     "vllm_flashmla_prefill": ("vLLM V4.1 native sparse prefill; fresh-process stock fallback", None),
     "vllm_fp4_indexer": ("V41 FP4 model/cache/producer/reader; fresh-process FP8 rollback", "HCU_VLLM_FP4_INDEXER_IMPL"),
@@ -44,6 +45,8 @@ SWITCHES = {
     "vllm_ct_w4a8": ("vLLM V4.1 CT W4A8 config registration; fresh-process stock fallback", "HCU_VLLM_CT_W4A8_IMPL"),
     "vllm_pcp": ("vLLM V4.1 PCP attention ownership; fresh-process stock fallback", "HCU_VLLM_PCP_IMPL"),
     "qsa_mqa": ("QSA MQA BoltOPs dispatch (falls back to Torch reference)", None),
+    "vllm_minimax_prefill": ("MiniMax Plugin prefill fusion; startup veto retains the stock composition", None),
+    "vllm_minimax_qknorm_abi": ("vLLM MiniMax fused native ABI bridge; disabling rejects old ABI", None),
     "vllm_sparse_indexer": ("vLLM C4 indexer public OOT compatibility; fresh-process stock fallback", "HCU_VLLM_SPARSE_INDEXER_IMPL"),
     "vllm_mhc": ("vLLM official Torch/AITER mHC compatibility registration (startup only)", "HCU_VLLM_MHC_IMPL"),
     "deep_ep": ("DeepInfer DeepEP compatibility surface", None),

@@ -14,7 +14,11 @@ SGLang 宿主和不满足隔离条件的进程仍拒绝。不能设置虚假的 
 
 CPU 子进程须自己声明隔离条件，不能依赖父 pytest 的 HOSTnone：设备套件可能
 已传播 SGLang/vLLM 宿主。仅检查进程私有状态的子进程显式传
-`HCU_ADAPTER_HOST=none`；只需标准库的惰性工具导入探针使用 `-I -S`，
+`HCU_ADAPTER_HOST=none`，并独立隐藏 HIP/CUDA/ROCR 三种设备可见性；
+HOSTnone 本身不阻止惰性健康查询探测真实 HCU、选择尚未激活的默认 provider。
+只测试合成平台/backend 路由时，局部隔离无关内置 owner 的 install/health，
+继续执行被测官方 selector 和 required-extension 检查；真实 owner 健康门禁另测。
+只需标准库的惰性工具导入探针使用 `-I -S`，
 并确认 blocker 安装前没有加载框架。`-I` 仍执行 installed sitecustomize，
 可能在测试代码之前启动宿主。保留原子进程 timeout，以真实继承宿主的
 RED/GREEN 对照验证隔离；启动/metadata/spawn 门禁仍在各自集成测试执行。

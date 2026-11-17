@@ -428,7 +428,8 @@ def test_fresh_interpreter_does_not_inherit_failed_runtime(startup):
         # This child checks process-local lifecycle state, not host startup.
         # A device suite may have propagated sglang/vLLM into its environment;
         # importing those bridges before -c would precede this CPU contract.
-        env=dict(os.environ, HCU_ADAPTER_HOST="none"),
+        env=dict(os.environ, HCU_ADAPTER_HOST="none", HIP_VISIBLE_DEVICES="",
+                 CUDA_VISIBLE_DEVICES="", ROCR_VISIBLE_DEVICES=""),
     )
     assert result.returncode == 0, result.stderr
     with pytest.raises(bridge.LatchedVllmRuntimeError):

@@ -54,7 +54,15 @@ PY
 )" || { echo "VLLM-LANE: vllm not importable on this stack"; exit 1; }
 fi
 export VLLM_TARGET_ROOT
-echo "VLLM-LANE: host=vllm gpu=$GPU target_root=$VLLM_TARGET_ROOT"
+# Resolve the declared module through source/wheel CI's installed-package
+# symlink. Preserve explicit phase overrides rather than trusting an import.
+export AR_ADAPTER_ROOT="${AR_ADAPTER_ROOT:-$ROOT}"
+echo "VLLM-LANE: host=vllm gpu=$GPU target_root=$VLLM_TARGET_ROOT adapter_root=$AR_ADAPTER_ROOT"
+if [ -e "$ROOT/.git" ]; then
+    source_head="$(git rev-parse --verify HEAD)" || exit 1
+    source_parents="$(git show -s --format=%P HEAD)" || exit 1
+    echo "VLLM-LANE: source_head=$source_head source_parents=$source_parents"
+fi
 
 # Mirror of tests/adapter/conftest.py _is_vllm_host_file. conftest remains
 # the source of truth for the host-domain scoping; the per-file counts below

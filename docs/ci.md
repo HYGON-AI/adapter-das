@@ -542,6 +542,11 @@ CPU 段同时声明 `AR_ADAPTER_ROOT`，默认对应 CI 的源码接入阶段；
 各自解析后的路径；不能要求安装包仍位于 checkout 根内，也不能仅用包根前缀
 接受另一个同名模块。源码与安装态的 Core 字节检查保持独立且必跑。
 
+独立 `ci/vllm_host_lane.sh` 同样声明 `AR_ADAPTER_ROOT`，未配置时使用
+当前 checkout 根目录，并保留显式覆盖。wheel CI 中该根下的包符号链接
+仍解析到安装位置；缺失变量不能改成跳过来源断言。有 Git 元数据时，
+车道日志同时记录完整 HEAD 和父提交，绑定实际 PR 合并源。
+
 新 built-in owner 并入主线时，同步更新 AR/extension-fatal 的 CPU seam
 夹具，隔离不属于该契约的 provider 安装与 owner health；不能让新增默认
 provider 初始化设备、抢先失败而掩盖原测试。AR、宿主失败锁存和官方哈希

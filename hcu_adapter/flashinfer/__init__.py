@@ -63,7 +63,7 @@ class _FlashInferFinder(LibStubFinder):
                     "fused_add_rmsnorm": fused_add_rmsnorm,
                 },
                 "flashinfer.rope": {
-                    "apply_rope_with_cos_sin_cache_inplace": apply_rope_with_cos_sin_cache_inplace,
+                    "apply_rope_with_cos_sin_cache_inplace": ABSENT,
                 },
                 "flashinfer.comm": {
                     "allreduce_fusion": ABSENT,

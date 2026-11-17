@@ -3226,3 +3226,20 @@ def install() -> None:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: QSA pool not installed", exc_info=True
             )
+
+
+def hcu_diffusion_platform_plugin():
+    # Entry point target advertised by the wheel's metadata; declines on
+    # non-gfx936 via the plugin's own gating (returns None -> builtin
+    # platform detection proceeds under HCU_PLATFORM_SEMANTICS=cuda).
+    from hcu_adapter.sglang_diffusion import platform_plugin
+
+    return platform_plugin()
+
+
+def __getattr__(name):
+    if name == 'HcuDiffusionPlatform':
+        from hcu_adapter.sglang_diffusion import get_platform_class
+
+        return get_platform_class()
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')

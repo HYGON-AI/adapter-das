@@ -99,7 +99,25 @@ def test_invalid_contract_rejected(case):
 gpu = pytest.mark.skipif(not torch.cuda.is_available(), reason="requires HCU")
 
 
+def _fast_path_available():
+    # Ask the gate itself: _can_use_triton deliberately restricts the fused
+    # kernel to gfx936 (release #111). Where the gate closes (gfx938 nodes,
+    # 2026-11-18 nmz26/box16), fused_norm_scale_shift intentionally serves
+    # from the torch fallback and this fast-path witness cannot apply — the
+    # patched _apply_parameter assertion fires on a path that does not exist
+    # on this arch.
+    if torch.version.hip is None or not torch.cuda.is_available():
+        return False
+    probe = torch.randn(1, 1, 4096, device="cuda", dtype=torch.bfloat16)
+    modulation = torch.randn(1, 1, 4096, device="cuda")
+    return implementation._can_use_triton(
+        probe, None, None, modulation, modulation, "layer"
+    )
+
+
 @gpu
+@pytest.mark.skipif(not _fast_path_available(),
+                    reason="triton fast path gated off on this arch (gfx936-scoped, #111)")
 @pytest.mark.parametrize("hidden", [4096, 5120])
 @pytest.mark.parametrize("tokens", [0, 1, 17, 129, 513])
 def test_triton_numerics(hidden, tokens):

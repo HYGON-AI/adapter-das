@@ -32,7 +32,31 @@ assert torch._C._dispatch_has_kernel_for_dispatch_key("sglang::fused_scale_resid
 gpu = pytest.mark.skipif(not torch.cuda.is_available(), reason="requires HCU")
 
 
+def _diffusion_platform_active():
+    # Mirror the discovery predicate exactly: the shim answers the official
+    # plugin entry point only for HCU_PLATFORM_SEMANTICS=cuda on a supported
+    # HIP arch (gfx936, upstream #111). Elsewhere the builtin ROCm platform
+    # wins and the official CustomOp dispatches forward_hip -> forward_native,
+    # so the layer never reaches the adapter-routed op and the bit-equality
+    # contracts below do not apply (2026-11-18 nmz26 gfx938: actual keeps fp32
+    # precision where the impl rounds through bf16).
+    from hcu_adapter.sglang_diffusion import platform_plugin
+
+    try:
+        return platform_plugin() is not None
+    except RuntimeError:
+        return False
+
+
+diffusion_platform = pytest.mark.skipif(
+    not _diffusion_platform_active(),
+    reason="diffusion platform shim declines on this node (gfx936-scoped, #111); "
+           "layer dispatches native and the bit-equality contract does not apply",
+)
+
+
 @gpu
+@diffusion_platform
 def test_real_custom_op_alias_schema_fake_and_layer_dispatch():
     from sglang.kernels.ops.diffusion.norm import scale_residual_norm_cutedsl as upstream
     from sglang.multimodal_gen.runtime.layers.layernorm import LayerNormScaleShift
@@ -70,6 +94,7 @@ def test_real_custom_op_alias_schema_fake_and_layer_dispatch():
 
 
 @gpu
+@diffusion_platform
 def test_residual_custom_op_preserves_alias_schema_fake_and_consumer():
     from sglang.kernels.ops.diffusion.norm import scale_residual_norm_cutedsl as upstream
     from sglang.multimodal_gen.runtime.layers.layernorm import ScaleResidualLayerNormScaleShift

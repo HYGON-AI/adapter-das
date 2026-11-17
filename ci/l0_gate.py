@@ -537,7 +537,8 @@ def check_impl_naming(r):
     try:
         proc = subprocess.run(
             [sys.executable, "-I", "-S", gen, "--check"],
-            capture_output=True, text=True, timeout=60,
+            # Keep the isolated import boundary and the upstream cold-run budget.
+            capture_output=True, text=True, timeout=120,
         )
         if proc.returncode != 0:
             r.fail("impl-naming", proc.stderr.strip().splitlines()[-1]

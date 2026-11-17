@@ -44,16 +44,40 @@ def test_invalid_family_stops_before_broad_test_execution():
     assert "CAPTURE" not in result.stdout
 
 
-def _run_block(mode, tree, families):
+def test_cpu_contract_transfer_retains_device_isolation_and_broad_coverage():
+    cpu = _run_block("off", "", "dense", capture="cpu_vllm")
+    kernels = _run_block("off", "", "dense")
+    assert cpu.returncode == kernels.returncode == 0, cpu.stderr + kernels.stderr
+    cpu_args = cpu.stdout.split("CAPTURE\n", 1)[1].splitlines()
+    kernel_args = kernels.stdout.split("CAPTURE\n", 1)[1].splitlines()
+    # Observe actual argv from both production execution segments. Transferred
+    # files remain mandatory in the fresh CPU process and are excluded only
+    # from the later process that may already have initialized HIP.
+    selected = [arg for arg in cpu_args if arg.startswith("tests/")]
+    excluded = [kernel_args[i + 1] for i, arg in enumerate(kernel_args)
+                if arg == "--ignore"]
+    assert selected and selected == excluded
+    assert all((ROOT / path).is_file() for path in selected)
+    assert "tests/adapter/test_model_mutation.py" in selected
+    assert "tests/adapter/test_vllm_lifecycle_hooks.py" in selected
+    for setting in ("HCU_ADAPTER_HOST=none", "HIP_VISIBLE_DEVICES=-1",
+                    "ROCR_VISIBLE_DEVICES=-1", "CUDA_VISIBLE_DEVICES=-1"):
+        assert setting in cpu_args
+    assert "--durations=60" in kernel_args
+
+
+def _run_block(mode, tree, families, *, capture="kernels"):
     source = (ROOT / "ci/l1_gpu_gate.sh").read_text()
-    start = source.index("# Transfer ownership only")
+    start = source.index("# ---------------------------------------------------------------- segments")
     end = source.index("# L1.5: upstream attention", start)
     # Keep the production selection and actual pytest argv construction. Only
     # replace the executor, so this CPU test cannot allocate a device.
-    script = 'set -u\nrun_seg() { printf "CAPTURE\\n"; printf "%s\\n" "$@"; }\n'
+    script = ('set -u\nrun_seg() { if [ "$1" = "$CAPTURE_SEGMENT" ]; then '
+              'printf "CAPTURE\\n"; printf "%s\\n" "$@"; fi; }\n')
     script += source[start:end]
     env = dict(os.environ, ROOT=str(ROOT), UP_TREE=tree,
                L15_FAMILY_MATRIX_MODE=mode, L15_FAMILY_MATRIX_FAMILIES=families,
-               HCU_ADAPTER_HOST="none", PYTHONPATH=str(ROOT))
+               HCU_ADAPTER_HOST="none", PYTHONPATH=str(ROOT),
+               VLLM_TARGET_ROOT="/unused-cpu-fixture", CAPTURE_SEGMENT=capture)
     return subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
                           capture_output=True, text=True, timeout=30)

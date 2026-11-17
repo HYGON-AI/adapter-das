@@ -82,6 +82,12 @@ executors do not acquire this coverage from an ACTIVE report. CPU tests execute
 the real official Worker and Graph-manager replay with a fake device graph,
 including checker/report drift, missing enrollment, and latched retries.
 
+The Adapter Worker also retains the public runner-factory selection seam.
+Selecting a registered runner through `_make_model_runner` preserves this outer
+execution guard; CPU regressions cover both healthy FULL replay and factory
+ownership drift stopping before PP waits, offloader work and graph replay.
+These synthetic runner/device checks do not qualify a plugin runner or model.
+
 Installed validation on 2026-11-14 used Core `ae5ebff332`, Adapter `1c2b33e77e`
 and Plugin `01dee6db8a` on gfx936, with normally resolved wheel dependencies.
 The affected installed CPU suites passed 175 tests. A compiled

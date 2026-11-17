@@ -121,3 +121,35 @@ def test_public_platform_guard_is_absent_from_official_fullgraph_replay(executio
         cg.BatchExecutionDescriptor(CUDAGraphMode.FULL, 1, 1))
     guard.assert_not_called()
     execution.replay.assert_called_once_with()
+
+
+@pytest.mark.parametrize("drift", [False, True])
+def test_factory_selected_runner_retains_required_guard_before_fullgraph(execution, monkeypatch, drift):
+    """The two Worker overrides compose through the real factory and replay APIs."""
+    import importlib
+    from hcu_adapter.bridges import vllm_model_runner as factories
+    importlib.reload(factories)
+    try:
+        configuration = object()
+        execution.worker.vllm_config = configuration
+        execution.worker.device = "cpu-fixture"
+        runner = execution.worker.model_runner
+        registration = factories.register_model_runner_factory(
+            "worker-test", matches=lambda cfg: cfg is configuration,
+            create=lambda cfg, device: runner if device == "cpu-fixture" else None)
+        enroll(execution.actions, lambda: factories.require_model_runner_factory(registration))
+        assert execution.worker._make_model_runner() is runner
+        if drift:
+            monkeypatch.setattr(factories, "_factories", {})
+            with pytest.raises(bridge.LatchedVllmRuntimeError):
+                execution.worker.execute_model(execution.schedule)
+            execution.pending_send.wait.assert_not_called()
+            execution.offload.sync_prev_onload.assert_not_called()
+            execution.replay.assert_not_called()
+        else:
+            assert execution.worker.execute_model(execution.schedule) is None
+            execution.pending_send.wait.assert_called_once_with()
+            execution.offload.sync_prev_onload.assert_called_once_with()
+            execution.replay.assert_called_once_with()
+    finally:
+        importlib.reload(factories)

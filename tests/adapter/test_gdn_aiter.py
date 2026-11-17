@@ -256,7 +256,7 @@ def test_auto_unvalidated_metadata_keeps_upstream_without_gpu_probe(change):
     assert [x[0] for x in ns["calls"]] == ["upstream"]
 
 
-@pytest.mark.parametrize("arch", ["gfx938", "gfx942", "unknown"])
+@pytest.mark.parametrize("arch", ["gfx9380", "gfx9360", "gfx942", "unknown"])
 def test_auto_unvalidated_arch_keeps_upstream(arch):
     ns, vendor = faces()
     torch, probes = auto_torch(arch)
@@ -410,3 +410,37 @@ def test_auto_malformed_parent_map_keeps_upstream():
     p=auto_inputs(); p["retrieve_parent_token"]=TensorMetadata((16,4), "fp32")
     assert fn(**p) == "upstream"
     assert not probes
+
+
+@pytest.mark.parametrize("arch,n,expected", [
+    ("gfx936",1,"aiter"), ("gfx936",18,"aiter"),
+    ("gfx936",19,"upstream"), ("gfx936",64,"upstream"),
+    ("gfx938",1,"aiter"), ("gfx938",4,"aiter"),
+    ("gfx938",8,"aiter"), ("gfx938",16,"aiter"),
+    ("gfx938",19,"aiter"), ("gfx938",32,"aiter"),
+    ("gfx938:sramecc+:xnack-",64,"aiter"), ("gfx938",65,"upstream"),
+    ("gfx942",1,"upstream"), ("gfx9380",1,"upstream"),
+])
+def test_auto_batch_scope_is_qualified_per_architecture(arch, n, expected):
+    ns, vendor = faces()
+    torch, probes = auto_torch(arch)
+    fn = bridge._bind_target_verify_aiter(ns["face"], vendor["vendor"], torch, policy="auto")
+    alias = fn
+    p = auto_inputs()
+    shapes = {
+        "q": (1,n*4,8,128), "k": (1,n*4,8,128), "v": (1,n*4,24,128),
+        "a": (n*4,24), "b": (n*4,24), "cu_seqlens": (n+1,),
+        "initial_state_source": (n+3,24,128,128),
+        "intermediate_states_buffer": (n+3,4,24,128,128),
+        "initial_state_indices": (n,), "intermediate_state_indices": (n,),
+        "retrieve_parent_token": (n,4),
+    }
+    for name, shape in shapes.items(): p[name] = TensorMetadata(shape, p[name].dtype)
+    assert alias(**p) == expected
+    assert alias is fn
+    call, forwarded = ns["calls"][-1]
+    assert call == expected
+    assert forwarded["initial_state_source"] is p["initial_state_source"]
+    assert forwarded["intermediate_states_buffer"] is p["intermediate_states_buffer"]
+    assert forwarded["retrieve_parent_token"] is p["retrieve_parent_token"]
+    assert probes == ([] if n>64 else [0])

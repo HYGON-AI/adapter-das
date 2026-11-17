@@ -244,3 +244,5 @@ and feature suffixes, per-input-device probe caching, retained aliases and sourc
 arguments, plus rejection of other architectures and dtype/device/size contracts.
 The real wrapper/Graph and spawn probes accept either supported HCU architecture;
 a CPU skip does not validate gfx938 device execution or serving.
+
+GDN verify auto qualification retains gfx936 N1..18 and separately admits gfx938 N1..64 on the matched DTK stack. Device cases include all serving batch sizes, odd batches at 19/33/63, BF16/FP32 bias, linear/tree parents, first-call capture and changed-input replay with padded state slots. Architecture and batch boundaries must execute the original callable; a skipped device lane is not numerical qualification.

@@ -155,6 +155,9 @@ def fp32_reference(p, meta):
 
 def assert_values(actual, expected, relative, label):
     a, b = actual.float().flatten(), expected.float().flatten()
+    if b.numel() == 0:
+        assert a.numel() == 0, label
+        return
     maxref = b.abs().max().item()
     err = (a-b).abs().max().item()
     rel = err / max(maxref, 1e-12)
@@ -169,6 +172,11 @@ def check_result(p, meta, out, ref_out, ref_cache, written, state_before):
     assert_values(flat_out[:, :meta["used"]], ref_out, 5e-2, "BF16 output vs FP32")
     got = p["intermediate_states_buffer"]
     assert torch.isfinite(got).all().item()
+    if not written:
+        assert meta["used"] == 0
+        assert torch.equal(got, ref_cache)
+        assert torch.equal(p["initial_state_source"], state_before)
+        return
     chunks_a = torch.cat([got[i,t].flatten() for i,t in written])
     chunks_b = torch.cat([ref_cache[i,t].flatten() for i,t in written])
     assert_values(chunks_a, chunks_b, 1e-4, "FP32 snapshots vs independent recurrence")
@@ -204,9 +212,9 @@ def test_verify_output_snapshot_and_source_contract(routed_face, n, steps, kind)
     check_result(p, meta, base, ref_out, ref_cache, written, before)
 
 
-def test_verify_graph_replay_changes_values_indices_and_tree(routed_face, dt_bias_dtype=None, parents_enabled=True):
+def test_verify_graph_replay_changes_values_indices_and_tree(routed_face, dt_bias_dtype=None, parents_enabled=True, n=16):
     fn, _ = routed_face
-    p, meta = make_case(16, 4, "sglang_2d_strided")
+    p, meta = make_case(n, 4, "sglang_2d_strided")
     if dt_bias_dtype is not None:
         p["dt_bias"] = p["dt_bias"].to(dt_bias_dtype)
     if not parents_enabled:
@@ -226,7 +234,7 @@ def test_verify_graph_replay_changes_values_indices_and_tree(routed_face, dt_bia
     ref_out, ref_cache, written = fp32_reference(p, meta)
     check_result(p, meta, output, ref_out, ref_cache, written, before)
     for seed, kind in [(31,"chain"), (37,"strided"), (43,"padded")]:
-        fresh, meta = make_case(16, 4, kind, seed)
+        fresh, meta = make_case(n, 4, kind, seed)
         fresh["a"] = fresh["a"].reshape(-1, 24).to(p["a"].dtype)
         fresh["b"] = fresh["b"].reshape(-1, 24).to(p["b"].dtype)
         for name, value in fresh.items():
@@ -251,8 +259,8 @@ def automatic_verify_face(routed_face):
     if not bridge._verify_auto_stack_supported():
         pytest.skip("GDN verify auto admission is limited to the qualified DTK2610 build")
     arch = torch.cuda.get_device_properties(torch.device("cuda", 0)).gcnArchName.split(":")[0]
-    if arch != "gfx936":
-        pytest.skip("GDN verify auto admission is qualified on gfx936; other arches stay upstream")
+    if arch not in bridge._VERIFY_AUTO_MAX_BATCH:
+        pytest.skip("GDN verify auto requires a qualified gfx936/gfx938 device")
     _, upstream = routed_face
     namespace = dict(upstream.__globals__)
     namespace.pop(bridge._VERIFY_DISPATCH, None)
@@ -269,11 +277,15 @@ def automatic_verify_face(routed_face):
     return fn, upstream, count
 
 
+@pytest.mark.parametrize("n", [1,4,8,16,18,19,32,33,63,64])
 @pytest.mark.parametrize("parents_enabled", [True, False])
 @pytest.mark.parametrize("bias_dtype", [torch.float32, torch.bfloat16])
-def test_auto_target_verify_real_gate_layout(automatic_verify_face, bias_dtype, parents_enabled):
+def test_auto_target_verify_real_gate_layout(automatic_verify_face, bias_dtype, parents_enabled, n):
     fn, _, count = automatic_verify_face
-    p, meta = make_case(18, 4, "sglang_2d")
+    from hcu_adapter.gdn_aiter import _VERIFY_AUTO_MAX_BATCH
+    arch = torch.cuda.get_device_properties(0).gcnArchName.split(":")[0]
+    if n > _VERIFY_AUTO_MAX_BATCH[arch]: pytest.skip("batch exceeds this architecture qualification")
+    p, meta = make_case(n, 4, "sglang_2d")
     p["dt_bias"] = p["dt_bias"].to(bias_dtype)
     if not parents_enabled: p["retrieve_parent_token"] = None
     before = p["initial_state_source"].clone()
@@ -284,18 +296,24 @@ def test_auto_target_verify_real_gate_layout(automatic_verify_face, bias_dtype, 
     check_result(p, meta, out, ref_out, ref_cache, written, before)
 
 
+@pytest.mark.parametrize("n", [1,4,8,16,32,64])
 @pytest.mark.parametrize("parents_enabled", [True, False])
-def test_auto_target_verify_changing_input_graph(automatic_verify_face, parents_enabled):
+def test_auto_target_verify_changing_input_graph(automatic_verify_face, parents_enabled, n):
     fn, upstream, count = automatic_verify_face
+    from hcu_adapter.gdn_aiter import _VERIFY_AUTO_MAX_BATCH
+    arch = torch.cuda.get_device_properties(0).gcnArchName.split(":")[0]
+    if n > _VERIFY_AUTO_MAX_BATCH[arch]: pytest.skip("batch exceeds this architecture qualification")
     test_verify_graph_replay_changes_values_indices_and_tree(
-        (fn, upstream), dt_bias_dtype=torch.bfloat16, parents_enabled=parents_enabled)
+        (fn, upstream), dt_bias_dtype=torch.bfloat16, parents_enabled=parents_enabled, n=n)
     # Two eager warmups and capture; replay executes no Python dispatcher.
     assert count[0] == 3, "Graph must contain AITER rather than upstream fallback"
 
 
 def test_auto_target_verify_unvalidated_batch_uses_upstream(automatic_verify_face):
     fn, _, count = automatic_verify_face
-    p, meta = make_case(19, 4, "chain")
+    from hcu_adapter.gdn_aiter import _VERIFY_AUTO_MAX_BATCH
+    arch = torch.cuda.get_device_properties(0).gcnArchName.split(":")[0]
+    p, meta = make_case(_VERIFY_AUTO_MAX_BATCH[arch]+1, 4, "chain")
     p["a"], p["b"] = p["a"].contiguous(), p["b"].contiguous()
     before = p["initial_state_source"].clone()
     ref_out, ref_cache, written = fp32_reference(p, meta)
@@ -323,9 +341,13 @@ print("FRESH_UPSTREAM_ROLLBACK_PASSED")
     assert "FRESH_UPSTREAM_ROLLBACK_PASSED" in out.stdout
 
 
-def test_auto_first_call_inside_capture(automatic_verify_face):
+@pytest.mark.parametrize("n", [18,64])
+def test_auto_first_call_inside_capture(automatic_verify_face, n):
     fn, _, count = automatic_verify_face
-    p, meta = make_case(18, 4, "sglang_2d")
+    from hcu_adapter.gdn_aiter import _VERIFY_AUTO_MAX_BATCH
+    arch = torch.cuda.get_device_properties(0).gcnArchName.split(":")[0]
+    if n > _VERIFY_AUTO_MAX_BATCH[arch]: pytest.skip("batch exceeds this architecture qualification")
+    p, meta = make_case(n, 4, "sglang_2d")
     p["dt_bias"] = p["dt_bias"].to(torch.bfloat16)
     p["retrieve_parent_token"] = None
     ref_out, ref_cache, written = fp32_reference(p, meta)

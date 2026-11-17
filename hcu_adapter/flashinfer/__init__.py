@@ -34,7 +34,6 @@ Per-subtask #229/#234 findings, the main import surfaces covered:
 """
 
 from hcu_adapter._base import ABSENT, LibStubFinder, is_registered
-from sgl_kernel.rope_triton import apply_rope_with_cos_sin_cache_inplace
 
 
 def rmsnorm(input, weight, eps=1e-6, out=None, enable_pdl=None):
@@ -56,6 +55,14 @@ def fused_add_rmsnorm(input, residual, weight, eps=1e-6, enable_pdl=None):
 
 class _FlashInferFinder(LibStubFinder):
     def __init__(self):
+        # Import at finder construction (register() time, module fully
+        # initialized) — a module-level import would recurse through
+        # sgl_kernel's shadow registration into this partially initialized
+        # module under the adapter-first import order (test_flashinfer_
+        # import). The rope symbol must be the sgl_kernel function object
+        # itself (identity contract, tests/kernels/test_flashinfer_rope).
+        from sgl_kernel.rope_triton import apply_rope_with_cos_sin_cache_inplace
+
         super().__init__(
             "flashinfer",
             allowlist={
@@ -93,11 +100,26 @@ class _FlashInferFinder(LibStubFinder):
         )
 
 
+_registering = False
+
+
 def register() -> None:
+    # The finder's construction imports sgl_kernel (rope identity contract),
+    # and importing sgl_kernel re-enters register() through the shadow
+    # bootstrap before the finder lands on sys.meta_path — without the
+    # latch that path inserts a second finder (test_flashinfer_import
+    # adapter-first: meta_path count must stay exactly 1).
+    global _registering
+    if _registering:
+        return
     if not is_registered(_FlashInferFinder, "flashinfer"):
         import sys
 
-        sys.meta_path.insert(0, _FlashInferFinder())
+        _registering = True
+        try:
+            sys.meta_path.insert(0, _FlashInferFinder())
+        finally:
+            _registering = False
 
     try:
         from hcu_adapter import registry as _reg

@@ -208,12 +208,15 @@ def _deepgemm_masked_ok() -> bool:
         from hcu_adapter.w4a16_moe import w4a16_deepep_ll
     except Exception:
         return False
-    e, m, k, i = 1, 8, 64, 32
-    w1, s1, _ = _make_experts(e, 2 * i, k, 32, seed=7)
-    w2, s2, _ = _make_experts(e, k, i, 32, seed=8)
+    # Representative of the parametrized cases below: the wheel's masked
+    # entry can pass a tiny single-expert case yet break on the real
+    # expert-major shapes (observed: E=1/M=8 correct, E=4/M=128 rel=1.0).
+    e, m, k, i = 4, 128, 512, 256
+    w1, s1, _ = _make_experts(e, 2 * i, k, 128, seed=7)
+    w2, s2, _ = _make_experts(e, k, i, 128, seed=8)
     x = torch.randn(e, m, k, device=dev, dtype=torch.bfloat16)
-    counts = torch.tensor([m], device=dev, dtype=torch.int32)
-    d1, d2 = _dequant(w1, s1, 32), _dequant(w2, s2, 32)
+    counts = torch.tensor([1, 0, 33, m], device=dev, dtype=torch.int32)
+    d1, d2 = _dequant(w1, s1, 128), _dequant(w2, s2, 128)
     c1 = torch.einsum("emk,enk->emn", x.float(), d1).to(x.dtype)
     gate, up = c1.chunk(2, dim=-1)
     act = torch.nn.functional.silu(gate) * up

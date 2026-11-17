@@ -433,6 +433,7 @@ def _load_target_verify_providers():
     import torch
     if torch.version.hip is None:
         return None
+    # 替代档: aiter CK（本文件 rebind 宿主 fla 档）
     from sglang.kernels.ops.attention.fla import fused_sigmoid_gating_recurrent as face
     from aiter.ops.triton.fla.fused_sigmoid_gating_recurrent import (
         fused_sigmoid_gating_delta_rule_update as vendor,

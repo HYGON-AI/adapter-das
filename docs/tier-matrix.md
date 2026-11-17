@@ -1,10 +1,6 @@
 # 算子档位矩阵（自动生成，勿手改）
 
 > 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-17）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-05）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-06）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-07）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-12）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
@@ -56,6 +52,9 @@ DTK mapped CPU allocation exposed as a device tensor
 | 档位 | 状态 / 备注 |
 |---|---|
 | dtk | candidate INT8/BF16/FP8 live-ID Graph replay p |
+
+路由变量：（auto）
+
 ## cuda_graph
 
 HIP driver guard for breakable prefill graph capture

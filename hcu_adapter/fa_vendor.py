@@ -934,6 +934,7 @@ def install():
         _fa3v.flash_attn_varlen_func = _ops_varlen
 
         # The public dispatcher caches this v3 callable at import time.
+        # 替代档: ops 重绑挂载面——分档入口在包面（HCU_FA_IMPL），包面无 vendor 重绑出口
         import sglang.kernels.ops.attention.flash_attention as _fapub
 
         if hasattr(_fapub, "fa3_flash_attn_varlen_func"):

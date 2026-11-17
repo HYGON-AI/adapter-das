@@ -114,13 +114,6 @@ def register() -> None:
             mechanism=_reg.MECH_SEAM,
             detail="sgl_kernel.layernorm fused add+rmsnorm compatibility",
         )
-        _reg.register(
-            "flashinfer_rope",
-            apply_rope_with_cos_sin_cache_inplace,
-            target="flashinfer.rope:apply_rope_with_cos_sin_cache_inplace",
-            mechanism=_reg.MECH_SEAM,
-            detail="sgl_kernel cached in-place Triton RoPE; restore-safe autotune",
-        )
     except Exception:
         pass
 

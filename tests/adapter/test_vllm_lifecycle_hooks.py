@@ -17,6 +17,9 @@ import vllm.plugins
 import test_vllm_post_model_load as helpers
 
 
+pytestmark = pytest.mark.usefixtures("cpu_builtin_owner_health")
+
+
 @pytest.fixture(autouse=True)
 def isolated(monkeypatch):
     import torch

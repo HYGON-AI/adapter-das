@@ -18,6 +18,13 @@ CPU 子进程须自己声明隔离条件，不能依赖父 pytest 的 HOSTnone�
 HOSTnone 本身不阻止惰性健康查询探测真实 HCU、选择尚未激活的默认 provider。
 只测试合成平台/backend 路由时，局部隔离无关内置 owner 的 install/health，
 继续执行被测官方 selector 和 required-extension 检查；真实 owner 健康门禁另测。
+`cpu_builtin_owner_health` 是显式选择的 CPU 夹具，只隔离内置 owner 的健康查询；
+用于合成 Flash owner 以及真实 Worker 的 CPU load/mutation/lifecycle 测试，
+不替换宿主 runtime latch、required-extension 检查或官方 Worker 方法。
+runtime ABI 的合成启动夹具同时隔离无关内置 install，保留真实官方 loader、
+显式 runtime 路径优先级和 admission/AR 准备失败锁存断言。
+`test_vllm_builtin_health.py` 与各 owner 的 drift/lifecycle 套件不选择该夹具，
+须独立执行；不能把此夹具扩为自动全局隔离或作为 native/model 验收。
 只需标准库的惰性工具导入探针使用 `-I -S`，
 并确认 blocker 安装前没有加载框架。`-I` 仍执行 installed sitecustomize，
 可能在测试代码之前启动宿主。保留原子进程 timeout，以真实继承宿主的

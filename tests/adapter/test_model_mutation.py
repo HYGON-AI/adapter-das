@@ -24,6 +24,9 @@ from hcu_adapter.bridges.vllm_worker import Worker
 from test_vllm_post_model_load import config
 
 
+pytestmark = pytest.mark.usefixtures("cpu_builtin_owner_health")
+
+
 @pytest.fixture(autouse=True)
 def isolation(monkeypatch):
     envs.disable_envs_cache()

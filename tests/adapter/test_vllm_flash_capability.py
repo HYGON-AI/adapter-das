@@ -14,6 +14,7 @@ from hcu_adapter.extensions import ExtensionReport, ExtensionStatus
 
 
 CAP = "hcu-flash-attention"
+pytestmark = pytest.mark.usefixtures("cpu_builtin_owner_health")
 
 
 def report(name="flash", status=ExtensionStatus.ACTIVE, capabilities=(CAP,)):

@@ -36,6 +36,9 @@ from hcu_adapter.bridges.vllm_worker import Worker
 from hcu_adapter.extensions import ExtensionContext, ExtensionSpec, activate_extensions
 
 
+pytestmark = pytest.mark.usefixtures("cpu_builtin_owner_health")
+
+
 @pytest.fixture(autouse=True)
 def isolation(monkeypatch):
     envs.disable_envs_cache()

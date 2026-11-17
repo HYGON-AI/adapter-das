@@ -27,3 +27,14 @@ def test_invalid_prefill_choice_is_not_silently_ignored():
 def test_prefill_veto_uses_existing_master_switch(monkeypatch):
     monkeypatch.setenv('HCU_DISABLE_OPS', 'vllm_minimax_prefill')
     assert op_disabled('vllm_minimax_prefill')
+
+
+def test_prefill_ui_snapshot_has_the_rendered_status_and_note_fields():
+    import re
+    from pathlib import Path
+    source = (Path(__file__).resolve().parents[2]/'tools/hcu_config_ui.html').read_text()
+    snapshot = json.loads(re.search(r'const CATALOG = (\{.*?\});',source,re.S).group(1))
+    for backend, entry in hcu_config.BACKEND_CATALOG['vllm_minimax_prefill']['backends'].items():
+        ui = snapshot['vllm_minimax_prefill']['backends'][backend]
+        assert ui['s'] == entry['status']
+        assert ui['n'] == entry['note']

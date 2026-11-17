@@ -269,8 +269,6 @@ def silu_and_mul(input: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
     # misaligned (3,6) input straight through the lightop arm).
     _check_aot_alignment(input)
     if input.is_cuda:
-        # Vendor dispatch must retain the same pre-launch AOT contract.
-        _check_aot_alignment(input)
         choice = _resolve_impl()
         if choice == "torch":
             return _gated_mul_impl(input, out, "silu", force_native=True)

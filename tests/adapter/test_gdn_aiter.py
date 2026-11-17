@@ -412,16 +412,11 @@ def test_auto_malformed_parent_map_keeps_upstream():
     assert not probes
 
 
-@pytest.mark.parametrize("arch,n,expected", [
-    ("gfx936",1,"aiter"), ("gfx936",18,"aiter"),
-    ("gfx936",19,"upstream"), ("gfx936",64,"upstream"),
-    ("gfx938",1,"aiter"), ("gfx938",4,"aiter"),
-    ("gfx938",8,"aiter"), ("gfx938",16,"aiter"),
-    ("gfx938",19,"aiter"), ("gfx938",32,"aiter"),
-    ("gfx938:sramecc+:xnack-",64,"aiter"), ("gfx938",65,"upstream"),
-    ("gfx942",1,"upstream"), ("gfx9380",1,"upstream"),
+@pytest.mark.parametrize("arch", [
+    "gfx936", "gfx936:sramecc+:xnack-", "gfx938", "gfx938:sramecc+:xnack-",
 ])
-def test_auto_batch_scope_is_qualified_per_architecture(arch, n, expected):
+@pytest.mark.parametrize("n", [0,1,18,19,64,65,128,257,512,1024])
+def test_auto_batch_size_does_not_limit_valid_contract(arch, n):
     ns, vendor = faces()
     torch, probes = auto_torch(arch)
     fn = bridge._bind_target_verify_aiter(ns["face"], vendor["vendor"], torch, policy="auto")
@@ -435,12 +430,14 @@ def test_auto_batch_scope_is_qualified_per_architecture(arch, n, expected):
         "initial_state_indices": (n,), "intermediate_state_indices": (n,),
         "retrieve_parent_token": (n,4),
     }
-    for name, shape in shapes.items(): p[name] = TensorMetadata(shape, p[name].dtype)
+    for name, shape in shapes.items():
+        p[name] = TensorMetadata(shape, p[name].dtype)
+    expected = "aiter" if n else "upstream"
     assert alias(**p) == expected
     assert alias is fn
     call, forwarded = ns["calls"][-1]
     assert call == expected
-    assert forwarded["initial_state_source"] is p["initial_state_source"]
-    assert forwarded["intermediate_states_buffer"] is p["intermediate_states_buffer"]
-    assert forwarded["retrieve_parent_token"] is p["retrieve_parent_token"]
-    assert probes == ([] if n>64 else [0])
+    for name in ("initial_state_source", "intermediate_states_buffer",
+                 "retrieve_parent_token"):
+        assert forwarded[name] is p[name]
+    assert probes == ([0] if n else [])

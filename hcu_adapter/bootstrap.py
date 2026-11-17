@@ -181,14 +181,20 @@ def install() -> None:
         return
     # The multiprocessing resource tracker only manages OS resources. It
     # inherits the host environment but must not load GPU/framework bridges.
-    argv = getattr(sys, "orig_argv", ())
-    if any(
-        arg == "-c"
-        and argv[index + 1].startswith("from multiprocessing.resource_tracker import main;")
-        for index, arg in enumerate(argv[:-1])
-    ):
-        _installed_pid = pid
-        return
+    # Release contract (test_bootstrap: only-the-EXACT-stdlib-helper +
+    # model-cli-arguments): strict fullmatch on "main(<non-negative int>)"
+    # AND sys.argv == ["-c"], so "main(-1)", "main(0);run_model()" and
+    # service.py CLI arguments never take the bypass (main loosened this to
+    # a startswith prefix and dropped the argv guard; release keeps strict).
+    original_argv = getattr(sys, "orig_argv", ())
+    if sys.argv == ["-c"] and "-c" in original_argv:
+        index = original_argv.index("-c") + 1
+        if index < len(original_argv) and re.fullmatch(
+            r"from multiprocessing\.resource_tracker import main;main\([0-9]+\)",
+            original_argv[index],
+        ):
+            _installed_pid = pid
+            return
     if not _is_hip():
         _installed_pid = pid
         return

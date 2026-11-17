@@ -336,7 +336,11 @@ def _do_rmsnorm(
             return _lightop_rmsnorm(input, weight, eps, out)
         impl = "aiter" if _aiter_rms_fn() is not None else "triton"
     if impl == "aiter":
-        if input.dtype in (torch.bfloat16, torch.float16):
+        # BF16 is the qualified aiter contract on this stack; DTK aiter's
+        # rmsnorm_forward returns NaN for fp16 on gfx938 (2026-11-17 box16
+        # L1: test_rmsnorm_gpu fp16 98.5% NaN vs triton reference), so fp16
+        # continues down the ladder to triton instead of stopping here.
+        if input.dtype == torch.bfloat16:
             try:
                 out.copy_(_aiter_rmsnorm(input, weight, eps))
                 return out

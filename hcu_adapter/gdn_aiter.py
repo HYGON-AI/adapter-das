@@ -487,14 +487,19 @@ def install():
     _install_target_verify_aiter()
 
     mode, _src = hcu_env.resolve("HCU_LINEAR_ATTN_GDN")
-    if mode == "triton":
+    # Release contract (test_gdn_entry_installs_verify_without_enabling_
+    # prefill_or_packed_decode): auto installs the verify route only; the
+    # prefill/packed-decode CK route stays opt-in via explicit =aiter
+    # (main made auto take the CK route too and dropped this test; the
+    # 0.5.22 line keeps the conservative gate). Any import/install failure
+    # still leaves the upstream triton fla faces intact.
+    if mode != "aiter":
         LOG.warning(
             "HCU adapter: HCU_LINEAR_ATTN_GDN=%s -- GDN prefill/packed decode stay on the "
             "upstream triton fla kernels (aiter route available via =aiter)",
+            mode,
         )
         return
-    # auto (new default) and aiter both take the validated CK route; any
-    # import/install failure leaves the upstream triton fla faces intact.
     try:
         import aiter  # noqa: F401
         import aiter.ops.fla  # noqa: F401

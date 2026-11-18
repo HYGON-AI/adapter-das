@@ -218,7 +218,7 @@ def test_install_is_a_noop_when_no_host_is_available(monkeypatch):
 
 @pytest.mark.parametrize("host", ["sglang", "vllm", "deepinfer"])
 def test_scheduler_device_selection_precedes_gpu_initializing_bridges(monkeypatch, host):
-    from hcu_adapter import sglang_spawn_device
+    from hcu_adapter.bridges import sglang_spawn_device
 
     events = _arm_install(monkeypatch, available=(host,))
     monkeypatch.setattr(sglang_spawn_device, "select_inherited_device",
@@ -230,7 +230,7 @@ def test_scheduler_device_selection_precedes_gpu_initializing_bridges(monkeypatc
 
 
 def test_device_selection_failure_does_not_enter_gpu_initializing_bridges(monkeypatch):
-    from hcu_adapter import sglang_spawn_device
+    from hcu_adapter.bridges import sglang_spawn_device
 
     events = _arm_install(monkeypatch)
     def fail():

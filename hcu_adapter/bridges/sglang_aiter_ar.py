@@ -78,7 +78,7 @@ def install(_he=None) -> None:
 
     elif _ar_val == "1" or str(_ar_val).startswith("allowed"):
         try:
-            from hcu_adapter import sglang_allreduce
+            from hcu_adapter.bridges import sglang_allreduce
 
             sglang_allreduce.install()
         except Exception:

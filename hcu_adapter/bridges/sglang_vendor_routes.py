@@ -92,7 +92,7 @@ def install(_he=None) -> None:
 
     # v0.5.22's layernorm face otherwise compiles CUDA-source JIT kernels.
     try:
-        from hcu_adapter import sglang_layernorm as _sgl_layernorm
+        from hcu_adapter.bridges import sglang_layernorm as _sgl_layernorm
 
         _sgl_layernorm.install()
     except Exception:

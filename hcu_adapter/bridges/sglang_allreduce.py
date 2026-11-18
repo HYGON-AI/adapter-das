@@ -3,7 +3,7 @@
 
 from functools import partial
 
-from . import registry
+from .. import registry
 
 
 def install():

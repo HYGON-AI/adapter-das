@@ -68,14 +68,14 @@ def _bind_deepgemm_legacy_silu() -> bool:
 
 
 def hcu_diffusion_platform_plugin():
-    from hcu_adapter.sglang_diffusion import platform_plugin
+    from hcu_adapter.bridges.sglang_diffusion import platform_plugin
 
     return platform_plugin()
 
 
 def __getattr__(name):
     if name == 'HcuDiffusionPlatform':
-        from hcu_adapter.sglang_diffusion import get_platform_class
+        from hcu_adapter.bridges.sglang_diffusion import get_platform_class
 
         return get_platform_class()
     raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
@@ -191,7 +191,7 @@ def install() -> None:
         # Bind the parent launch context after platform selection, before
         # downstream imports can cache its scheduler launch entry.
         try:
-            from hcu_adapter import sglang_spawn_device
+            from hcu_adapter.bridges import sglang_spawn_device
 
             sglang_spawn_device.install()
         except Exception:

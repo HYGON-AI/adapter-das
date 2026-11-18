@@ -209,7 +209,7 @@ def install() -> None:
         return
 
     if host == "sglang":
-        from hcu_adapter.sglang_spawn_device import select_inherited_device
+        from hcu_adapter.bridges.sglang_spawn_device import select_inherited_device
 
         select_inherited_device()
 

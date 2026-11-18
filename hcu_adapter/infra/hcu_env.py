@@ -244,6 +244,13 @@ REGISTRY = {
         "about": "hcu.adapter logger 级别：默认 WARNING（安装链 INFO 静默）；"
                  "=info/=debug 显式放开（排查）；WARNING+ 始终传播",
     },
+    # serve-time AOT requirement (bridges/sglang_native_ops_gate.py)
+    "HCU_REQUIRE_NATIVE": {
+        "env": "HCU_REQUIRE_NATIVE", "default": "1",
+        "about": "serve 硬门：无 native sgl_kernel 算子注册时 ModelRunner 启动"
+                 "直接报错（拒绝 ninja JIT 兜底冷启）；0=降级为告警（仅开发"
+                 "用）",
+    },
     # platform semantics — governance §0.5 is_cuda 路线（platform_seam.py）
     "HCU_PLATFORM_SEMANTICS": {
         "env": "HCU_PLATFORM_SEMANTICS", "default": "cuda",
@@ -821,7 +828,7 @@ def log_summary():
         LOG.warning("HCU adapter env: " + " ".join(parts))
     else:
         LOG.warning("HCU adapter env: all defaults (no explicit HCU_* vars)")
-    from .. import registry as _reg
+    from . import registry as _reg
 
     _reg.log_summary(LOG)
     out = os.environ.get("HCU_ADAPTER_DUMP", "")

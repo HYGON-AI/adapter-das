@@ -549,7 +549,7 @@ REGISTRY = {
     "HCU_RMS_NORM_IMPL": {
         "env": "HCU_RMS_NORM_IMPL", "default": "auto",
         "about": "rms_norm 后端档位：auto=lightop > aiter > triton"
-                 "（新优先级）；lightop|aiter|triton|torch 可显式指定。"
+                 "（新优先级）；lightop|lightop_opt|aiter|triton|torch 可显式指定。"
                  "lightop 仅覆盖 BF16 plain RMSNorm，其他 dtype 逐级回退 "
                  "aiter/triton；gemma 变体恒 triton；仅管 plain rmsnorm，"
                  "fused_add 变体见 HCU_FUSED_ADD_RMS_IMPL",
@@ -558,7 +558,7 @@ REGISTRY = {
         "env": "HCU_FUSED_ADD_RMS_IMPL", "default": "auto",
         "about": "fused_add_rmsnorm/gemma 变体后端档位：auto=lightop > "
                  "triton（新优先级；aiter 轮无 fused-add 出口），"
-                 "lightop|triton|torch 可显式指定；lightop=lightop.fused_add_rms_norm/"
+                 "lightop|lightop_opt|triton|torch 可显式指定；lightop=lightop.fused_add_rms_norm/"
                  "gemma_fused_add_rmsnorm 原地核（fp32 累加、末端舍入，同 "
                  "triton 数值契约；一次异常即降级）。注：catalog 记录 lightop "
                  "0.76x vs triton @4096x7168 bf16（性能取舍由本优先级覆盖）",

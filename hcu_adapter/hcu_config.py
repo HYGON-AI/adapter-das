@@ -263,6 +263,8 @@ BACKEND_CATALOG = {
                         "note": "auto first when lightop imports; Public "
                                 "BF16 plain RMSNorm; other dtypes/Gemma use "
                                 "the lower tiers"},
+            "lightop_opt": {"status": "candidate",
+                            "note": "LightOp op.rms_norm_opt(out,x,w,eps); native GLM53 FP8 decode profile provider; numerical/graph validation pending"},
             "torch": {"status": "production",
                       "note": "reference path"},
         },
@@ -275,6 +277,8 @@ BACKEND_CATALOG = {
                        "note": "auto ladder fallback (lightop > triton; "
                                "aiter exports no fused-add face); also the "
                                "dtype fallback"},
+            "lightop_opt": {"status": "candidate",
+                            "note": "LightOp op.fused_add_rms_norm_opt(x,residual,w,eps); provider errors propagate; numerical/graph validation pending"},
             "lightop": {"status": "validated",
                         "note": "auto first (2026-11 tier order) for "
                                 "bf16/fp16; lightop.fused_add_rms_norm(x, "

@@ -82,6 +82,9 @@ def _resolve_rms_impl():
             import traceback
 
             traceback.print_exc()
+        if source in ("explicit", "config") and requested == "lightop_opt":
+            _RMS_IMPL = requested
+            return _RMS_IMPL
         try:
             from hcu_adapter import tier_policy
 
@@ -112,7 +115,7 @@ def _resolve_fused_add_impl():
     The DTK aiter wheel exposes no fused-add export, so aiter is absent from
     the candidate map (the ladder still holds: no implementation to pick).
     Explicit HCU_FUSED_ADD_RMS_IMPL wins (lightop|triton|torch)."""
-    global _FUSED_ADD_IMPL
+    global _FUSED_ADD_IMPL, _LIGHTOP_FUSED_ADD
     if _FUSED_ADD_IMPL is None:
         requested, source = None, "default"
         try:
@@ -123,6 +126,12 @@ def _resolve_fused_add_impl():
             import traceback
 
             traceback.print_exc()
+        if source in ("explicit", "config") and requested == "lightop_opt":
+            from lightop import gemma_fused_add_rmsnorm, op
+
+            _LIGHTOP_FUSED_ADD = (op.fused_add_rms_norm_opt, gemma_fused_add_rmsnorm)
+            _FUSED_ADD_IMPL = requested
+            return _FUSED_ADD_IMPL
         try:
             from hcu_adapter import tier_policy
 
@@ -171,6 +180,8 @@ def _try_lightop_fused_add(input, residual, weight, eps, gemma):
            weight, eps)
         return True
     except Exception:
+        if _FUSED_ADD_IMPL == "lightop_opt":
+            raise
         import traceback
 
         traceback.print_exc()
@@ -206,7 +217,10 @@ def _lightop_rmsnorm(input, weight, eps, out):
         return out
     x = input.contiguous().view(-1, input.shape[-1])
     y = out.contiguous().view_as(x)
-    lightop.rms_norm(x, weight.contiguous(), eps, out=y)
+    if _RMS_IMPL == "lightop_opt":
+        lightop.op.rms_norm_opt(y, x, weight.contiguous(), eps)
+    else:
+        lightop.rms_norm(x, weight.contiguous(), eps, out=y)
     if y.data_ptr() != out.data_ptr():
         out.copy_(y.view_as(out))
     return out
@@ -329,6 +343,10 @@ def _do_rmsnorm(
         impl = "triton"  # vendor backend covers the plain norm only
     if impl == "torch" or not input.is_cuda:
         return _rmsnorm_native(input, weight, eps, gemma, out)
+    if impl == "lightop_opt":
+        if input.dtype == weight.dtype == out.dtype == torch.bfloat16:
+            return _lightop_rmsnorm(input, weight, eps, out)
+        impl = "triton"
     if impl == "lightop":
         # BF16 plain norm is the qualified lightop contract; other dtypes
         # continue down the ladder (aiter -> triton) instead of stopping here.
@@ -427,7 +445,9 @@ def _do_fused_add(
     gemma: bool,
 ) -> None:
     impl = _resolve_fused_add_impl()
-    if impl == "lightop" and _try_lightop_fused_add(input, residual, weight, eps, gemma):
+    if impl in ("lightop", "lightop_opt") and _try_lightop_fused_add(
+        input, residual, weight, eps, gemma
+    ):
         return
     use_triton = (
         impl != "torch"

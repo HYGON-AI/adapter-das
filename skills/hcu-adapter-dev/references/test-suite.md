@@ -1,5 +1,11 @@
 # 自动化测试套件要求
 
+`cases/vllm_dsv41_indexer_cpu.py` 使用真实 Triton 解释器执行 scorer 的 CPU
+oracle。部分 DTK interpreter 将比较结果转回整数操作数 dtype；夹具先探测
+布尔 handle 能力，仅在需要时修正解释器比较结果，测试结束后恢复绑定。
+保留独立分数/掩码参考和原精确断言，不修改编译内核或 vendor 包；解释器
+原生返回布尔 handle 时不接入。CPU oracle 不替代设备、Graph 或模型验收。
+
 DSA writer 回归见 `tests/kernels/test_mqa_triton_gfx938.py`：在调用时解析
 新 kvcache/旧 attention 路径，区分页跨度 ABI；依赖导入错误不能当作接口迁移
 而隐藏。pytest 必须实际执行两种池布局、融合写入和派发的数值/top-k 断言，

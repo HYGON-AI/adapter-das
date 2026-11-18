@@ -823,24 +823,14 @@ def install() -> None:
                 "HCU adapter: capability HIP bridge not installed", exc_info=True
             )
 
-        # Both CT and explicit w8a8_int8 consumers can miss the CUDA-gated
-        # GEMM import. Bind the existing implementation in their own globals.
+        # CT + explicit w8a8_int8 consumers GEMM import backfill -> hcu_adapter/bridges/sglang_w8a8_int8.py
         try:
-            from hcu_adapter import int8_linear
+            from hcu_adapter.bridges import sglang_w8a8_int8
 
-            int8_linear.install()
+            sglang_w8a8_int8.install(_he)
         except Exception:
             logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: int8_scaled_mm bridge not installed", exc_info=True
-            )
-
-        try:
-            from hcu_adapter.bridges._sglang import mla_kv
-
-            mla_kv.install()
-        except Exception:
-            logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: packed MLA KV writer bridge not installed", exc_info=True
+                "HCU adapter: sglang_w8a8_int8 bridge not installed", exc_info=True
             )
 
         # FlashMLA construct-only stubs + sgl-flash-mla wheel face skip contract -> hcu_adapter/bridges/sglang_flash_mla.py

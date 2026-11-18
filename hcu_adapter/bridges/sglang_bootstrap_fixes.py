@@ -120,7 +120,7 @@ def install(_he=None) -> None:
             except ImportError:
                 # deepseek_v4 imports deep_gemm at module level; the DTK
                 # bridge (section 9) has not run yet at this point.
-                from hcu_adapter import deep_gemm_dtk as _dgdb
+                from hcu_adapter.features.deep_gemm import deep_gemm_dtk as _dgdb
 
                 _dgdb.install()
             import sglang.srt.models.deepseek_v4 as _dsv4

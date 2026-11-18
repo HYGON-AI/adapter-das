@@ -146,7 +146,7 @@ def install() -> None:
             _he = None
         # Optional code-object repair must precede DeepGEMM/SGLang aliases.
         try:
-            from hcu_adapter import deepgemm_cov5
+            from hcu_adapter.features.deep_gemm import deepgemm_cov5
 
             deepgemm_cov5.install()
         except Exception:
@@ -166,7 +166,7 @@ def install() -> None:
             import deep_gemm  # noqa: F401
         except ImportError:
             try:
-                from hcu_adapter import deep_gemm_dtk as _dgd_early
+                from hcu_adapter.features.deep_gemm import deep_gemm_dtk as _dgd_early
 
                 _dgd_early.install()
             except Exception:

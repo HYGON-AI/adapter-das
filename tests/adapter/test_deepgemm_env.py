@@ -34,7 +34,8 @@ import importlib.util
 import sys
 import types
 import torch
-from hcu_adapter import deep_gemm_dtk, hcu_config
+from hcu_adapter import hcu_config
+from hcu_adapter.features.deep_gemm import deep_gemm_dtk
 from hcu_adapter.infra import hcu_env
 
 name, configured, expected, source = sys.argv[1:]
@@ -64,7 +65,7 @@ for module_name, keys in {
     "deep_gemm_fp8_triton": ["fp8_m_grouped_gemm_nt_masked",
                            "m_grouped_fp8_gemm_nt_contiguous"],
 }.items():
-    module = types.ModuleType("hcu_adapter." + module_name)
+    module = types.ModuleType("hcu_adapter.features.deep_gemm." + module_name)
     for key in keys:
         setattr(module, key, adapter)
     sys.modules[module.__name__] = module

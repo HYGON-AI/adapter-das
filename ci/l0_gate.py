@@ -565,8 +565,7 @@ def check_layout_ownership(r):
     # [a] grandfathered computation modules at top level (exhaustive over
     # the triton/tilelang inventory at rule date; shrink as families move)
     LEGACY_LAYOUT_ALLOWLIST = {
-        "deep_gemm_contig_triton", "deep_gemm_dtk", "deep_gemm_fp8_triton",
-        "deep_gemm_masked_triton", "dsa_mqa_logits_emu",
+        "dsa_mqa_logits_emu",
         "hadamard_triton", "kpool_read_triton", "mqa_logits_triton",
         "slimquant", "triton_libdev", "triton_pdl",
     }

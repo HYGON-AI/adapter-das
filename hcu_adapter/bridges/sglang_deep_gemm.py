@@ -10,7 +10,7 @@ under layout governance 2026-11-18; zero logic change. Section notes:
    and the wrapper's platform gate hard-disables DeepGEMM on HIP even
    though the DTK deepgemm wheel carries upstream-named grouped GEMMs
    (incl. m_grouped_bf16_gemm_nt_masked/_contiguous). Two pieces:
-   (a) hcu_adapter.deep_gemm_dtk aliases DTK `deepgemm` as
+   (a) hcu_adapter.features.deep_gemm.deep_gemm_dtk aliases DTK `deepgemm` as
        `deep_gemm` in sys.modules;
    (b) the overlay finder flips configurer.ENABLE_JIT_DEEPGEMM to True
        after its (platform-gated) computation, which routes DeepEP MoE
@@ -80,7 +80,7 @@ def install(_he=None) -> None:
     from hcu_adapter.bridges.sglang import _bind_deepgemm_legacy_silu  # noqa: F401
     try:
         if _he is not None and _he.enabled("HCU_DEEPGEMM_BRIDGE"):
-            from hcu_adapter import deep_gemm_dtk as _dgd
+            from hcu_adapter.features.deep_gemm import deep_gemm_dtk as _dgd
 
             _dgd.install()
 

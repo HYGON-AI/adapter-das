@@ -200,7 +200,7 @@ def install():
         or getattr(deepgemm, "get_num_sms", None) is None
     )
     if _missing_paged_mqa:
-        from . import dsa_mqa_logits_emu as _dpm
+        from ... import dsa_mqa_logits_emu as _dpm
 
         if getattr(shim, "get_num_sms", None) is None:
             shim.get_num_sms = _dpm.get_num_sms
@@ -219,7 +219,7 @@ def install():
     # clean_logits=False only expect stale data outside [ks,ke), never use
     # it).
     if getattr(deepgemm, "fp8_mqa_logits", None) is None:
-        from . import mqa_logits_emu as _mle
+        from ... import mqa_logits_emu as _mle
 
         def _fp8_mqa_logits(q_fp8, kv, weights, cu_starts, cu_ends,
                             clean_logits=True, **_kw):
@@ -237,13 +237,13 @@ def install():
             # the emu stays the golden and the explicit fallback.
             impl = "loop"
             try:
-                from .hcu_env import resolve
+                from hcu_adapter.infra.hcu_env import resolve
 
                 impl, _src = resolve("HCU_MQA_LOGITS_IMPL")
             except Exception:
                 pass
             if impl == "triton":
-                from .mqa_logits_triton import triton_ragged_mqa_logits as _tri_r
+                from hcu_adapter.mqa_logits_triton import triton_ragged_mqa_logits as _tri_r
 
                 return _tri_r(
                     q_fp8, kv, kv_scales, weights, cu_starts, cu_ends
@@ -339,7 +339,7 @@ def install():
     # single copy, shared with the contiguous path. HCU_TRITON_MASKED=0
     # keeps the fork pack path.
     try:
-        from .infra import hcu_env as _env
+        from hcu_adapter.infra import hcu_env as _env
 
         if _env.enabled("HCU_TRITON_MASKED"):
             from . import deep_gemm_masked_triton as _mt
@@ -363,7 +363,7 @@ def install():
     # blocks) replaces both unless HCU_TRITON_CONTIG=0 keeps the raw DTK
     # escape hatch.
     try:
-        from .infra import hcu_env as _env
+        from hcu_adapter.infra import hcu_env as _env
 
         if _env.enabled("HCU_TRITON_CONTIG"):
             from . import deep_gemm_contig_triton as _ct
@@ -395,7 +395,7 @@ def install():
     # time, so the identity must be in place before sglang imports, and
     # these kernels index the logical [.., K//128] layout regardless.
     try:
-        from .infra import hcu_env as _env
+        from hcu_adapter.infra import hcu_env as _env
 
         if _env.enabled("HCU_TRITON_MASKED_FP8"):
             from . import deep_gemm_fp8_triton as _f8t

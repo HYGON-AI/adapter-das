@@ -276,7 +276,10 @@ def test_registration_never_changes_official_global_gate_or_pass_manager(monkeyp
 
 def test_exact_target_and_declared_phase_origins():
     declared = os.environ["AR_ADAPTER_ROOT"]
-    assert Path(compat.__file__).resolve().is_relative_to(Path(declared).resolve())
+    # Installed-wheel lanes expose packages through the checkout phase root.
+    # Resolve the exact declared file, preserving rejection of a foreign owner.
+    expected = Path(declared) / "hcu_adapter/bridges/vllm_allreduce.py"
+    assert Path(compat.__file__).resolve() == expected.resolve()
     target = Path(os.environ["VLLM_TARGET_ROOT"])
     import importlib
     for name in (compat.WRAPPER, "vllm._aiter_ops", "vllm.distributed.device_communicators.cuda_communicator"):

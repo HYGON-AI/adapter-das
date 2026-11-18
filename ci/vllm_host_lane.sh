@@ -54,7 +54,10 @@ PY
 )" || { echo "VLLM-LANE: vllm not importable on this stack"; exit 1; }
 fi
 export VLLM_TARGET_ROOT
-echo "VLLM-LANE: host=vllm gpu=$GPU target_root=$VLLM_TARGET_ROOT"
+# The phase root can expose the installed wheel through package symlinks.
+# Preserve explicit phase overrides; the provenance test resolves the exact file.
+export AR_ADAPTER_ROOT="${AR_ADAPTER_ROOT:-$ROOT}"
+echo "VLLM-LANE: host=vllm gpu=$GPU target_root=$VLLM_TARGET_ROOT adapter_root=$AR_ADAPTER_ROOT"
 
 # Mirror of tests/adapter/conftest.py _is_vllm_host_file. conftest remains
 # the source of truth for the host-domain scoping; the per-file counts below

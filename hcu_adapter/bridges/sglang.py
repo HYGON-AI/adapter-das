@@ -1606,21 +1606,10 @@ def install() -> None:
                     "HCU adapter: layer audit not installed", exc_info=True
                 )
 
-        # slimquant_w4a8 checkpoints (GLM-5-W4A8_V2_6 family): expert int4 unpack
-        # + register the quant method. Default ON (the method only activates for
-        # checkpoints whose quantization_config names slimquant_w4a8 — inert
-        # otherwise); HCU_SLIMQUANT=0 opts out (debug/isolation).
-        _sq_on = _he.enabled("HCU_SLIMQUANT") if _he else \
-            os.environ.get("HCU_SLIMQUANT", "1") != "0"
-        if _sq_on:
-            try:
-                from hcu_adapter import slimquant as _slimquant
+        # slimquant_w4a8 checkpoint auto-rule (HCU_SLIMQUANT gate) -> hcu_adapter/bridges/sglang_slimquant_guard.py
+        from hcu_adapter.bridges import sglang_slimquant_guard
 
-                _slimquant.activate()
-            except Exception:
-                logging.getLogger("hcu.adapter").warning(
-                    "HCU adapter: slimquant bridge not installed", exc_info=True
-                )
+        sglang_slimquant_guard.install(_he)
 
         # DSA indexer top-k sgl-kernel->torch bridge -> hcu_adapter/bridges/sglang_indexer_topk.py
         from hcu_adapter.bridges import sglang_indexer_topk

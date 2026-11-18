@@ -1336,60 +1336,14 @@ def install() -> None:
                 "HCU adapter: DSA page_size bridge not installed", exc_info=True
             )
 
-        # Force the DSA "aiter preshuffle paged-MQA" gate on. The DTK wheel ships
-        # working triton preshuffle MQA-logits kernels (pa_mqa_logits etc.), but
-        # upstream's gate keys on SGLANG_USE_AITER — setting that env would also
-        # flip unrelated fp8 weight-shuffle/gemm routes. Rebinding the predicate
-        # in its home module before any consumer's byname import copies it makes
-        # only the DSA page-size/table/preshuffle-tile decisions follow the
-        # preshuffle path (page_size=64*index_kpool, 16-aligned cache tiles).
+        # DSA aiter preshuffle paged-MQA gate force-on (page/table/tile decisions only) -> hcu_adapter/bridges/sglang_aiter_preshuffle.py
         try:
-            import sglang.srt.layers.attention.dsa.utils as _dsa_utils
-            from sglang.srt.utils import common as _dsa_common
+            from hcu_adapter.bridges import sglang_aiter_preshuffle
 
-            _dsa_utils.is_hip = _dsa_common.is_hip
-            _dsa_utils.is_cuda = _dsa_common.is_cuda
-
-            _hcu_orig_gate = _dsa_utils.aiter_can_use_preshuffle_paged_mqa
-            if os.environ.get("HCU_DSA_PRESHUFFLE") == "0":
-                # Legacy page_size=1 / KVBlockSize=1 DSA path (paired with the
-                # HCU_MQA_EMU torch emulation on gfx936-class HCUs).
-                def _hcu_gate():
-                    return False
-
-                logging.getLogger("hcu.adapter").warning(
-                    "HCU adapter: DSA aiter-preshuffle gate forced OFF (legacy"
-                    " page_size=1 path)"
-                )
-            else:
-
-                def _hcu_gate():
-                    return True
-
-                logging.getLogger("hcu.adapter").warning(
-                    "HCU adapter: DSA aiter-preshuffle gate forced on"
-                    " (DTK wheel kernels)"
-                )
-            # The `import ...utils` above initializes part of the sglang.srt
-            # tree, and consumers bind this predicate byname DURING that import
-            # chain (mem_cache/memory_pool.py) or cache it into a module-level
-            # `_use_aiter_preshuffle` constant (dsa/dsa_indexer.py,
-            # kernels/.../index_buf_accessor.py) -- all before the rebind line
-            # below runs. Sweep every already-imported module and rebind both
-            # the function name and those cached constants; modules imported
-            # later copy the patched attribute and need no fixup.
-            _dsa_utils.aiter_can_use_preshuffle_paged_mqa = _hcu_gate
-            for _m in list(sys.modules.values()):
-                _d = getattr(_m, "__dict__", None)
-                if not _d:
-                    continue
-                if _d.get("aiter_can_use_preshuffle_paged_mqa") is _hcu_orig_gate:
-                    _d["aiter_can_use_preshuffle_paged_mqa"] = _hcu_gate
-                if "_use_aiter_preshuffle" in _d:
-                    _d["_use_aiter_preshuffle"] = _hcu_gate()
+            sglang_aiter_preshuffle.install(_he)
         except Exception:
             logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: preshuffle gate patch not installed", exc_info=True
+                "HCU adapter: sglang_aiter_preshuffle bridge not installed", exc_info=True
             )
 
         # DSV4/GLM swiglu-clamp MoE activation triton route (fused_experts_impl assert relax) -> hcu_adapter/bridges/sglang_swiglu_clamp.py

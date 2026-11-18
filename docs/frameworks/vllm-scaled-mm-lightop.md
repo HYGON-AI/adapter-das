@@ -21,7 +21,7 @@ Public `register_linear_kernel` remains responsible for the official FP8 fallbac
 - Quantization/load/transposition could be skipped; exercise actual native init, post-load and forward in the replay.
 - Graph could freeze inputs/scales/bias, have host sync, or Dynamo trace vendor internals; opaque custom op/fake and same-address changed-input replay.
 - Public registry append cannot reprioritize existing INT8; verify actual calls reach the vendor via the native provider, not only direct helper calls.
-- Missing wheel or signature drift; auto uses stock when absent, explicit LightOp fails, ABI mismatch refuses installation.
+- Missing wheel or signature drift; auto uses stock when absent, explicit LightOp fails. Explicit ABI admission is at startup; automatic ABI admission is at the first eligible real GEMM.
 - Duplicate install/wrong module ownership or drift; validate native call globals/signatures before rebind; repeated install is a no-op only for the same binding.
 - Fast disable/config selects wrong backend; startup `HCU_DISABLE_OPS=vllm_scaled_mm` or `ops.vllm_scaled_mm: triton` preserves the original function.
 - Cross-host import side effects; bridge installs only in vLLM HCU runtime, kernel module imports no host framework.
@@ -97,6 +97,57 @@ accepts `auto` (default: vendor if importable and contract matches), `lightop`
 (require vendor; unsupported contracts still use upstream), or `triton` (startup
 rollback). The existing HCU_DISABLE_OPS kill switch wins. Policy changes detected
 on reinstallation require a fresh process.
+
+In the 0.33 lazy-loading follow-up, `auto` publishes the same opaque dispatch
+without importing LightOp. Its first metadata-eligible real invocation resolves
+the provider; fake tracing, an unused GEMM and unsupported contracts do not.
+Optional missing imports/entries are remembered and delegate to the original
+Triton call. Explicit `lightop` still resolves and validates during startup.
+This does not change supported dtypes, architecture admission, math, scales,
+native Linear methods or their existing aliases. The existing shared
+`ProcessLocalLifecycle` serializes first resolution, resets after a completed
+fork and refuses a child inheriting incomplete resolution; an ABI/load failure
+refuses later bridge calls, including fallback and explicit tuning arguments.
+The original kernel's runtime computation errors retain their existing behavior.
+
+This avoids importing the complete LightOp native library surface merely to
+register an unused automatic GEMM for a BF16 model. Other selected providers
+may legitimately require LightOp too, so deferred registration alone does not
+establish a serving-memory improvement or a clean shutdown. The targeted
+contracts in `tests/adapter/test_vllm_scaled_mm_bridge.py` cover unused and
+unsupported paths, missing optional providers, explicit admission, sticky ABI
+failure, concurrent resolution and a real fork while another thread resolves.
+A fresh installed-wheel gfx936 replay passes the unchanged 410-case protocol:
+200 eligible INT8 cases execute vendor channelwise GEMM, while FP8 retains the
+existing official Triton gate on gfx936. The trace records 96 actual Graph
+launches, including changed-input replay. Observed worst relative L2 is
+0.002285651 and normalized maximum error is 0.003435369, with minimum cosine
+0.999997437; the original 0.01/0.01/0.9999 thresholds are unchanged. Startup has
+no LightOp before the first eligible GEMM and loads it during execution when
+paired with the Plugin's lazy RMS candidate. This combination also passes all
+30 existing Plugin RMS device cases and 104 RMS Graph launches. The six
+selected package RECORDs and source/wheel/install payloads were verified.
+
+The local Adapter scratch wheel reuses #140's build suffix solely to preserve
+the unchanged native kernel dependency; it is identified by SHA256
+`53d931ed5fd6a64d1eecb09383db172d4e74f355a1fb60fda1fc9330fd2bb721`,
+not as a new release. All 254 Python payloads retain their original set and only
+the scaled-MM bridge differs from the parent artifact. The same sealed Qwen3-1.7B checkpoint also completed an unchanged 32-task
+HumanEval before/after comparison with BF16 weights, FLASH_ATTN, E4M3 KV,
+TP1 and default Graph/prefix. Both score raw 1/32 and normalized
+28/32; all 32/32 messages/finish reasons/usages and pass sets agree.
+Each records 3840 prefix-hit tokens and real native E4M3 writer/prefill/decode
+kernels. The reference retains LightOp; the combined lazy Adapter/Plugin
+candidate has none in the worker before/after generation. The reference already
+contains atexit unfreeze, so this pair measures the new import policy.
+
+The strict output-format probes still fail in both arms. Original 15-second
+EngineCore forced exit is reference=True, candidate=True; nanobind leak
+reports are reference=False, candidate=False. Both API return codes are zero
+and device handles are released. Prior Gemma2 lifecycle failures are not closed
+by this Qwen comparison. Performance, gfx836 and full upgrade acceptance remain
+separate gates. The paired Plugin validation is documented in its
+`docs/validation/vllm033-rms-lazy-provider.md`.
 
 ## Real service validation
 

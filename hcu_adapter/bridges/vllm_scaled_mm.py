@@ -38,16 +38,6 @@ def install() -> bool:
         return False
     if choice not in ('auto', 'lightop'):
         raise VllmCompatibilityError('Unsupported vllm_scaled_mm backend: ' + choice)
-    try:
-        vendor = import_module('lightop.gemm_ops').hipblaslt_w8a8_channelwise_gemm
-    except (ImportError, AttributeError) as exc:
-        if choice == 'auto':
-            _LOG.info('HCU scaled-MM: LightOp unavailable; retain official Triton')
-            return False
-        raise VllmCompatibilityError('LightOp scaled-MM explicitly requested but unavailable') from exc
-    expected = ('a','b','scale_a','scale_b','m','n','k','transpose_flag','out_dtype','bias')
-    if tuple(inspect.signature(vendor).parameters) != expected:
-        raise VllmCompatibilityError('LightOp channelwise GEMM ABI changed')
     original = module.triton_scaled_mm
     parameters = tuple(inspect.signature(original).parameters.values())
     if (tuple(p.name for p in parameters[:6]) != ('input','weight','scale_a','scale_b','out_dtype','bias')
@@ -71,6 +61,34 @@ def install() -> bool:
 
     import torch
     from hcu_adapter.kernels.scaled_mm_lightop import scaled_mm, supported
+    from hcu_adapter.runtime_lifecycle import ProcessLocalLifecycle
+
+    # An ordinary BF16 model never calls this quantized GEMM. Loading LightOp
+    # here nevertheless initializes its complete native library surface and
+    # adds HIP module destructors to every dense-model process. Resolve auto
+    # only after the real GEMM metadata admits the vendor path. Explicit policy
+    # still validates availability and ABI during startup.
+    action = 'vllm-scaled-mm-provider'
+    lifecycle = ProcessLocalLifecycle(runtime_action=action,
+                                      error_type=VllmCompatibilityError)
+    vendor = None
+
+    def load_vendor():
+        nonlocal vendor
+        try:
+            candidate = import_module('lightop.gemm_ops').hipblaslt_w8a8_channelwise_gemm
+        except (ImportError, AttributeError) as exc:
+            if choice == 'auto':
+                _LOG.info('HCU scaled-MM: LightOp unavailable; retain official Triton')
+                return
+            raise VllmCompatibilityError('LightOp scaled-MM explicitly requested but unavailable') from exc
+        expected = ('a','b','scale_a','scale_b','m','n','k','transpose_flag','out_dtype','bias')
+        if tuple(inspect.signature(candidate).parameters) != expected:
+            raise VllmCompatibilityError('LightOp channelwise GEMM ABI changed')
+        vendor = candidate
+
+    if choice == 'lightop':
+        lifecycle.run_once(action, load_vendor)
 
     architecture = detection.architecture
 
@@ -79,8 +97,11 @@ def install() -> bool:
     def dispatch(A: torch.Tensor, B: torch.Tensor, As: torch.Tensor,
                  Bs: torch.Tensor, out_dtype: torch.dtype,
                  bias: torch.Tensor | None = None) -> torch.Tensor:
+        lifecycle.require_runtime_healthy()
         if supported(A, B, As, Bs, out_dtype, bias, architecture):
-            return scaled_mm(A, B, As, Bs, out_dtype, bias, gemm=vendor)
+            lifecycle.run_once(action, load_vendor)
+            if vendor is not None:
+                return scaled_mm(A, B, As, Bs, out_dtype, bias, gemm=vendor)
         return original(A, B, As, Bs, out_dtype, bias)
 
     def fake(A, B, As, Bs, out_dtype, bias=None):
@@ -93,6 +114,7 @@ def install() -> bool:
     op.register_fake(fake)
 
     def routed(input, weight, scale_a, scale_b, out_dtype, bias=None, *args, **kwargs):
+        lifecycle.require_runtime_healthy()
         if args or kwargs:
             return original(input, weight, scale_a, scale_b, out_dtype, bias, *args, **kwargs)
         return op(input, weight, scale_a, scale_b, out_dtype, bias)
@@ -102,9 +124,11 @@ def install() -> bool:
         target=module.__name__ + '.triton_scaled_mm',
         mechanism=registry.MECH_REBIND, source=__name__,
         detail=f'{architecture}; native FP8/INT8 providers and loading preserved; '
-               'token/channel LightOp with metadata fallback to official Triton',
+               'token/channel LightOp resolved on eligible execution in auto; '
+               'metadata/unavailable fallback to official Triton',
     )
     module.triton_scaled_mm = routed
     setattr(module, _MARKER, (routed, (choice, disabled)))
-    _LOG.info('HCU scaled-MM: LightOp enabled on %s; unsupported contracts use official Triton', architecture)
+    _LOG.info('HCU scaled-MM: %s on %s; unsupported contracts use official Triton',
+              'LightOp required' if choice == 'lightop' else 'automatic provider deferred', architecture)
     return True

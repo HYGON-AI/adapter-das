@@ -27,6 +27,14 @@ DSA writer 回归见 `tests/kernels/test_mqa_triton_gfx938.py`：在调用时解
 并恢复临时环境和 dtype 绑定，不能仅消除收集错误。
 LightOp metadata 的 Graph 对拍须传真实设备的计算单元数，不能硬编码为64。
 
+vLLM 自动 scaled-MM 的 provider 可延后至首个元数据匹配的真实调用解析；
+显式 LightOp 仍须启动时校验。修改加载时序时测试未调用/不匹配/fake 路径
+不导入 vendor、缺包回官方、显式缺包拒绝、ABI 失败后拒绝后续 fallback，
+以及并发首次解析和真实 fork 的进行中拒绝。复用共享 process-local lifecycle，
+保留官方方法与已有别名；另跑实际 FP8/INT8、非单位尺度及变输入 Graph。
+其他选中的 provider 也可能导入同一库，须用真实启动导入栈核对总效果，
+不能凭删去一处 import 就称模型退出或性能问题已解决。
+
 共享机制的 framework-free 契约覆盖 import 和调用两个阶段。模型 lifecycle
 测试须在新解释器阻断 vLLM、SGLang、Torch 导入后，执行真实注册、原子预检、
 post-load/guard dispatch；另以真实 vLLM Worker/config 验证桥上的原覆盖查询、

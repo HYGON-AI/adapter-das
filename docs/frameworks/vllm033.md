@@ -44,6 +44,10 @@ Graph 生命周期仍需单独证明，不能由普通 AR 的可达性推定支�
 FP8 fallback 的公开注册、内核优先级、权重加载、量化和 INT8 非对称修正；
 仅将选中的 Triton provider 的共享 GEMM 调用点路由至 LightOp。
 `ops.vllm_scaled_mm` 支持 `auto`（默认）、`lightop`（要求 wheel）和 `triton`。
+`auto` 在首个满足原有 dtype/布局/尺度条件的真实 GEMM 执行时才加载 LightOp，
+未调用量化 GEMM 的 BF16 模型不因此导入整套 vendor 原生库。显式 `lightop`
+仍在启动时验证 wheel 与 ABI。自动模式缺包/缺入口保留官方 Triton；已观察到
+的 ABI/加载失败在该桥内拒绝后续调用，不能通过不匹配的形状绕过。
 `HCU_DISABLE_OPS=vllm_scaled_mm` 在新进程中跳过接入。INT8 覆盖 gfx936/gfx938，
 E4M3FN 仅 gfx938；不覆盖布局/尺度/对齐时保留官方 Triton 行为。候选状态不表示
 DSV41 整模型或性能验收完成。该后端不处理 CT W4A8 MoE 的 INT4 packing/HIPC。

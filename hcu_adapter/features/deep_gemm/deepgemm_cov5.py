@@ -52,7 +52,7 @@ def install():
     """Preserve the public function and cached aliases through private globals."""
     if util.find_spec(MODULE) is None:
         return False
-    from hcu_adapter.kill_switch import op_disabled
+    from hcu_adapter.infra.kill_switch import op_disabled
 
     if op_disabled("w4a8_contiguous_gemm"):
         return False

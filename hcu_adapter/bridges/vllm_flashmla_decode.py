@@ -15,7 +15,7 @@ from packaging.version import Version
 
 from hcu_adapter.infra import hcu_env
 from hcu_adapter import registry
-from hcu_adapter.kill_switch import op_disabled
+from hcu_adapter.infra.kill_switch import op_disabled
 from hcu_adapter.runtime_lifecycle import ProcessLocalLifecycle
 
 MODE_VARIABLE = 'HCU_VLLM_FLASHMLA_DECODE'

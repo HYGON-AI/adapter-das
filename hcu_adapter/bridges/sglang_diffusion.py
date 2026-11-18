@@ -26,7 +26,8 @@ def platform_plugin():
 
 # anchor-baseline(④): main@5792cf6e diffusion TP passes use_srt_custom_allreduce directly to GroupCoordinator.
 def install_collective_policy():
-    from hcu_adapter import kill_switch, registry
+    from hcu_adapter import registry
+    from hcu_adapter.infra import kill_switch
 
     refused = kill_switch.op_disabled('aiter_ar')
     if not refused:

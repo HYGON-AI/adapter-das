@@ -213,7 +213,7 @@ PM 预分类（2026-10-17 扫 cookbook + `_launch_`/`_test_` 脚本，18 变量�
 
 语义钉：`tests/adapter/test_platform_env.py`（填充/显式覆盖赢/幂等三断言）。
 
-### B 类：模型感知 auto（已落地 2026-10-18，`hcu_adapter/model_env.py`）
+### B 类：模型感知 auto（已落地 2026-10-18，`hcu_adapter/infra/model_env.py`）
 
 | 变量 | 去向 | 理由 |
 |---|---|---|

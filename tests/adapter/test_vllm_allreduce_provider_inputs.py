@@ -40,7 +40,7 @@ def provider_read():
 
 
 def configured(monkeypatch, tmp_path, name, value):
-    from hcu_adapter import hcu_config
+    from hcu_adapter.infra import hcu_config
     # Current catalog exposes enable, not these provider controls. A test-only
     # compound catalog row exercises real HCU_CONFIG parsing/resolution without
     # adding a production configuration surface or monkeypatching resolve.

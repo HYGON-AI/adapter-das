@@ -20,7 +20,7 @@ def install() -> None:
         LOG.warning("HCU adapter: environment summary unavailable", exc_info=True)
 
     try:
-        from hcu_adapter import nccl_topo_guard
+        from hcu_adapter.infra import nccl_topo_guard
 
         nccl_topo_guard.install()
     except Exception:

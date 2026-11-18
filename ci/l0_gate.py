@@ -134,7 +134,7 @@ def registry_names():
 
 
 def catalog_var_refs():
-    src = open(os.path.join(ROOT, "hcu_adapter/hcu_config.py"), encoding="utf-8").read()
+    src = open(os.path.join(ROOT, "hcu_adapter/infra/hcu_config.py"), encoding="utf-8").read()
     refs = set(re.findall(r'"var":\s*"(HCU_[A-Z0-9_]+)"', src))
     for m in re.findall(r'"vars":\s*\{(.*?)\}', src, re.S):
         refs |= set(re.findall(r'"(HCU_[A-Z0-9_]+)"', m))
@@ -202,7 +202,7 @@ def check_routing_glue_imports(r):
 
 
 def check_example_yaml(r):
-    cat = open(os.path.join(ROOT, "hcu_adapter/hcu_config.py"), encoding="utf-8").read()
+    cat = open(os.path.join(ROOT, "hcu_adapter/infra/hcu_config.py"), encoding="utf-8").read()
     ops = set(re.findall(r'^\s{4}"([a-z0-9_]+)":\s*\{', cat, re.M))
     ex = open(os.path.join(ROOT, "hcu_adapter.example.yaml"), encoding="utf-8").read()
     in_ops = False
@@ -452,7 +452,7 @@ def check_text_patch_allowlist(r):
 
 def check_registry_ops_in_catalog(r):
     """HARD: every registry.register(op=...) names a BACKEND_CATALOG op."""
-    from hcu_adapter.hcu_config import BACKEND_CATALOG
+    from hcu_adapter.infra.hcu_config import BACKEND_CATALOG
     ops = set(BACKEND_CATALOG)
     for p in iter_files(".py"):
         rp = rel(p)

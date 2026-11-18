@@ -76,7 +76,7 @@ def _resolve_impl():
 
             traceback.print_exc()
         try:
-            from hcu_adapter import tier_policy
+            from hcu_adapter.infra import tier_policy
 
             tier, _impl = tier_policy.pick(
                 "silu_and_mul",

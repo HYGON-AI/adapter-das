@@ -38,7 +38,7 @@ def install(_he=None) -> None:
     # aiter.dist GraphSafe class passed the full stress suite 2026-10-10);
     # explicit HCU_AITER_AR=1 overrides the auto-rule only.
     try:
-        from hcu_adapter import kill_switch as _ks
+        from hcu_adapter.infra import kill_switch as _ks
 
         _ks.log_state()
     except Exception:

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 from hcu_adapter.bridges import common
 import hcu_adapter
+import hcu_adapter.infra  # noqa: F401  (setattr target binding)
 
 
 def test_common_guards_run_in_pre_import_order(monkeypatch):
@@ -21,7 +22,7 @@ def test_common_guards_run_in_pre_import_order(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
-        hcu_adapter,
+        hcu_adapter.infra,
         "nccl_topo_guard",
         SimpleNamespace(install=lambda: events.append("nccl")),
         raising=False,
@@ -52,7 +53,7 @@ def test_one_common_guard_failure_does_not_block_later_guards(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
-        hcu_adapter,
+        hcu_adapter.infra,
         "nccl_topo_guard",
         SimpleNamespace(install=lambda: events.append("nccl")),
         raising=False,

@@ -24,7 +24,7 @@ def test_vllm_auto_does_not_probe_sglang(monkeypatch):
 
 
 def test_existing_config_selection_and_explicit_kill_precedence(monkeypatch, tmp_path):
-    from hcu_adapter import hcu_config
+    from hcu_adapter.infra import hcu_config
     from hcu_adapter.features.aiter import allreduce
     config=tmp_path/'hcu.json'
     config.write_text('{"version":1,"ops":{"allreduce":"aiter"}}')

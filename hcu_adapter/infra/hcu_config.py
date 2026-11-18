@@ -948,7 +948,7 @@ BACKEND_CATALOG = {
     },
 }
 
-from .ops.deepinfer_catalog import BACKEND_CATALOG as _DEEPINFER_CATALOG
+from ..ops.deepinfer_catalog import BACKEND_CATALOG as _DEEPINFER_CATALOG
 
 for _op, _providers in _DEEPINFER_CATALOG.items():
     if _op in BACKEND_CATALOG:
@@ -967,7 +967,7 @@ _STATE = {"loaded": False, "path": None, "ops": {}, "overrides": {}, "hosts": {}
 
 def _candidate_paths():
     out = []
-    from .infra import hcu_env
+    from . import hcu_env
 
     env, _ = hcu_env.resolve("HCU_CONFIG")
     if env:

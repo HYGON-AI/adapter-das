@@ -142,7 +142,8 @@ def prepare(root, cache_root=None):
         for module in modules:
             module._apply(stage, record)
         # Check allowlists/ops before publishing or binding a compiler entry.
-        from ... import registry, hcu_config
+        from ... import registry
+        from ...infra import hcu_config
         for args, kwargs in records:
             if (args[0] not in hcu_config.BACKEND_CATALOG
                     or (args[0], kwargs["detail"]) not in registry.TEXT_PATCH_ALLOWLIST):

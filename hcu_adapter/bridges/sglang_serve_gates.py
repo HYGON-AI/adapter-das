@@ -85,7 +85,7 @@ def install(_he=None) -> None:
     # DSA models get their two fusion escape hatches, fp16 GDN bottoms get
     # the conv-dtype fix — derived from model_config, setdefault only.
     try:
-        from hcu_adapter import model_env
+        from hcu_adapter.infra import model_env
 
         model_env.install()
     except Exception:
@@ -95,7 +95,7 @@ def install(_he=None) -> None:
     # fused-MoE triton tile guard: HCU 64KB LDS vs the ~72KB NV default
     # config — clamp oversized tiles at the durable resolution seam.
     try:
-        from hcu_adapter import moe_config_guard
+        from hcu_adapter.infra import moe_config_guard
 
         moe_config_guard.install()
     except Exception:

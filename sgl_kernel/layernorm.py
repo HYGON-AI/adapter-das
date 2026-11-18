@@ -83,7 +83,7 @@ def _resolve_rms_impl():
 
             traceback.print_exc()
         try:
-            from hcu_adapter import tier_policy
+            from hcu_adapter.infra import tier_policy
 
             tier, _impl = tier_policy.pick(
                 "rms_norm",
@@ -124,7 +124,7 @@ def _resolve_fused_add_impl():
 
             traceback.print_exc()
         try:
-            from hcu_adapter import tier_policy
+            from hcu_adapter.infra import tier_policy
 
             tier, _impl = tier_policy.pick(
                 "fused_add_rmsnorm",

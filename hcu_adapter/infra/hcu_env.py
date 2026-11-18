@@ -766,7 +766,7 @@ def resolve(name, *, host=None, evaluate_auto=True):
         return str(spec["default"]), "default"
     # config file (deployment tier): below debug env, above auto rules.
     # Invalid files raise here on first touch -- loud and early.
-    from .. import hcu_config as _cfg
+    from . import hcu_config as _cfg
 
     cv = _cfg.lookup(env)
     if cv is not None:
@@ -794,7 +794,7 @@ def enabled(name):
 
 def log_summary():
     """Report configuration without executing device-dependent auto rules."""
-    from .. import hcu_config as _cfg
+    from . import hcu_config as _cfg
 
     cfg_line = _cfg.summary_line()
     if cfg_line:

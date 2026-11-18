@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from hcu_adapter import hcu_config
+from hcu_adapter.infra import hcu_config
 from hcu_adapter.infra import hcu_env
 
 

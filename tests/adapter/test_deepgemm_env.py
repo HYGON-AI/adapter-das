@@ -34,7 +34,7 @@ import importlib.util
 import sys
 import types
 import torch
-from hcu_adapter import hcu_config
+from hcu_adapter.infra import hcu_config
 from hcu_adapter.features.deep_gemm import deep_gemm_dtk
 from hcu_adapter.infra import hcu_env
 

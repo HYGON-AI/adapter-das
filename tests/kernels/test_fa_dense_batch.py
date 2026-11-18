@@ -164,7 +164,7 @@ def test_long_dense_diffusion_sampled_fp64_and_fresh_input_graph(native_attentio
 @pytest.mark.skipif(not torch.cuda.is_available(), reason='requires HCU/CUDA')
 def test_explicit_vendor_public_dispatch_reaches_real_provider(native_attention, monkeypatch):
     from hcu_adapter.infra import hcu_env
-    from hcu_adapter import kill_switch
+    from hcu_adapter.infra import kill_switch
     if hcu_env.resolve('HCU_FA_IMPL')[0] != 'vendor' or kill_switch.op_disabled('vendor_fa'):
         pytest.skip('only the explicit vendor arm')
     import flash_attn
@@ -189,7 +189,7 @@ def test_explicit_vendor_public_dispatch_reaches_real_provider(native_attention,
 @pytest.mark.parametrize('dense', [False, True])
 def test_vendor_operand_rejection_and_neutral_defaults_graph(native_attention, dtype, dense):
     from hcu_adapter.infra import hcu_env
-    from hcu_adapter import kill_switch
+    from hcu_adapter.infra import kill_switch
     from sgl_kernel.flash_attn import flash_attn_varlen_func
     if hcu_env.resolve('HCU_FA_IMPL')[0] != 'vendor' or kill_switch.op_disabled('vendor_fa'):
         pytest.skip('only the explicit vendor arm')

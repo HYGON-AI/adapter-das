@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 
-from ... import kill_switch
+from ...infra import kill_switch
 from hcu_adapter.infra import hcu_env
 
 MIB = 1024 * 1024

@@ -7,7 +7,7 @@ import os
 import sys
 
 from hcu_adapter.infra import hcu_env as environment
-from hcu_adapter.kill_switch import disabled_ops
+from hcu_adapter.infra.kill_switch import disabled_ops
 
 _NAMES = ("HCU_WORKER_CONTEXT", "HCU_DISABLE_OPS", "HCU_ADAPTER_DUMP", "HCU_CONFIG",
           "HCU_PLATFORM_SEMANTICS", "HCU_BF16_TFLOPS",

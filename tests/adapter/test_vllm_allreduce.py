@@ -400,7 +400,7 @@ def test_real_platform_config_worker_and_communicator_chain(monkeypatch, provide
     if case == "kill": monkeypatch.setenv("HCU_DISABLE_OPS", "aiter_ar")
     if case == "child-veto": monkeypatch.setenv("VLLM_ROCM_USE_AITER_CUSTOM_AR", "0")
     if case == "config":
-        from hcu_adapter import hcu_config
+        from hcu_adapter.infra import hcu_config
         from hcu_adapter.infra import hcu_env
         config_file = tmp_path / "hcu.json"
         config_file.write_text('{"version":1,"ops":{"allreduce":"aiter"}}')

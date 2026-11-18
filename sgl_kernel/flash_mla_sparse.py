@@ -54,7 +54,7 @@ def flash_mla_sparse_fwd(
 ):
     if q.dim() != 3:
         raise ValueError(f"flash_mla_sparse (HCU emu): q must be (s_q, H, d), got {q.shape}")
-    from hcu_adapter import hcu_config
+    from hcu_adapter.infra import hcu_config
 
     if hcu_config.load()["ops"].get("sglang_mla_sparse", "emu") == "dtk":
         from hcu_adapter.kernels.sglang_flashmla_dtk import (

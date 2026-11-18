@@ -7,7 +7,8 @@ import pytest
 
 from hcu_adapter.features.ct_w4a8 import ct_w4a8_registration as ct
 from hcu_adapter.features.dsv41 import dsv41_activation as channel
-from hcu_adapter import hcu_config, registry
+from hcu_adapter import registry
+from hcu_adapter.infra import hcu_config
 from hcu_adapter.extensions import (
     ExtensionCommitError, ExtensionContext, ExtensionStatus,
     RequiredExtensionError, activate_extensions,

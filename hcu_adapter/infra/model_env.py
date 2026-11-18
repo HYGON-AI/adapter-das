@@ -182,8 +182,8 @@ def apply_from_argv(argv=None) -> list[str]:
 def install() -> None:
     """sitecustomize entry: argv sniff first (pre-import), then arm the
     ModelRunner hook as an API-launch backstop."""
-    from . import registry
-    from .infra import hcu_env
+    from .. import registry
+    from . import hcu_env
 
     mode, _src = hcu_env.resolve("HCU_MODEL_ENV")
     if str(mode).lower() in ("off", "0", "none", "false", ""):

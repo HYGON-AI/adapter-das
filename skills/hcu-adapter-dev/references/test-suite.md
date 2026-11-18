@@ -22,6 +22,14 @@ guard 的非 None 返回属于契约违规，不能被回调异常包装成主�
 selector 和真实 metadata/spawn 门禁。双宿主 import 探针拒绝框架/Torch/
 kernel/provider import；named consumer 回归不得冒称 SGLang engine 试验。
 
+vLLM 启动编排测试应显式隔离当前所有 provider 的安装边界（包括 MiniMax
+ABI），并断言顺序；遗漏新 owner 会让 CPU 顺序测试意外导入真实设备路径。
+组合健康测试使用真实 `ProcessLocalActions`，逐个覆盖内建 owner 的失败短路、
+激活期间的暂缓聚合及返回后的完整检查；同时验证已锁存的宿主错误在激活仍
+进行时也先拒绝。不要用缺少生命周期接口的 `SimpleNamespace` 或全局健康
+stub 掩盖准入失败。真实 vLLM host、CUDA 未初始化和模块来源需分别记录；
+隐藏 GPU 后官方 ROCm import 若要求设备，保留该限制，不伪造架构使收集通过。
+
 vLLM 扩展生命周期：source 与独立 wheel installed 分开跑。check_health 的
 必需参数须在激活前拒绝；报告替换/重复、sink 失败、caught error 后其他
 selector、实际 fork 格式化窗口均需断言。public registry clear/foreign 必须

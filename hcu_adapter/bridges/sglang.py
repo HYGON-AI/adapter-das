@@ -1622,50 +1622,10 @@ def install() -> None:
                     "HCU adapter: slimquant bridge not installed", exc_info=True
                 )
 
-        # DSA indexer top-k: the sgl-kernel backend ops have no HIP build; bridge
-        # to torch equivalents (see hcu_adapter.dsa_topk).
-        try:
-            import sgl_kernel as _sk
-            import hcu_adapter.dsa_topk as _dsa_topk
+        # DSA indexer top-k sgl-kernel->torch bridge -> hcu_adapter/bridges/sglang_indexer_topk.py
+        from hcu_adapter.bridges import sglang_indexer_topk
 
-            _dsa_topk.install()
-            if os.environ.get("HCU_DUMP_TOPK") == "1":
-                _tpk = {"n": 0}
-
-                def _hcu_log_topk(fn_name, fn):
-                    def wrapped(*a, **k):
-                        out = fn(*a, **k)
-                        if _tpk["n"] < 3:
-                            score = a[0]
-                            print(
-                                f"[HCU topk] {fn_name} score{tuple(score.shape)}"
-                                f" dtype={score.dtype} lens={a[1].tolist()[:4]}"
-                                f" topk={a[3] if len(a) > 3 else k.get('topk')}",
-                                flush=True,
-                            )
-                            torch.save(
-                                {
-                                    "score": score[:2].float().cpu(),
-                                    "lens": a[1][:4].cpu(),
-                                    "out": out[:2].cpu(),
-                                },
-                                f"/tmp/hcu_topk_{_tpk['n']}.pt",
-                            )
-                            _tpk["n"] += 1
-                        return out
-
-                    return wrapped
-
-                for _nm in ("fast_topk_transform_fused",
-                            "fast_topk_transform_ragged_fused",
-                            "fast_topk_v2"):
-                    _fn = getattr(_sk, _nm, None)
-                    if _fn is not None:
-                        setattr(_sk, _nm, _hcu_log_topk(_nm, _fn))
-        except Exception:
-            logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: dsa topk bridge not installed", exc_info=True
-            )
+        sglang_indexer_topk.install(_he)
 
         # HCU store-trace + DSA topk torch-arm probe (debug capture) -> hcu_adapter/bridges/sglang_store_trace.py
         from hcu_adapter.bridges import sglang_store_trace

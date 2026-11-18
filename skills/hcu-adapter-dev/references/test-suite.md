@@ -28,7 +28,16 @@ ABI），并断言顺序；遗漏新 owner 会让 CPU 顺序测试意外导入�
 激活期间的暂缓聚合及返回后的完整检查；同时验证已锁存的宿主错误在激活仍
 进行时也先拒绝。不要用缺少生命周期接口的 `SimpleNamespace` 或全局健康
 stub 掩盖准入失败。真实 vLLM host、CUDA 未初始化和模块来源需分别记录；
-隐藏 GPU 后官方 ROCm import 若要求设备，保留该限制，不伪造架构使收集通过。
+隐藏 GPU 后官方 ROCm import 若要求设备，保留原始收集错误；显式 CPU
+metadata doubles 的范围见下段，不能据此记为 HCU 通过。
+
+针对平台/Worker/AR 的 CPU doubles，可将 ROCm 导入期的架构描述单独放在
+可恢复的 metadata context 中；退出该 context 后恢复设备查询拒绝守卫，
+不把该合成描述当成硬件准入证据。AOT policy 回归仅替身独立的
+`CacheBase.get_system` 设备描述，普通/AOT collector 本体及 factor 断言保留。
+复用启动 owner 夹具时，显式保留被测 owner（例如 AR 或带事件记录的 FP8/AR），
+不得替身宿主失败锁存或扩展健康接口。fresh-process 生命周期探针在子进程中
+显式不选择无关 provider，保留原健康查询与超时；父进程配置不变。
 
 vLLM 扩展生命周期：source 与独立 wheel installed 分开跑。check_health 的
 必需参数须在激活前拒绝；报告替换/重复、sink 失败、caught error 后其他

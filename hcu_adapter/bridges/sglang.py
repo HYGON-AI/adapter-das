@@ -1607,76 +1607,146 @@ def install() -> None:
                 )
 
         # slimquant_w4a8 checkpoint auto-rule (HCU_SLIMQUANT gate) -> hcu_adapter/bridges/sglang_slimquant_guard.py
-        from hcu_adapter.bridges import sglang_slimquant_guard
+        try:
+            from hcu_adapter.bridges import sglang_slimquant_guard
 
-        sglang_slimquant_guard.install(_he)
+            sglang_slimquant_guard.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_slimquant_guard bridge not installed", exc_info=True
+            )
 
         # DSA indexer top-k sgl-kernel->torch bridge -> hcu_adapter/bridges/sglang_indexer_topk.py
-        from hcu_adapter.bridges import sglang_indexer_topk
+        try:
+            from hcu_adapter.bridges import sglang_indexer_topk
 
-        sglang_indexer_topk.install(_he)
+            sglang_indexer_topk.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_indexer_topk bridge not installed", exc_info=True
+            )
 
         # HCU store-trace + DSA topk torch-arm probe (debug capture) -> hcu_adapter/bridges/sglang_store_trace.py
-        from hcu_adapter.bridges import sglang_store_trace
+        try:
+            from hcu_adapter.bridges import sglang_store_trace
 
-        sglang_store_trace.install(_he)
+            sglang_store_trace.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_store_trace bridge not installed", exc_info=True
+            )
 
         # DSA indexer rotate_activation hadamard + prefill/decode backend validator -> hcu_adapter/bridges/sglang_dsa_guards.py
-        from hcu_adapter.bridges import sglang_dsa_guards
+        try:
+            from hcu_adapter.bridges import sglang_dsa_guards
 
-        sglang_dsa_guards.install(_he)
+            sglang_dsa_guards.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_dsa_guards bridge not installed", exc_info=True
+            )
 
         # aiter all-reduce gate (custom AR retired; auto-rule + kill-switch precedence) -> hcu_adapter/bridges/sglang_aiter_ar.py
-        from hcu_adapter.bridges import sglang_aiter_ar
+        try:
+            from hcu_adapter.bridges import sglang_aiter_ar
 
-        sglang_aiter_ar.install(_he)
+            sglang_aiter_ar.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_aiter_ar bridge not installed", exc_info=True
+            )
 
         # gfx936 MQA-logits fp8 emu (paged/ragged torch fallback auto-rule) -> hcu_adapter/bridges/sglang_mqa_emu.py
-        from hcu_adapter.bridges import sglang_mqa_emu
+        try:
+            from hcu_adapter.bridges import sglang_mqa_emu
 
-        sglang_mqa_emu.install(_he)
+            sglang_mqa_emu.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_mqa_emu bridge not installed", exc_info=True
+            )
 
         # HCU_DUMP_LAYERS per-layer debug capture (2026-10-16) -> hcu_adapter/bridges/sglang_layer_dump.py
-        from hcu_adapter.bridges import sglang_layer_dump
+        try:
+            from hcu_adapter.bridges import sglang_layer_dump
 
-        sglang_layer_dump.install(_he)
+            sglang_layer_dump.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_layer_dump bridge not installed", exc_info=True
+            )
 
         # 8. deep_ep API bridge -> hcu_adapter/bridges/sglang_deep_ep.py
-        from hcu_adapter.bridges import sglang_deep_ep
+        try:
+            from hcu_adapter.bridges import sglang_deep_ep
 
-        sglang_deep_ep.install(_he)
+            sglang_deep_ep.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_deep_ep bridge not installed", exc_info=True
+            )
 
 
         # 9. DeepGEMM DTK bridge (EP, 2026-10-11) -> hcu_adapter/bridges/sglang_deep_gemm.py
-        from hcu_adapter.bridges import sglang_deep_gemm
+        try:
+            from hcu_adapter.bridges import sglang_deep_gemm
 
-        sglang_deep_gemm.install(_he)
+            sglang_deep_gemm.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_deep_gemm bridge not installed", exc_info=True
+            )
 
 
         # 10. DTK aiter fused-MoE bridge (2026-10-11) -> hcu_adapter/bridges/sglang_moe.py
-        from hcu_adapter.bridges import sglang_moe
+        try:
+            from hcu_adapter.bridges import sglang_moe
 
-        sglang_moe.install(_he)
+            sglang_moe.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_moe bridge not installed", exc_info=True
+            )
 
         # 11. Prefill context-parallel bridge (2026-10-12) -> hcu_adapter/bridges/sglang_cp.py
-        from hcu_adapter.bridges import sglang_cp
+        try:
+            from hcu_adapter.bridges import sglang_cp
 
-        sglang_cp.install(_he)
+            sglang_cp.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_cp bridge not installed", exc_info=True
+            )
 
         # 12. GLM-5.3-Flash layer-boundary precision probe (2026-10-16) -> hcu_adapter/bridges/sglang_glm_probe.py
-        from hcu_adapter.bridges import sglang_glm_probe
+        try:
+            from hcu_adapter.bridges import sglang_glm_probe
 
-        sglang_glm_probe.install(_he)
+            sglang_glm_probe.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_glm_probe bridge not installed", exc_info=True
+            )
 
         # 13. GLM-5.3-Flash MHC hyper-connection emu (2026-10-16) -> hcu_adapter/bridges/sglang_mhc.py
-        from hcu_adapter.bridges import sglang_mhc
+        try:
+            from hcu_adapter.bridges import sglang_mhc
 
-        sglang_mhc.install(_he)
+            sglang_mhc.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_mhc bridge not installed", exc_info=True
+            )
 
         # 14. Spec-decode KV-loc safety (2026-10-17) -> hcu_adapter/bridges/sglang_spec_kv.py
-        from hcu_adapter.bridges import sglang_spec_kv
+        try:
+            from hcu_adapter.bridges import sglang_spec_kv
 
-        sglang_spec_kv.install(_he)
+            sglang_spec_kv.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sglang_spec_kv bridge not installed", exc_info=True
+            )
 
         try:
             from hcu_adapter import spec_h2d_pin
@@ -1721,7 +1791,12 @@ def install() -> None:
                 "HCU adapter: QSA pool not installed", exc_info=True
             )
 
-        from hcu_adapter.bridges._sglang import grouped_topk, sampling
+        try:
+            from hcu_adapter.bridges._sglang import grouped_topk, sampling
 
-        grouped_topk.install()
-        sampling.install()
+            grouped_topk.install()
+            sampling.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: grouped_topk/sampling bridge not installed", exc_info=True
+            )

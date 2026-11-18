@@ -525,7 +525,39 @@ Adapter 不保存 Plugin backend 路径，正式 registry 发布与健康检查�
 | `sgl_kernel/` | SGLang 宿主 ABI 契约层；影子包名称由上游锁定 | 契约文件按 §3b 豁免；不为本次 DeepInfer 整理改动此目录 |
 | `hcu_adapter/` 顶层 | 历史 SGLang 侧桥接实现，以及多宿主共用的配置、registry、引导等机制 | 现有实现按任务逐步整理，新计算实现不再增加顶层平铺文件 |
 | `hcu_adapter/kernels/` | 当前由 DeepInfer 桥消费的上游契约实现；不依赖宿主模型类 | 新计算实现进入此目录，使用算子族＋档位命名；门面须有真实校验、选位或组合职责 |
+| `hcu_adapter/bridges/` | 宿主绑定、安装与契约分发；**按宿主分文件**（判据见下表） | 绑定与分发归此层；不放纯计算实现 |
 | `hcu_adapter/bridges/_deepinfer/` | DeepInfer 宿主绑定、安装和契约分发 | `tilelang_ops.py`、`tile_kernels.py` 对接上游符号面；不放纯计算实现 |
+| `hcu_adapter/features/<族>/`（新设） | 单个模型/量化/特性族的全部专属文件（数学+接线+注册内聚） | 判据：删除该特性后文件即无意义的，按族归此；**族是搬家最小单位**（单文件不迁） |
+| `hcu_adapter/infra/`（新设） | 跨特性公共机制：env/registry/bootstrap/JIT 缓存/atomic_io/configs | 判据：两个以上特性族共用的非计算件归此 |
+
+## 宿主绑定归属判定（bridges 内部结构，2026-11-18 定）
+
+装载分发链已定形：`sitecustomize → bootstrap.install() → bridges/common →
+bridges.<host>`（按 `HCU_ADAPTER_HOST` 分发）。文件归属按**宿主指向**判定，
+四类互斥：
+
+1. **框架专属桥**：只服务一个宿主的接线——命名强制 `sglang_*.py` /
+   `vllm_*.py` 前缀（vLLM 侧已按此分文件；sglang 侧从巨石 `sglang.py`
+   按注释编号节切分为 `sglang_<topic>.py`，主文件保留 install 编排与公共件）；
+2. **框架无关件**：两个宿主共同消费的守卫/机制（如 `bridges/common.py`
+   跨框架 guards）——无前缀命名，任何宿主桥可 import；
+3. **平台机制面**（`_deepinfer/` 等）：vendored 后端绑定，按后端名组织，
+   不按宿主；
+4. **新宿主接入**：先立 `bridges/<host>.py` 分发入口与命名前缀，再写专题。
+
+**接线面（顶层散布的宿主换绑文件）的去处**：框架专属语义 → 并入
+`sglang_*.py` 专题；模型/特性专属 → `features/<族>/`。判据问句按序：
+是数学实现？→ `kernels/`；是特性专属？→ `features/<族>/`；是宿主接线？→
+`bridges/sglang_*`；是跨族公共件？→ `infra/`。
+
+**过渡与回退条款**：
+- 新文件即刻受约束（L0 目录归属检查，存量豁免挂 `legacy-layout`白名单）；
+- 搬家以"族"为最小单位；`features/<族>/` 存在时顶层同名前缀文件必须为 0
+  （L0 家族完整性检查）；
+- 改旧顶层文件不强制顺手搬家（避免无关 diff 污染）；以特性为主题的 MR
+  触发整族归家条款；
+- 迁移模块时同步 bridge import、catalog `impl` 路径、plugin 导入及
+  provider 身份检查（原文条款继续适用）。
 
 `kernels/` 独立命名空间避免导入 `sgl_kernel.__init__` 时提前启动 SGLang 的
 AOT/stub 注册。当前消费方是 DeepInfer；未来其他宿主复用时，仍需各自 bridge

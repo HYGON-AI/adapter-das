@@ -551,6 +551,62 @@ def check_impl_naming(r):
         r.fail("impl-naming", f"tier-matrix check crashed: {exc}")
 
 
+def check_layout_ownership(r):
+    """HARD: directory ownership rules (governance "宿主绑定归属判定" 2026-11-18).
+
+    a) New computation modules must live under kernels/ or features/<族>/
+       (never flat at hcu_adapter top level).  The 13 pre-rule top-level
+       Triton/TileLang modules are grandfathered in LEGACY_LAYOUT_ALLOWLIST;
+       an entry leaves the list only together with its family's migration.
+    b) Family integrity: once features/<family>/ exists, no top-level file
+       may still carry that family's prefix (family = migration unit; no
+       split families across old/new homes).
+    """
+    # [a] grandfathered computation modules at top level (exhaustive over
+    # the triton/tilelang inventory at rule date; shrink as families move)
+    LEGACY_LAYOUT_ALLOWLIST = {
+        "deep_gemm_contig_triton", "deep_gemm_dtk", "deep_gemm_fp8_triton",
+        "deep_gemm_masked_triton", "dsa_mqa_logits_emu", "dsv4_silu_fused_quant",
+        "hadamard_triton", "kpool_read_triton", "mqa_logits_triton",
+        "slimquant", "triton_libdev", "triton_pdl", "v41_fp8_indexer_triton",
+    }
+    tops = []
+    for f in iter_files(".py"):
+        p = rel(f)
+        if (p.startswith("hcu_adapter/") and p.count("/") == 1
+                and not p.endswith("__init__.py") and not p.endswith("_base.py")):
+            tops.append(p[len("hcu_adapter/"):-3])
+    tops.sort()
+    for m in tops:
+        if m in LEGACY_LAYOUT_ALLOWLIST:
+            continue
+        src = open(os.path.join(ROOT, "hcu_adapter", m + ".py"),
+                   encoding="utf-8").read()
+        if re.search(r"@triton\.jit|@tilelang\.jit|import triton|import tilelang", src):
+            r.fail("layout", f"hcu_adapter/{m}.py is a new computation module at "
+                   "top level; kernels/ or features/<family>/ only "
+                   "(governance 算子三居地图)")
+    # [b] family integrity: features/<fam>/ exists -> zero top-level siblings
+    FAMILY_PREFIXES = {
+        "dsv4": ("dsv4",), "dsv41": ("dsv41", "v41"),
+        "ct_w4a8": ("ct_w4a8",), "deep_gemm": ("deep_gemm", "deepgemm"),
+        "hadamard": ("hadamard",), "gdn": ("gdn", "conv1d", "kda"),
+        "dsa": ("dsa",), "mqa_logits": ("mqa",),
+        "allreduce": ("allreduce", "ar_norm"), "aiter": ("aiter",),
+    }
+    feat_root = os.path.join(ROOT, "hcu_adapter", "features")
+    if os.path.isdir(feat_root):
+        for fam in sorted(os.listdir(feat_root)):
+            pref = FAMILY_PREFIXES.get(fam)
+            if not pref:
+                continue
+            stray = [m for m in tops
+                     if any(m == p or m.startswith(p + "_") for p in pref)]
+            if stray:
+                r.fail("layout", f"features/{fam}/ exists but top-level "
+                       f"members remain: {', '.join(stray)}")
+
+
 def check_dual_dist_packaging(r):
     """HARD: dual-dist layout invariants (governance §7.4).
 
@@ -680,6 +736,7 @@ def main():
     check_text_patch_allowlist(r)
     check_registry_ops_in_catalog(r)
     check_impl_naming(r)
+    check_layout_ownership(r)
     check_dual_dist_packaging(r)
 
     print(f"l0 gate: scanned {n_py} py / {n_sh} sh / {n_sec} text files")

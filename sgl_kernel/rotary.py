@@ -36,32 +36,35 @@ if HAS_TRITON:
         num_heads,
         HEAD_SIZE: tl.constexpr,
         ROTARY_DIM: tl.constexpr,
+        BLOCK_DIM: tl.constexpr,
         BLOCK_HEADS: tl.constexpr,
     ):
         token = tl.program_id(0).to(tl.int64)
         head_blk = tl.program_id(1)
         half: tl.constexpr = ROTARY_DIM // 2
-        half_idx = tl.arange(0, half)
+        half_idx = tl.arange(0, BLOCK_DIM)
+        dmask = half_idx < half
 
         pos = tl.load(POS + token)
-        c = tl.load(COS_SIN + pos * ROTARY_DIM + half_idx)
-        s = tl.load(COS_SIN + pos * ROTARY_DIM + half + half_idx)
+        c = tl.load(COS_SIN + pos * ROTARY_DIM + half_idx, mask=dmask, other=0.0)
+        s = tl.load(COS_SIN + pos * ROTARY_DIM + half + half_idx, mask=dmask, other=0.0)
 
         heads = head_blk * BLOCK_HEADS + tl.arange(0, BLOCK_HEADS)
         hmask = heads < num_heads
+        mask = hmask[:, None] & dmask[None, :]
         off = tl.where(hmask, heads, 0) * HEAD_SIZE
 
         base = T + token * t_stride
         x1 = tl.load(base + off[:, None] + half_idx[None, :],
-                     mask=hmask[:, None], other=0.0).to(tl.float32)
+                     mask=mask, other=0.0).to(tl.float32)
         x2 = tl.load(base + off[:, None] + (half + half_idx)[None, :],
-                     mask=hmask[:, None], other=0.0).to(tl.float32)
+                     mask=mask, other=0.0).to(tl.float32)
         y1 = x1 * c[None, :] - x2 * s[None, :]
         y2 = x1 * s[None, :] + x2 * c[None, :]
         tl.store(base + off[:, None] + half_idx[None, :],
-                 y1.to(base.dtype.element_ty), mask=hmask[:, None])
+                 y1.to(base.dtype.element_ty), mask=mask)
         tl.store(base + off[:, None] + (half + half_idx)[None, :],
-                 y2.to(base.dtype.element_ty), mask=hmask[:, None])
+                 y2.to(base.dtype.element_ty), mask=mask)
 
 
 def rotary_embedding(
@@ -75,6 +78,11 @@ def rotary_embedding(
     """Rotate query (and key) rows in place. See module docstring."""
     if positions.numel() == 0:
         return
+    if positions.dtype != torch.int64:
+        # The triton kernel indexes the cache with 64-bit math; an int32
+        # positions tensor would overflow pos * rotary_dim on long
+        # contexts (upstream pos_enc.cu loads positions as int64_t).
+        positions = positions.long()
     use_triton = HAS_TRITON and query.is_cuda and cos_sin_cache.is_cuda and is_neox
     if key is not None and use_triton:
         use_triton = key.is_cuda
@@ -110,6 +118,7 @@ def rotary_embedding(
         q_heads,
         HEAD_SIZE=head_size,
         ROTARY_DIM=rotary_dim,
+        BLOCK_DIM=triton.next_power_of_2(rotary_dim // 2),
         BLOCK_HEADS=BLOCK_HEADS,
         num_warps=4,
     )
@@ -124,6 +133,7 @@ def rotary_embedding(
             k_heads,
             HEAD_SIZE=head_size,
             ROTARY_DIM=rotary_dim,
+            BLOCK_DIM=triton.next_power_of_2(rotary_dim // 2),
             BLOCK_HEADS=BLOCK_HEADS,
             num_warps=4,
         )
@@ -185,13 +195,22 @@ def _rotary_embedding_interleaved_torch(positions, query, key, head_size, cos_si
             return None
         orig_shape = t.shape
         t = t.view(num_tokens, -1, head_size)
-        x1 = t[..., :rotary_dim, 0::2].float()  # even lanes
-        x2 = t[..., :rotary_dim, 1::2].float()  # odd lanes
+        # The rotary window is the FIRST rotary_dim lanes of each head
+        # vector (last dim); inside it, even lane 2j pairs with odd 2j+1.
+        # (The old `t[..., :rotary_dim, 0::2]` sliced the HEAD dim by
+        # rotary_dim and strided head_size — correct only by accident for
+        # single-head tensors with rotary_dim == head_size.)
+        # Index tensors must live on t's device: CUDA self + CPU indices
+        # is a hard RuntimeError in advanced indexing (review #80 P1).
+        even = torch.arange(0, rotary_dim, 2, device=t.device)
+        odd = torch.arange(1, rotary_dim, 2, device=t.device)
+        x1 = t[..., even].float()  # even lanes of the rotary window
+        x2 = t[..., odd].float()   # odd lanes
         y1 = x1 * cos_i.unsqueeze(1) - x2 * sin_i.unsqueeze(1)
         y2 = x1 * sin_i.unsqueeze(1) + x2 * cos_i.unsqueeze(1)
         out = t.clone()
-        out[..., :rotary_dim, 0::2] = y1.to(t.dtype)
-        out[..., :rotary_dim, 1::2] = y2.to(t.dtype)
+        out[..., even] = y1.to(t.dtype)
+        out[..., odd] = y2.to(t.dtype)
         return out.view(orig_shape)
 
     out_q = _rope(query)

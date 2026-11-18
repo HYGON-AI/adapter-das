@@ -27,12 +27,15 @@
 | 跑一个模型 | docs/cookbook.md（找配方）→ docs/models.md（看先例与坑）→ cookbook.md §4 平台约束 |
 | **新容器/新镜像首次部署** | docs/bootstrap.md（依赖重打+tvm-ffi 预热+自检，照做 ≤10min） |
 | 构建 wheel / 排查构建与依赖解析 | docs/build.md（双 dist 一次构建、打戳与互锁、`--no-stamp`、安装组合与常见问题） |
+| 非分页 FA2/FA3 接口与回退 | docs/dense-flashattention.md → skills/…/references/test-suite.md |
 | 排查精度问题 | skills/…/references/precision-triage.md → references/kill-switches.md |
 | 改 CI / 加门禁 | docs/ci.md → docs/test-route-governance.md（目标态：精度→功能→性能→路由→退役）→ ci/l0_gate.py |
 | 梳理 L1.5 / 更新上游用例 manifest | docs/l15-test-inventory.md（逐文件候选与分诊）→ docs/l15-family-matrix.md（Dense/MLA/MoE/量化/Mamba 代表矩阵）→ docs/test-route-governance.md §1.3–§1.5 → docs/test-route-implementation-plan.md MR-02A～02E |
 | 设计性能 A/B、路由统计或代码退役 | docs/test-route-governance.md → docs/test-route-implementation-plan.md（MR-00～MR-12）→ docs/autotune.md → docs/governance.md |
 | 按测试治理路线开工 / 查依赖和验收 | docs/test-route-implementation-plan.md → 对应 MR 段的依赖、DoD 与验收命令 |
 | 判断一项工作归哪仓 / 开发插件新能力 | docs/governance.md §0 判别 → 本文「姊妹仓地图」→ sglang-plugin-das docs/ |
+
+MiniMax-H3专用RoPE候选的接口、快关、CPU/离线编译证据与设备验收边界见 [MiniMax-H3](minimax-h3.md)。
 
 ## 算子目录入口
 
@@ -69,6 +72,7 @@ DeepInfer 的具体文件位置见[算子导航](frameworks/deepinfer-kernels.md
 | docs/env-vars.md | 全量环境变量手册（调试覆盖定位） | REGISTRY 键集与 hcu_env.py 不符（L0 会抓） |
 | docs/frameworks/vllm-required-extensions.md | vLLM 必选 entry-point/capability 启动策略、来源与 bootstrap/HOSTnone 日志边界 | 环境解析或实际 common/general-plugin 时序与契约不符 |
 | docs/cookbook.md | 已验证启动配方（按模型/特性），§4 平台约束必读 | 配方与最新 master 行为不符 |
+| docs/sglang-spawn-device.md | SGLang scheduler GPU selection before adapter bootstrap; spawn hint and alias contracts | Launch context or interpreter startup order changes |
 | docs/bootstrap.md | 新容器 Bootstrap 手册：依赖套件版本钉、tvm-ffi 手工预热、镜像差异表、四条自检 | 镜像换代后版本钉失效（快照与镜像不符） |
 | docs/models.md | 模型验证记录表（一天一行，判定四门）+ 组合特性清单 | 新模型跑完未加行 |
 | docs/tier-matrix.md | 算子档位矩阵（自动生成）：每算子有哪些档、缺哪档、什么状态——实现排期的直接输入 | 与 BACKEND_CATALOG 不一致（L0 `impl-naming` freshness 会抓） |

@@ -18,6 +18,28 @@
 > 单测与 e2e 当前挂在 sglang 宿主树（`--up-tree` 指 sglang 源码树）。vLLM
 > 宿主的版本门与验证路径见 [frameworks/vllm032.md](frameworks/vllm032.md) §6。
 
+### 公共检查与宿主标签
+
+公共检查不由宿主标签二选一：`Adapter CPU` 对普通 PR 和已识别的车道标签
+运行结构、CPU/编排契约，包含 `test_common_bridge.py`、`test_bootstrap.py`、
+`test_runtime_lifecycle.py` 和原有 CPU 选择。该进程使用 `HCU_ADAPTER_HOST=none`
+并隐藏设备。HCU workflow 的 build/L0 也随任一车道执行。
+
+| 操作 | 公共检查 | SGLang HCU 车道 | vLLM HCU 车道 |
+| --- | --- | --- | --- |
+| 普通 PR opened/synchronize/reopened/ready_for_review | 运行 | 不自动运行 | 不自动运行 |
+| 添加 `sglang` 或 `ci-sglang`（旧名 `ci-hcu`） | 运行 | 运行 | 不运行 |
+| 添加 `vllm` 或 `ci-vllm` | 运行 | 不运行 | 运行 |
+| 添加 `ci-all` 或 dispatch `lane=all` | 运行 | 运行 | 运行 |
+| 添加其他标签 | 不因该标签重跑 | 不运行 | 不运行 |
+
+标签是一次触发：分别添加两个宿主标签会启动各自车道；按标签分开的 concurrency
+组避免互相取消。后续 push 仍走普通 PR 路径，需要新 HCU 结果时重加对应标签
+或手动 dispatch。HCU dispatch 的默认 `lane=sglang` 保持兼容；独立的
+`Adapter CPU` 可手动运行，HCU dispatch 自身仍运行公共 build/L0。
+vLLM 车道保留每文件新解释器及 `VLLM_PLUGINS=none` 的桥契约测试形态，
+不能据此宣称真实 Plugin/模型已验收；nightly 的 observe 结果仍只用于分诊。
+
 L1.5 v2/代表矩阵的下列 HCU 计数是**拆分前兼容快照的历史证据**，
 该快照包含生产兼容修复（现由 [PR #27](https://github.com/HYGON-AI/adapter-das/pull/27)
 单独承载）。工具链 PR 只新增采集、验证和 CI 接线，不修改生产算子或桥；
@@ -25,7 +47,7 @@ L1.5 v2/代表矩阵的下列 HCU 计数是**拆分前兼容快照的历史证�
 
 | 层 | 内容 | 环境 | 耗时 | 触发 |
 |---|---|---|---|---|
-| **L0 结构门禁** | `ci/l0_gate.py`：全仓 py 语法、.sh LF-only（CRLF 曾静默毁 bash）、密钥扫描、REGISTRY↔docs/env-vars.md↔BACKEND_CATALOG 交叉一致、sitecustomize 引用完整性、example yaml 键合法性、治理三规则（`glue-numerics`=sitecustomize 无 triton 数学 / `text-patch`=源码补丁必在 TEXT_PATCH_ALLOWLIST / `registry-ops`=register 的 op 必须 catalog）；软警告=裸读 os.environ/CRLF py | 任何机器，零依赖 | <5s | 每次 push / MR（托管平台 CI 云端） |
+| **L0 结构门禁** | `ci/l0_gate.py`：全仓 py 语法、.sh LF-only（CRLF 曾静默毁 bash）、密钥扫描、REGISTRY↔docs/env-vars.md↔BACKEND_CATALOG 交叉一致、sitecustomize 引用完整性、example yaml 键合法性、宿主 `sglang.kernels.ops.<域>.<模块>` 深度 import 必带档位注记（`ops-import-depth`：仅包面可走 catalog 分档；2026-11-12 起两种等价写法同查——`import …<域>.<模块>` 直查，`from …<域> import <模块>` 在与域同名或仓内深度 import 证明为模块体时查，同名包面再导出（quantization.per_token_group_quant）豁免）、治理三规则（`glue-numerics`=sitecustomize 无 triton 数学 / `text-patch`=源码补丁必在 TEXT_PATCH_ALLOWLIST / `registry-ops`=register 的 op 必须 catalog）；软警告=裸读 os.environ/CRLF py | 任何机器，零依赖 | <5s | 每次 push / MR（托管平台 CI 云端） |
 | **L1 GPU 数值门禁** | `ci/l1_gpu_gate.sh`：L0 + pytest（test_ops_cpu / kernels / adapter）+ 精选 tools 门禁（config 目录、fa3-emu CP 形状、rope 三路一致、aiter-MoE 分发、deepgemm contiguous triton）+ vendor wheel 探针（WARN 级） | HCU 容器，1 卡，自动挑空闲（VRAM<5%） | 5-15min | 容器侧手动/定时执行，结果回帖 MR（自动化触发器随托管平台重接） |
 | **L1.5 上游单测精选（已落地 l15_upstream 段）** | sglang 官方 `test/registered/attention/unittests` 的 dsa+kda+dense+mla 四目录（`-k "not tilelang"`）：**88 绿/2 排除/101 合法 skip（fa4/flashinfer/trtllm 平台性）/208 子用例，暖缓存 ~1min、冷缓存 ~35min**。首役战果（2026-10-17）：五修打通——shfl `__shfl_*_sync`→非 sync（dpsk_v4_topk 编译复活）、`get_mla_metadata` 新 API、`flash_mla_with_kvcache` 输出秩随输入、flashinfer `_grouped_size` ABSENT+deny 组合、`attn_backend_gate`（fa4/flashinfer 构造期 ImportError→kit 优雅 skip）。mla 加餐（2026-10-18）：首跑 8 失败同根——flashmla 后端 unified 模式的 extend 路径整体委托 flashinfer 父类（`forward_extend`→`super()`），flashinfer 桩 `__getattr__` 记 FAIL；修法=桩内 `_hcu_stub_raise`（unittest 栈帧→SkipTest，serving 栈保持 NotImplementedError），8 失败→25 合法 skip、26 绿全保（flash_mla 移植面获正面检验）。**判定：MTP/fp8-KV/DSA 内核面全绿 → serving 层病在 srt 状态机**。**环境铁律**：容器两份 sglang（pip dist-packages vs `/sglang-v0521` 源码树，serving 与 JIT include 均指后者）；pytest 必须显式 `PYTHONPATH=/sglang-v0521/python:$ROOT`（缺一静默测错树/adapter 不加载）+ `-e HCU_DEEPGEMM_BRIDGE=1`；**多线放大版（R-17 三绑定铁律）**：rel/v0.5.22 线的一切门禁须在 `/sglang-v0522` 树+对应容器跑——`ci/l1_gpu_gate.sh` 已支持 `--up-tree <path>`/`HCU_UP_TREE` 显式指树（指定不存在即 loud fail 不静默落回自动探测），错树假绿=双线模型第一杀手；JIT 内核首编 ~5min/颗（ninja 编译非挂死）。tilelang 两用例=DTK 0.1.12+dtk2604 warp 划分 bug（threads=384→6 warp 不整除，编译期 InternalError），平台已知红待 DTK 修 | HCU 容器，1 卡 | 暖 ~2min / 冷 ~35min | 与 L1 同车（`ci/l1_gpu_gate.sh` l15_upstream 段自动发现上游树，无树则 SKIP） |
 | **L1.5b 上游机制目录（l15_mech 段，R-14 批 A）** | unittests 六机制目录 gdn/hybrid_linear/mamba/swa/lightning/dsv4（旧树无目录自动 SKIP），env 契约同 l15_upstream（`PYTHONPATH=/sglang-v0521/python:$ROOT` + `HCU_DEEPGEMM_BRIDGE=1` + `-k "not tilelang"`），另加 `-rs` 列 skip 理由。**known-fail 预算绊线**：段判绿按计数不按 pytest rc=1——`passed≥90 且 failed≤42`（基线 38/99 的 ±10%）才 PASS，越线/超时(124)即红进 FAILS，防"登记失败"膨胀成"回归自由"；账本见下节。首跑 826s（dsv4 JIT 败三连不缓存，每跑重付编译尝试） | HCU 容器，1 卡 | 暖 ~5-14min | 与 L1 同车（`ci/l1_gpu_gate.sh`） |
@@ -65,7 +87,7 @@ manifest 保持不变；新增打包验证后，远端隐藏 GPU 的 CPU 回归�
 2026-11-03 原样源码迭代：严格组件和模型入口增加 Git blob 字节完整性检查，
 已有改写在 GPU 预检前拒绝，执行后改写也不能算通过。当时共享社区树审计
 发现 30 个历史改写文件，因此旧通过记录只证明旧组合，尚不满足新要求；
-详见 [源码完整性门禁](l15-readiness-plan.md#源码完整性门禁)。
+详见 [源码完整性门禁](history/l15-readiness-202611-log.md#源码完整性门禁)。
 
 ### L1.5b KNOWN_FAILURES 账本（l15_mech 六机制目录，2026-10-19 首跑分诊）
 

@@ -174,7 +174,7 @@ sglang 符号面，shim 妥协不进契约。
 1. **具体实现文件 = `<op>[_<变体>]_<tier>`**，tier 词表封闭：
    `emu`（torch 直算/仿真臂）· `triton`（自研 triton）· `cpp`（C++ JIT）·
    `fork`（vendor 源码 fork 承接）· `ref`（诊断参照，位置约束见 §2）；
-   vendor 库绑定安装器用**库名**：`aiter` / `lightop` / `dtk` / `rccl`（通信库）。
+   vendor 库绑定安装器用**库名**：`aiter` / `lightop` / `boltops` / `dtk` / `rccl`（通信库）。
    例：`conv1d_update_emu` · `mqa_logits_triton` · `paged_attn_cpp` ·
    `quant_aiter` · `deep_gemm_dtk`。**平台词（hip/cuda/rocm）不算档位**，
    禁作实现后缀。
@@ -262,7 +262,11 @@ sglang 符号面，shim 妥协不进契约。
   实验性但确有价值的材料须先清理到自洽（锚点/文件名与事实一致、附
   状态说明 README、已验证部分能跑通）再入库，否则留在工作区或特性
   分支不进库。首个应用：`tools/sgl_kernel_hcu/`（七轮修复自洽成册，
-  构建产物不入库）。
+  构建产物不入库）；
+- **Agent 提交的 MR 一律 draft 起步**（2026-11-11 定，两仓一致）：凡由
+  Agent（AI 协作者）发起的 MR，默认以 Draft 状态创建；人工审核确认
+  没问题后，由 Agent 或人工将其改为 Open（Ready for review）才进入
+  合入流程——draft 期间视为"未经人工背书的提案"。生效首个应用：#80。
 
 历史豁免：本节生效前已合入的 merge commit 不追改；生效首个观察点是
 #27/#26。
@@ -489,11 +493,14 @@ Adapter 不保存 Plugin backend 路径，正式 registry 发布与健康检查�
   0.4.9；单源 `sgl_kernel/version.py`，重配对上游树时基线跟那棵树的 aot 版本走）；
   `hcu-adapter` = 适配层（`hcu_adapter/` + sitecustomize + vllm entry-points；初始
   `0.5.22+hcu.1`，编码本线 sglang 配对；单源 `packaging/hcu-adapter/VERSION`）。
-  互锁：hcu-adapter 依赖 `sgl-kernel==<内核公共版本>[+hcu.<戳>]` 精确等号，禁止 `>=`/`~`。
-  构建期由 `packaging/hcu-adapter/_pin.py` 从单一版本源渲染 pin：`packaging/build.sh`
-  给两张 wheel 传同一个 `DAS_BUILD_STAMP=<时间>.g<commit>`（渲染为
-  `+hcu.<时间>.g<commit>`），带戳内核与 adapter 依赖逐字互锁；无戳（可编辑/开发安装）
-  时退化为内核公共版本等号。
+  互锁：hcu-adapter 依赖 `sgl-kernel==<内核公共版本>[+<平台标签>[.<戳>]]` 精确等号，
+  禁止 `>=`/`~`。构建期由 `packaging/hcu-adapter/_pin.py` 从单一版本源渲染 pin：
+  `packaging/build.sh` 用 setup_hip.py 编译 native 内核，并把同一个
+  `DAS_PLATFORM_TAG=dtk<DTK>.torch<TORCH>`（native 扩展的 ABI 标签）和
+  `DAS_BUILD_STAMP=<时间>.g<commit>` 传给两张 wheel（渲染为
+  `+dtk<DTK>.torch<TORCH>.<时间>.g<commit>`），内核与 adapter 依赖逐字互锁；
+  无戳时平台标签仍保留（精确等号），只有直接 `pip wheel` 的纯 python 变体
+  （测试/开发）才退回 `+hcu.<戳>` 或内核公共版本等号。
   `ci/l0_gate.py` 与 `packaging/build.sh` 双重校验。当初评估解耦的结论：单
   wheel 让"双宿主适配层挂单宿主内核名"，拆分后 sgl-kernel 的用法与语义与上游
   内核包对齐（独立内核包，谁需要谁装）；**复评触发条件**：官方

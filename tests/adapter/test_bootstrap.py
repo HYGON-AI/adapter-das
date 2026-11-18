@@ -279,7 +279,7 @@ def test_stdlib_resource_tracker_entry_does_not_load_gpu_runtime(tmp_path, host)
     startup = tmp_path / "sitecustomize.py"
     startup.write_text(
         "import json, sys\n"
-        "from hcu_adapter.bootstrap import install\n"
+        "from hcu_adapter.infra.bootstrap import install\n"
         "install()\n"
         "print(json.dumps({'gpu_modules': sorted(name for name in sys.modules "
         "if name.split('.')[0] in {'torch', 'aiter', 'sglang', 'vllm', 'deepinfer'})}))\n"

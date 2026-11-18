@@ -113,7 +113,7 @@ def _bind(module, replacement, torch_api, register):
 
 
 def install():
-    from hcu_adapter import kill_switch, registry
+    from hcu_adapter.infra import kill_switch, registry
 
     if kill_switch.op_disabled("mamba_state_scatter"):
         LOG.warning("HCU adapter: Mamba state scatter kept upstream "

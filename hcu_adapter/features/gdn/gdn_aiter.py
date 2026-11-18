@@ -448,7 +448,7 @@ def _load_target_verify_providers():
 
 
 def _install_target_verify_aiter():
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
     from hcu_adapter.infra.kill_switch import op_disabled
     if op_disabled("gdn_verify"):
         LOG.warning("HCU adapter: GDN verify kept upstream by HCU_DISABLE_OPS=gdn_verify")
@@ -473,7 +473,7 @@ def _install_target_verify_aiter():
         LOG.warning("HCU adapter: GDN verify auto kept upstream: provider/API "
                     "unavailable", exc_info=True)
         return
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
     registry.register(
         "linear_attn_gdn_verify", vendor,
         target=("sglang.kernels.ops.attention.fla.fused_sigmoid_gating_recurrent."
@@ -488,7 +488,7 @@ def _install_target_verify_aiter():
 
 
 def install():
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
     # Verify auto policy is independent of the prefill/packed decode selector.
     _install_target_verify_aiter()
 
@@ -518,7 +518,7 @@ def install():
             )
         return
 
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     try:
         _install_fwd_h_aiter(registry)

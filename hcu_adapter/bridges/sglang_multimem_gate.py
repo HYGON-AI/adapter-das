@@ -53,7 +53,7 @@ def install():
     if getattr(torch.version, 'hip', None) is None:
         return False
     from sglang.srt.distributed.device_communicators import triton_symm_mem_ag
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     _install_init(triton_symm_mem_ag.MultimemAllGatherer.__init__)
     registry.register(

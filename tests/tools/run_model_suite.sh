@@ -74,11 +74,15 @@ start_server() {  # $1 model-path, $2 extra args
 }
 
 wait_ready() {  # $1 timeout seconds
+  # ready = HTTP 2xx (curl -f), any body: this sglang's /health answers
+  # 200 with a NON-empty body, and the old `grep -q '^$'` (empty-body only)
+  # never matched -- the suite idled the full window and then killed the
+  # perfectly healthy server (bw47 2026-11-19, G1 false FAIL).
   local t=0
   while [ $t -lt $1 ]; do
-    if curl -s --max-time 3 http://127.0.0.1:$PORT/health | grep -q '^$'; then
+    if curl -sf --max-time 3 http://127.0.0.1:$PORT/health >/dev/null 2>&1; then
       sleep 2
-      curl -s --max-time 3 http://127.0.0.1:$PORT/health >/dev/null 2>&1 && return 0
+      curl -sf --max-time 3 http://127.0.0.1:$PORT/health >/dev/null 2>&1 && return 0
     fi
     # dead early?
     if ! pgrep -f "sglang.launch_server.*--port $PORT" >/dev/null; then

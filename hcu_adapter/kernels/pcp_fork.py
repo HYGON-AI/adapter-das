@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import threading
 
-from hcu_adapter import hcu_env
+from hcu_adapter.infra import hcu_env
 from hcu_adapter.kill_switch import op_disabled
 
 # Same operator-facing knob the bridge records and health-checks. `select_attention`

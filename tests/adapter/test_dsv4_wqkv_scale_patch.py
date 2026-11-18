@@ -255,7 +255,8 @@ def test_post_install_code_changes_are_rejected():
 
 
 def test_public_install_and_gate_without_source_file(source, monkeypatch, tmp_path):
-    from hcu_adapter import hcu_env, registry
+    from hcu_adapter.infra import hcu_env
+    from hcu_adapter import registry
 
     model, tensors, _, _, _ = _model(source)
     module = types.ModuleType("sglang.srt.models.deepseek_v4")

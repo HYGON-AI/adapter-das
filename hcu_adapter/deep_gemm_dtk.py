@@ -339,7 +339,7 @@ def install():
     # single copy, shared with the contiguous path. HCU_TRITON_MASKED=0
     # keeps the fork pack path.
     try:
-        from . import hcu_env as _env
+        from .infra import hcu_env as _env
 
         if _env.enabled("HCU_TRITON_MASKED"):
             from . import deep_gemm_masked_triton as _mt
@@ -363,7 +363,7 @@ def install():
     # blocks) replaces both unless HCU_TRITON_CONTIG=0 keeps the raw DTK
     # escape hatch.
     try:
-        from . import hcu_env as _env
+        from .infra import hcu_env as _env
 
         if _env.enabled("HCU_TRITON_CONTIG"):
             from . import deep_gemm_contig_triton as _ct
@@ -395,7 +395,7 @@ def install():
     # time, so the identity must be in place before sglang imports, and
     # these kernels index the logical [.., K//128] layout regardless.
     try:
-        from . import hcu_env as _env
+        from .infra import hcu_env as _env
 
         if _env.enabled("HCU_TRITON_MASKED_FP8"):
             from . import deep_gemm_fp8_triton as _f8t

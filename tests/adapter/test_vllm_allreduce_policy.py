@@ -17,7 +17,7 @@ def test_existing_kill_precedes_registered_optin(monkeypatch, kill, optin, expec
 
 
 def test_vllm_auto_does_not_probe_sglang(monkeypatch):
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
     monkeypatch.delenv("HCU_AITER_AR", raising=False)
     monkeypatch.setattr(hcu_env, "_sglang_uses_new_aiter_ca", lambda: pytest.fail("vLLM imported SGLang"))
     assert hcu_env.resolve("HCU_AITER_AR", host="vllm")[0].startswith("refused")

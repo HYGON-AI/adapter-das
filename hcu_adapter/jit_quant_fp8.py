@@ -195,7 +195,7 @@ def _apply(root, register):
         if needle not in text:
             missing.append(rel)
             continue
-        from hcu_adapter.atomic_io import atomic_write
+        from hcu_adapter.infra.atomic_io import atomic_write
 
         atomic_write(p, text.replace(needle, repl))
         applied += 1
@@ -214,7 +214,7 @@ def _apply(root, register):
     if _REPL_BF16_FAST in _text_fast:
         pass  # already applied (re-run over a patched staging copy)
     elif _NEEDLE_BF16_FAST in _text_fast:
-        from hcu_adapter.atomic_io import atomic_write
+        from hcu_adapter.infra.atomic_io import atomic_write
 
         atomic_write(_p_fast, _text_fast.replace(_NEEDLE_BF16_FAST, _REPL_BF16_FAST))
         register(

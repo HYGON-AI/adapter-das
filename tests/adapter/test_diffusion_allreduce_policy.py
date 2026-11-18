@@ -6,7 +6,8 @@ from unittest.mock import create_autospec
 
 import pytest
 
-from hcu_adapter import hcu_env, kill_switch, registry
+from hcu_adapter.infra import hcu_env
+from hcu_adapter import kill_switch, registry
 from hcu_adapter.bridges import sglang_diffusion
 
 

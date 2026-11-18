@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
-from hcu_adapter import hcu_env
+from hcu_adapter.infra import hcu_env
 
 _PLATFORM_CLASS = 'hcu_adapter.bridges.sglang.HcuDiffusionPlatform'
 _PLATFORM_TYPE = None

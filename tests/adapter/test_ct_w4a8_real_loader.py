@@ -13,7 +13,8 @@ import subprocess
 import pytest
 import torch
 
-from hcu_adapter import ct_w4a8_int8_moe as native, hcu_env
+from hcu_adapter import ct_w4a8_int8_moe as native
+from hcu_adapter.infra import hcu_env
 
 
 @pytest.fixture

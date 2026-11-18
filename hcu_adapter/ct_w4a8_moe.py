@@ -135,7 +135,7 @@ def _make_healed_get_moe_scheme(orig):
 def install():
     global _installed
 
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
 
     route, _src = hcu_env.resolve("HCU_W4A8_MOE")
     if route in ("native", "", "0", "None", "refused") or _installed:

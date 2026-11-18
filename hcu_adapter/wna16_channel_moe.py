@@ -82,7 +82,7 @@ def _channel_group_fix(w1: torch.Tensor, w2: torch.Tensor, kwargs: dict) -> bool
 
 def install():
     """Wrap the stock triton runner's ``fused_experts`` for channel int4."""
-    from . import hcu_env
+    from .infra import hcu_env
 
     enabled, _src = hcu_env.resolve("HCU_WNA16_CHANNEL_MOE")
     if (enabled or "1").strip().lower() in ("0", "off", "false"):

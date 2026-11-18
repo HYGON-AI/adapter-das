@@ -90,7 +90,7 @@ def _log_bump():
 
 
 def install():
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
 
     if not hcu_env.enabled("HCU_JIT_WATCHDOG"):
         return

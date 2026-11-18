@@ -75,7 +75,7 @@ def _resolve_rms_impl():
     if _RMS_IMPL is None:
         requested, source = None, "default"
         try:
-            from hcu_adapter import hcu_env
+            from hcu_adapter.infra import hcu_env
 
             requested, source = hcu_env.resolve("HCU_RMS_NORM_IMPL")
         except Exception:
@@ -116,7 +116,7 @@ def _resolve_fused_add_impl():
     if _FUSED_ADD_IMPL is None:
         requested, source = None, "default"
         try:
-            from hcu_adapter import hcu_env
+            from hcu_adapter.infra import hcu_env
 
             requested, source = hcu_env.resolve("HCU_FUSED_ADD_RMS_IMPL")
         except Exception:

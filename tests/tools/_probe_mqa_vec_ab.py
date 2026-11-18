@@ -56,7 +56,7 @@ def bench(fn, iters=10):
 
 
 os.environ["HCU_MQA_LOGITS_IMPL"] = "loop"
-from hcu_adapter.hcu_env import resolve  # noqa: E402
+from hcu_adapter.infra.hcu_env import resolve  # noqa: E402
 
 print("resolved impl:", resolve("HCU_MQA_LOGITS_IMPL"))
 TOPK = 8

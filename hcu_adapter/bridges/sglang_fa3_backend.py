@@ -21,7 +21,7 @@ def install(_he=None) -> None:
     # sgl_kernel.flash_attn; SGLANG_USE_SGL_FA3_KERNEL=1 routes _load_fa3_kernels
     # to it directly (also skipping the kernels-community download attempt).
     try:
-        from hcu_adapter import hcu_env as _henv
+        from hcu_adapter.infra import hcu_env as _henv
 
         if _henv.enabled("HCU_FA3_EMU"):
             os.environ.setdefault("SGLANG_USE_SGL_FA3_KERNEL", "1")

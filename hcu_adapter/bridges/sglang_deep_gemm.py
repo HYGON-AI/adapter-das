@@ -156,7 +156,7 @@ def install(_he=None) -> None:
         )
 
     try:
-        from hcu_adapter import hcu_env as _kpw_env
+        from hcu_adapter.infra import hcu_env as _kpw_env
 
         if _kpw_env.enabled("HCU_KPOOL_WRITE_EMU"):
             from hcu_adapter import kpool_write_emu
@@ -171,7 +171,7 @@ def install(_he=None) -> None:
             "HCU adapter: kpool write emu not installed", exc_info=True
         )
     try:
-        from hcu_adapter import hcu_env as _kpr_env
+        from hcu_adapter.infra import hcu_env as _kpr_env
 
         if _kpr_env.enabled("HCU_KPOOL_READ_EMU"):
             mode = "emu"

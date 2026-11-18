@@ -152,7 +152,8 @@ def test_invalid_stock_allocation_is_not_hidden(caplog):
 
 
 def test_public_install_and_disable(source, monkeypatch, tmp_path):
-    from hcu_adapter import hcu_env, registry
+    from hcu_adapter.infra import hcu_env
+    from hcu_adapter import registry
 
     ns, batch, _, results = _case(source)
     module = types.ModuleType("sglang.srt.speculative.eagle_utils")
@@ -181,7 +182,7 @@ def test_public_install_and_disable(source, monkeypatch, tmp_path):
 
 
 def test_cuda_install_does_not_import_community(monkeypatch):
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
 
     monkeypatch.setattr(hcu_env, "enabled", lambda name: True)
     monkeypatch.setitem(sys.modules, "torch",

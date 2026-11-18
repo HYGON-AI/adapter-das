@@ -55,7 +55,7 @@ def configured(monkeypatch, tmp_path, name, value):
 
 @pytest.mark.parametrize('name,value,expected', INPUTS)
 def test_config_only_provider_input_refused_before_mutation(monkeypatch, tmp_path, provider, provider_read, name, value, expected):
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
     enable(monkeypatch)
     configured(monkeypatch, tmp_path, name, value)
     assert hcu_env.resolve(name, host='vllm') == (value, 'config')
@@ -70,7 +70,8 @@ def test_config_only_provider_input_refused_before_mutation(monkeypatch, tmp_pat
 
 @pytest.mark.parametrize('name,value,expected', INPUTS)
 def test_explicit_environment_wins_config_and_reaches_provider_getter(monkeypatch, tmp_path, provider, provider_read, name, value, expected):
-    from hcu_adapter import allreduce, hcu_env
+    from hcu_adapter import allreduce
+    from hcu_adapter.infra import hcu_env
     enable(monkeypatch)
     configured(monkeypatch, tmp_path, name, '128' if name == INPUTS[0][0] else 'auto')
     monkeypatch.setenv(name, value)

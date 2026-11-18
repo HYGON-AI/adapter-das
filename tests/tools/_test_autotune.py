@@ -189,7 +189,7 @@ def t_choices_hygiene():
 
 
 def _hcu_env_keys():
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
 
     return set(hcu_env.REGISTRY.keys())
 

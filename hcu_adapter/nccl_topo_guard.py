@@ -68,7 +68,7 @@ def _check(topo_path, visible):
 def install():
     global _registered
 
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
 
     if not hcu_env.enabled("HCU_NCCL_TOPO_GUARD"):
         return

@@ -77,7 +77,7 @@ def _clone(function, namespace):
 
 def _loader(original):
     def load(self, layer):
-        from . import hcu_env
+        from .infra import hcu_env
 
         method = self
         if (hcu_env.resolve("SGLANG_HCU_EP_BF16")[0] == "1"

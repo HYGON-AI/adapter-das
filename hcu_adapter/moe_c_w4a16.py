@@ -82,7 +82,7 @@ _ZEROS: dict = {}
 
 
 def _mode() -> str:
-    from . import hcu_env
+    from .infra import hcu_env
 
     v, _src = hcu_env.resolve("HCU_W4A16_MOE_IMPL")
     return (v or "auto").strip().lower()
@@ -94,7 +94,7 @@ def _dbg(reason: str):
 
 
 def _tile(name: str, dflt: int) -> int:
-    from . import hcu_env
+    from .infra import hcu_env
 
     v, _src = hcu_env.resolve(f"HCU_MOEC_W4A16_{name}")
     try:

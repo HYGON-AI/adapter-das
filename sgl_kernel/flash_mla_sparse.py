@@ -34,7 +34,7 @@ def _chunk_mb():
     global _CHUNK_MB
     if _CHUNK_MB is None:
         try:
-            from hcu_adapter import hcu_env
+            from hcu_adapter.infra import hcu_env
 
             _CHUNK_MB = max(1, int(hcu_env.resolve("HCU_FLASHMLA_SPARSE_CHUNK_MB")[0]))
         except Exception:

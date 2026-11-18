@@ -29,7 +29,8 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from hcu_adapter import hcu_env, hip_metadata, jit_compat, nccl_topo_guard, watchdog_cold  # noqa: E402
+from hcu_adapter.infra import hcu_env
+from hcu_adapter import hip_metadata, jit_compat, nccl_topo_guard, watchdog_cold  # noqa: E402
 
 # Real topology-XML shape (validation-host-26 /usr/local/built-in-508-topo-input-tj-default.xml).
 _TOPO_2GPU = """<system version="2">

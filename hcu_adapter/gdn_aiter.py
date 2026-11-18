@@ -181,7 +181,7 @@ def _install_packed_decode_aiter(registry):
 
 
 def install():
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
 
     mode, _src = hcu_env.resolve("HCU_LINEAR_ATTN_GDN")
     if mode == "triton":

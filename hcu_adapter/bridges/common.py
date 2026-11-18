@@ -13,7 +13,7 @@ LOG = logging.getLogger("hcu.adapter")
 def install() -> None:
     """Install independent environment, topology, and tvm-ffi guards."""
     try:
-        from hcu_adapter import hcu_env
+        from hcu_adapter.infra import hcu_env
 
         hcu_env.log_summary()
     except Exception:

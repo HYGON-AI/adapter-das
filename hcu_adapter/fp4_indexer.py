@@ -3,7 +3,7 @@
 """FP4 cache admission before any model/cache allocation. No framework imports."""
 from dataclasses import dataclass
 
-from hcu_adapter import hcu_env
+from hcu_adapter.infra import hcu_env
 from hcu_adapter.kill_switch import op_disabled
 
 OP = 'vllm_fp4_indexer'

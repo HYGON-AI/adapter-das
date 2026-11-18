@@ -34,7 +34,8 @@ import importlib.util
 import sys
 import types
 import torch
-from hcu_adapter import deep_gemm_dtk, hcu_config, hcu_env
+from hcu_adapter import deep_gemm_dtk, hcu_config
+from hcu_adapter.infra import hcu_env
 
 name, configured, expected, source = sys.argv[1:]
 hcu_config.lookup = lambda key: (configured if key == name and configured != "unset" else None)

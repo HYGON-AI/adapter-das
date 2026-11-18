@@ -485,7 +485,7 @@ def dump(path=None):
     scripts consume this; humans read log_summary().
     """
     from . import hcu_config
-    from . import hcu_env
+    from .infra import hcu_env
 
     unbound = [op for op in hcu_config.BACKEND_CATALOG if op not in _RECORDS and op not in {r["op"] for r in _OVERRIDES.values()}]
     doc = {

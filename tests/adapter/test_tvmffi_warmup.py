@@ -20,7 +20,7 @@ import types
 
 import pytest
 
-from hcu_adapter import hcu_env
+from hcu_adapter.infra import hcu_env
 from hcu_adapter import tvmffi_warmup as tw
 from hcu_adapter.bootstrap import detect_host
 

@@ -111,7 +111,7 @@ def _provider_identity():
     )
     sources = (Path(__file__), Path(__file__).with_name("vllm.py"),
                Path(policy_api.__file__), Path(allreduce_aiter.__file__),
-               Path(import_module("hcu_adapter.hcu_env").__file__),
+               Path(import_module("hcu_adapter.infra.hcu_env").__file__),
                Path(import_module("hcu_adapter.kill_switch").__file__))
     identity["adapter"] = {str(path.relative_to(Path(__file__).parents[1])):
                            allreduce_aiter.digest(path) for path in sources}
@@ -271,7 +271,8 @@ def prepare_runtime():
         _check_owner_state()
         if _installed is not None:
             return _installed[2]
-    from hcu_adapter import hcu_env, kill_switch
+    from hcu_adapter.infra import hcu_env
+    from hcu_adapter import kill_switch
     _, source = hcu_env.resolve("HCU_AITER_AR", host="vllm")
     if source in ("explicit", "config") or kill_switch.op_disabled("aiter_ar"):
         return install()

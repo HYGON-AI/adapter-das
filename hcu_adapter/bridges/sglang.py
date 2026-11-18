@@ -141,7 +141,7 @@ def install() -> None:
         # Common bootstrap already logged the registry and installed the
         # topology/tvm-ffi guards. Keep the resolver handle used below.
         try:
-            from hcu_adapter import hcu_env as _he
+            from hcu_adapter.infra import hcu_env as _he
         except Exception:
             _he = None
         # Optional code-object repair must precede DeepGEMM/SGLang aliases.
@@ -178,7 +178,7 @@ def install() -> None:
         # is_hip() at import time and every module's `from ... import is_hip`
         # binds constants then too. Everything below imports sglang.
         try:
-            from hcu_adapter import platform_seam
+            from hcu_adapter.infra import platform_seam
 
             platform_seam.install()
             from hcu_adapter.bridges._sglang import device_visibility

@@ -129,7 +129,7 @@ def _apply(root, register):
         )
 
     if changed:
-        from hcu_adapter.atomic_io import atomic_write
+        from hcu_adapter.infra.atomic_io import atomic_write
 
         atomic_write(p, text)
 

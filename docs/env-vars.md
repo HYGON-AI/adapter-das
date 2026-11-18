@@ -17,7 +17,7 @@
 
 裁决顺序：**显式 env > 配置文件（hcu_adapter.yaml）> 自动规则 > 默认值**
 （hcu_env.resolve 实现；配置文件机制见 [config.md](config.md)）。注册表在
-`hcu_adapter/hcu_env.py`（新增变量必须同时登记本手册）。算子后端的
+`hcu_adapter/infra/hcu_env.py`（新增变量必须同时登记本手册）。算子后端的
 正式选择走配置文件；运行时每算子实际谁在跑，看启动日志 `HCU adapter runtime:`
 行或 `HCU_ADAPTER_DUMP`（规约见 [governance.md](governance.md) §4）。
 

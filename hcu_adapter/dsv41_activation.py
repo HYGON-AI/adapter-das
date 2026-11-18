@@ -24,7 +24,8 @@ import inspect
 import os
 from threading import RLock
 
-from hcu_adapter import dsv41_dspark_registration, hcu_env, registry
+from hcu_adapter import dsv41_dspark_registration, registry
+from hcu_adapter.infra import hcu_env
 from hcu_adapter.kill_switch import op_disabled
 from hcu_adapter.extensions import ExtensionCommitError, ExtensionContext, ExtensionSpec
 from packaging.version import InvalidVersion, Version

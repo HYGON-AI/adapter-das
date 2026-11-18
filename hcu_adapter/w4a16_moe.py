@@ -68,7 +68,7 @@ _deepep_installed = False
 
 
 def _mode() -> str:
-    from . import hcu_env
+    from .infra import hcu_env
 
     v, _src = hcu_env.resolve("HCU_W4A16_MOE_IMPL")
     return (v or "auto").strip().lower()

@@ -141,7 +141,7 @@ def _triton_or_emu_faces():
     fallback for the faces the triton tier refuses (fnuz convention,
     non-132B rows, preshuffle pools): each refusal logs once, never silent.
     HCU_MQA_EMU_IMPL=triton (default) | emu (golden / A-B probe)."""
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
 
     impl, src = hcu_env.resolve("HCU_MQA_EMU_IMPL")
     if impl != "triton":

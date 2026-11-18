@@ -76,7 +76,7 @@ CUDA 语义的调用面，把每个符号路由到 HCU 侧最合适的实现：
 - 性能在"跑通"之后按 §3 裁决链逐点做：triton 先行产物转 ref 备胎，
   lightop/aiter 等价核就位后路由切 vendor（catalog 状态演进）。
 
-**落地形态（2026-10-12 bw7 首验）**：`hcu_adapter/platform_seam.py`
+**落地形态（2026-10-12 bw7 首验）**：`hcu_adapter/infra/platform_seam.py`
 （编排器在 sitecustomize 最先调它——`common.py` import 时就用 is_hip()
 冻结 FP8_E4M3_MAX，判定函数必须抢在所有 sglang import 前换掉）。合成态
 三原则：**模型层 CUDA 语义 + 内核层 HIP 真值 + 硬件层不动**——只翻
@@ -360,7 +360,7 @@ PR#17 实证），重则不炸、出数值/维度错（KV 布局类语义）。�
 
 存量锚点增量补登，首批范本（本节落文同笔）：
 
-- `hcu_adapter/platform_seam.py::_replace_version_gates`（①双命名空间）：
+- `hcu_adapter/infra/platform_seam.py::_replace_version_gates`（①双命名空间）：
   版本门冻结于 utils.common，包级 `from .common import *` 拷贝两树皆有；
   ≤v0.5.22 无人在 import 期经包命名空间调用（patch common 即够），
   main@fd19cfb 起 kda 后端链经包拷贝调用 → common+pkg 双命名空间同补；

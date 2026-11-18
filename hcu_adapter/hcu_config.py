@@ -967,7 +967,7 @@ _STATE = {"loaded": False, "path": None, "ops": {}, "overrides": {}, "hosts": {}
 
 def _candidate_paths():
     out = []
-    from . import hcu_env
+    from .infra import hcu_env
 
     env, _ = hcu_env.resolve("HCU_CONFIG")
     if env:

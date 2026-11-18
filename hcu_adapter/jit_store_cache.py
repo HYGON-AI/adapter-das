@@ -90,7 +90,7 @@ def _apply(root, register):
             text = text.replace(needle, repl)
             applied += 1
         registered.append(needle)
-    from hcu_adapter.atomic_io import atomic_write
+    from hcu_adapter.infra.atomic_io import atomic_write
 
     if text != original_text:
         atomic_write(p, text)

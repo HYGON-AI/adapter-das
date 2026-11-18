@@ -133,7 +133,7 @@ def install():
     """冷缓存则预热；返回 True 表示本次做了动作（构建/兜底加载）。"""
     global _registered
 
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
 
     if not hcu_env.enabled("HCU_TVMFFI_WARMUP"):
         return False

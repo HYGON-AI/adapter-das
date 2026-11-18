@@ -103,7 +103,7 @@ def _apply_minimax(csrc, register):
     p = csrc / _MINIMAX_SOURCE
     if not p.exists():  # older SGLang releases do not ship this kernel
         return 0
-    from hcu_adapter.atomic_io import atomic_write
+    from hcu_adapter.infra.atomic_io import atomic_write
     from hcu_adapter.registry import MECH_TEXT
 
     original = p.read_text(encoding="utf-8")
@@ -159,7 +159,7 @@ def _apply(root, register):
                 f"jit_rope: needle missing in {rel}: {needle[:60]!r} -- "
                 "upstream changed; re-derive (governance §3)"
             )
-        from hcu_adapter.atomic_io import atomic_write
+        from hcu_adapter.infra.atomic_io import atomic_write
 
         atomic_write(p, text.replace(needle, repl))
         applied += 1
@@ -169,7 +169,7 @@ def _apply(root, register):
     if shim_marker not in rope_text:
         # prepend: C/C++ need the declaration before first use (call sites
         # sit mid-file at ~line 230)
-        from hcu_adapter.atomic_io import atomic_write
+        from hcu_adapter.infra.atomic_io import atomic_write
 
         atomic_write(rope_p, _SHIM + rope_text)
 

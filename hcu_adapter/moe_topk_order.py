@@ -129,7 +129,7 @@ def _install_function(function):
 
 
 def install():
-    from . import hcu_env
+    from .infra import hcu_env
 
     if not hcu_env.enabled("HCU_MOE_STABLE_TOPK"):
         return

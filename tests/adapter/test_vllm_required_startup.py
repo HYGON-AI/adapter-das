@@ -193,7 +193,8 @@ def _record_startup_evidence(case, mode, caplog):
 @pytest.mark.parametrize("mode", ["default", "explicit", "blank", "malformed-extension", "malformed-capability"])
 def test_host_none_actual_bootstrap_and_runtime_resolve_sources_without_common_summary(startup, monkeypatch, caplog, mode):
     import logging
-    from hcu_adapter import bootstrap, hcu_env
+    from hcu_adapter import bootstrap
+    from hcu_adapter.infra import hcu_env
 
     points, checks = startup
     contexts, order = [], []
@@ -254,7 +255,8 @@ def test_host_none_actual_bootstrap_and_runtime_resolve_sources_without_common_s
 @pytest.mark.parametrize("mode", ["default", "explicit", "blank", "malformed"])
 def test_real_vllm_bootstrap_common_logs_once_then_actual_runtime_preserves_policy(startup, monkeypatch, caplog, mode):
     import logging
-    from hcu_adapter import bootstrap, hcu_env, hcu_config, nccl_topo_guard, tvmffi_warmup
+    from hcu_adapter import bootstrap, hcu_config, nccl_topo_guard, tvmffi_warmup
+    from hcu_adapter.infra import hcu_env
 
     points, checks = startup
     contexts, order = [], []

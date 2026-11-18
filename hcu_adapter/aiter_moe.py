@@ -54,7 +54,7 @@ _SHUF_FLAG = "_hcu_aiter_moe_c_shuffled"
 
 
 def _mode() -> str:
-    from . import hcu_env
+    from .infra import hcu_env
 
     v, _src = hcu_env.resolve("HCU_FUSED_MOE_IMPL")
     return (v or "auto").strip().lower()

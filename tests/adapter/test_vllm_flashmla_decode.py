@@ -16,7 +16,8 @@ import types
 
 import pytest
 
-from hcu_adapter import hcu_config, hcu_env, registry
+from hcu_adapter import hcu_config, registry
+from hcu_adapter.infra import hcu_env
 from hcu_adapter.bridges import vllm as host
 
 # The target is a real module namespace: the bridge verifies that the method's

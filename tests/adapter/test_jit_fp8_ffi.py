@@ -16,7 +16,8 @@ import types
 import pytest
 import torch
 
-from hcu_adapter import hcu_env, jit_fp8_ffi as bridge
+from hcu_adapter.infra import hcu_env
+from hcu_adapter import jit_fp8_ffi as bridge
 
 _CACHE = """def cache_once(fn):
     result_map = {}

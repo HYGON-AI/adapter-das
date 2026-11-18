@@ -19,7 +19,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from hcu_adapter.platform_seam import platform_env_defaults  # noqa: E402
+from hcu_adapter.infra.platform_seam import platform_env_defaults  # noqa: E402
 
 A_TIER = {
     "SGLANG_SKIP_SGL_KERNEL_VERSION_CHECK": "1",
@@ -82,7 +82,8 @@ def test_gfx_guard_precedes_runner_utils_import():
     import functools
     from types import ModuleType, SimpleNamespace
     from unittest.mock import Mock, patch
-    from hcu_adapter import hcu_env, hip_metadata, platform_seam, registry
+    from hcu_adapter.infra import hcu_env, platform_seam
+    from hcu_adapter import hip_metadata, registry
 
     modules = {}
     for name in (
@@ -178,7 +179,8 @@ def test_moe_sbo_guard_uses_physical_hip_identity_and_updates_aliases():
     from types import ModuleType, SimpleNamespace
     from unittest.mock import patch
     import pytest
-    from hcu_adapter import platform_seam, registry
+    from hcu_adapter.infra import platform_seam
+    from hcu_adapter import registry
 
     module = ModuleType("sglang.srt.layers.moe.utils")
     scheduler = ModuleType("sglang.srt.managers.scheduler")

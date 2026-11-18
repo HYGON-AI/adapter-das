@@ -57,7 +57,7 @@ def _apply(root, register):
                 f"jit_ptgq: needle missing in {_RELPATH}: {_NEEDLE[:60]!r} -- "
                 "upstream changed; re-derive (governance §3)"
             )
-        from hcu_adapter.atomic_io import atomic_write
+        from hcu_adapter.infra.atomic_io import atomic_write
 
         atomic_write(p, text.replace(_NEEDLE, _REPL))
 

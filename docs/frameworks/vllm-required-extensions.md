@@ -16,7 +16,7 @@ registration. Set requirements before the first callback; they are startup
 configuration, not live enable/disable switches. Fork/spawn workers recheck
 their inherited requirements.
 
-Both keys are registered in `hcu_adapter.hcu_env.REGISTRY` and documented in
+Both keys are registered in `hcu_adapter.infra.hcu_env.REGISTRY` and documented in
 the [environment manual](../env-vars.md). Behavioral reads use its canonical
 resolver. Under normal `HCU_ADAPTER_HOST=vllm` (or auto-selected vLLM),
 `bootstrap.install` calls `bridges.common.install`, which emits the shared

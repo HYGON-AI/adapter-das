@@ -139,7 +139,8 @@ def _install_targets(targets, registry):
 
 
 def install():
-    from . import hcu_env, registry
+    from . import registry
+    from .infra import hcu_env
 
     if not hcu_env.enabled("HCU_JIT_FP8_FFI") or torch.version.hip is None:
         return

@@ -68,7 +68,7 @@ def validate_prefill_cp_platform_hcu(server_args):
     HCU_PREFILL_CP=1 -> allow prefill CP on HIP (experimental).
     Otherwise behave exactly like upstream: reject on HIP/MUSA.
     """
-    from . import hcu_env
+    from .infra import hcu_env
 
     knob, src = hcu_env.resolve("HCU_PREFILL_CP")
     if knob not in ("", "0", "None"):
@@ -288,7 +288,7 @@ def install():
     rope guard (only when HCU_PREFILL_CP resolves on)."""
     import sys
 
-    from . import hcu_env
+    from .infra import hcu_env
     from ._base import LibStubFinder, register_finder
 
     # piece 1: platform gate

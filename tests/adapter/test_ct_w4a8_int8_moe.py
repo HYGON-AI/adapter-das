@@ -316,7 +316,8 @@ def test_core_rejects_invalid_combine_output(fault):
 def test_explicit_int8_install_does_not_wrap_config_constructor(monkeypatch):
     import sys
     from types import ModuleType
-    from hcu_adapter import ct_w4a8_moe, hcu_env, registry
+    from hcu_adapter import ct_w4a8_moe, registry
+    from hcu_adapter.infra import hcu_env
 
     class OfficialConfig:
         def __init__(self):

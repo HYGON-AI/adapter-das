@@ -678,7 +678,8 @@ def install():
             "the torch emulation"
         )
         return
-    from hcu_adapter import hcu_env, registry, kill_switch
+    from hcu_adapter.infra import hcu_env
+    from hcu_adapter import registry, kill_switch
     from sgl_kernel import flash_attn as _sk_fa
 
     mode, _src = hcu_env.resolve("HCU_FA_IMPL")

@@ -24,7 +24,7 @@ the invariants that historically broke us (see docs/ci.md):
        module body (see check_ops_import_depth)
 
   SOFT (warnings; --strict turns them into failures for local dev)
-    - registered HCU_* vars read via bare os.environ outside hcu_env.py
+    - registered HCU_* vars read via bare os.environ outside infra/hcu_env.py
       (env 三原则: behavioral reads must go through the registry)
     - .py files with CRLF endings
 
@@ -128,7 +128,7 @@ def check_secrets(r):
 
 
 def registry_names():
-    src = open(os.path.join(ROOT, "hcu_adapter/hcu_env.py"), encoding="utf-8").read()
+    src = open(os.path.join(ROOT, "hcu_adapter/infra/hcu_env.py"), encoding="utf-8").read()
     # registry keys look like    "HCU_XXX": {   at dict depth 1
     return set(re.findall(r'^\s{4}"(HCU_[A-Z0-9_]+)":\s*\{', src, re.M))
 
@@ -336,7 +336,7 @@ def check_ops_import_depth(r):
 def check_bare_environ(r, reg):
     """SOFT: registered vars read via os.environ outside the registry."""
     allowed_files = {
-        "hcu_adapter/hcu_env.py",  # the registry itself
+        "hcu_adapter/infra/hcu_env.py",  # the registry itself
         "ci/l0_gate.py",
     }
     pat = re.compile(r"os\.environ(?:\.get)?\(?[\"'](HCU_[A-Z0-9_]+)")

@@ -12,7 +12,9 @@ import inspect
 from pathlib import Path
 import os
 from types import SimpleNamespace as NS
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+
+import torch
 
 import pytest
 
@@ -22,7 +24,10 @@ from vllm.config import DeviceConfig, SchedulerConfig, VllmConfig, get_current_v
 from vllm.config.compilation import CUDAGraphMode, CompilationMode
 from vllm.config.utils import hash_factors
 from vllm.compilation.caching import aot_compile_hash_factors
-from vllm.platforms.rocm import RocmPlatform
+# Only Core's import-time architecture descriptor is synthetic. Restore the
+# real query before constructing/exercising the official CPU Worker objects.
+with patch.object(torch.cuda, "get_device_properties", return_value=NS(gcnArchName="gfx936")):
+    from vllm.platforms.rocm import RocmPlatform
 from vllm.v1.worker import gpu_worker, worker_base
 from vllm.v1.worker import gpu_model_runner as v1
 from vllm.v1.worker.gpu import model_runner as v2

@@ -6,6 +6,8 @@
 纳入/排除并保留失败门禁。真实 Worker 的合成夹具须跟随目标源码的模型和
 runner 状态，继续执行官方委托链与预检，不用伪造方法返回值遮盖接口漂移。
 
+Core 的 ROCm 模块可能在导入时读取架构属性。合成 CPU 平台/Worker 夹具可仅在该导入边界提供显式 `gcnArchName` 元数据，随后立即恢复设备查询函数和拒绝守卫；保留真实官方方法、健康检查、原断言与参数化，不能把 metadata double 作为硬件或模型验收。真实 metadata/spawn 探针须核对继承的 `PYTHONPATH`：父解释器已从 site-packages 加载的依赖目录不要再次作为环境路径传给隔离子解释器，否则会重新引入其排除的扩展 distribution。先保留环境污染失败，再以未改测试复验隔离修复，不过滤 entry-point API 或放宽精确扩展集合。
+
 宿主筛选与 CPU 执行段合并后，须验证目标 nodeid 实际执行。明确 HOSTnone、
 三种 GPU visibility 隐藏且未初始化 CUDA 的进程应保留 CPU vLLM 契约；
 SGLang 宿主和不满足隔离条件的进程仍拒绝。不能设置虚假的 active-host

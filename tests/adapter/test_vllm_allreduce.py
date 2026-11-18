@@ -388,7 +388,13 @@ def enable(monkeypatch):
 
 def _cpu_hcu_platform(monkeypatch, architecture="gfx936"):
     """Explicit import/identity metadata double, never a hardware execution claim."""
-    import vllm.platforms.rocm as rocm
+    # Core reads architecture metadata at module import even for CPU-only
+    # selector contracts. Supply only that descriptor, then restore the GPU
+    # query refusal before exercising the real platform/communicator chain.
+    with monkeypatch.context() as metadata:
+        metadata.setattr(torch.cuda, "get_device_properties", lambda *a, **k:
+                         SimpleNamespace(gcnArchName=architecture))
+        import vllm.platforms.rocm as rocm
     monkeypatch.setattr(rocm, "_GCN_ARCH", architecture)
     monkeypatch.setattr(bridge, "detect_hcu", lambda: bridge.HcuDetection(
         architecture in bridge.SUPPORTED_HCU_ARCHES, architecture, "CPU identity fixture"))

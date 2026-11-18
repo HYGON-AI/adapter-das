@@ -103,6 +103,10 @@ def exercise(config=None):
     # Explicit CPU test doubles; no vendor/platform/GPU probe is executed.
     bridge.detect_hcu = lambda: bridge.HcuDetection(True, None, "CPU admission double")
     bridge._ensure_hcu_platform_selected = lambda: None
+    # This fixture tests extension discovery/publication, not native HIP ABI.
+    # CpuPlatform would request CUDA symbols from the HIP runtime; the real
+    # loader/admission and its failure latch have their own runtime_abi suite.
+    bridge._require_vllm_hip_runtime_abi = lambda: None
     mode = os.environ["HCU_COMMIT_PROBE_MODE"]
     if mode == "runtime-badstr":
         def fail_platform():

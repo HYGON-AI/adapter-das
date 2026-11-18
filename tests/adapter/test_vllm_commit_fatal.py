@@ -14,6 +14,7 @@ import threading
 from types import ModuleType, SimpleNamespace as NS
 
 import pytest
+import torch
 
 from hcu_adapter import extensions as ext
 from hcu_adapter.bridges import vllm as bridge
@@ -72,7 +73,13 @@ def startup(monkeypatch):
 def platform(monkeypatch):
     # Lazy __getattr__ caches the generated class. Ensure monkeypatch records
     # a real prior value, so the CPU-double class cannot leak to later suites.
-    bridge.HcuPlatform
+    # Materializing the lazy real class imports Core's ROCm architecture
+    # descriptor. Limit the metadata double to that import; later operations
+    # retain the original device-query functions and explicit platform double.
+    with monkeypatch.context() as metadata:
+        metadata.setattr(torch.cuda, "get_device_properties", lambda *a, **k:
+                         NS(gcnArchName="gfx936"))
+        bridge.HcuPlatform
     class RocmPlatform:
         @classmethod
         def get_device_capability(cls):

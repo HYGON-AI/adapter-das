@@ -998,25 +998,14 @@ def install() -> None:
                 exc_info=True,
             )
 
-        # fa3 attention backend: the ops layer (flash_attention_v3.py) hard-gates
-        # on NVIDIA — `_is_fa3_supported` returns False whenever torch.version.cuda
-        # is None (always on HIP), making flash_attn_with_kvcache raise and
-        # flash_attn_varlen_func fall back to the flash_attn wheel (numerically
-        # broken on this stack). The adapter ships a torch emulation in
-        # sgl_kernel.flash_attn; SGLANG_USE_SGL_FA3_KERNEL=1 routes _load_fa3_kernels
-        # to it directly (also skipping the kernels-community download attempt).
+        # fa3 attention backend torch-emulation route (SGLANG_USE_SGL_FA3_KERNEL) -> hcu_adapter/bridges/sglang_fa3_backend.py
         try:
-            from hcu_adapter import hcu_env as _henv
+            from hcu_adapter.bridges import sglang_fa3_backend
 
-            if _henv.enabled("HCU_FA3_EMU"):
-                os.environ.setdefault("SGLANG_USE_SGL_FA3_KERNEL", "1")
-                # 替代档: fa3 emu 门翻转挂载面（HCU_FA3_EMU；包面无该门出口）
-                import sglang.kernels.ops.attention.flash_attention_v3 as _fa3v
-
-                _fa3v._is_fa3_supported = lambda device=None: True
+            sglang_fa3_backend.install(_he)
         except Exception:
             logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: fa3 emu routing bridge not installed", exc_info=True
+                "HCU adapter: sglang_fa3_backend bridge not installed", exc_info=True
             )
 
         # moe_wna16 quant config non-linear layer contract restore -> hcu_adapter/bridges/sglang_moe_wna16.py

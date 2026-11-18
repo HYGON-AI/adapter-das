@@ -9,8 +9,8 @@ comments (glue-numerics strips comments only).
 from __future__ import annotations
 
 import logging
-import os
 import torch
+from hcu_adapter.infra import hcu_env
 
 
 def install(_he=None) -> None:
@@ -25,7 +25,7 @@ def install(_he=None) -> None:
     #     sglang-das fixes it for hcu via their hcu_get_last_loc; here we
     #     rebind to the pure-torch variant (same math, page-agnostic).
     #     HCU_SPEC_LOC_SAFE=0 restores stock dispatch.
-    if os.environ.get("HCU_SPEC_LOC_SAFE", "1") == "1" and torch.version.hip:
+    if hcu_env.resolve("HCU_SPEC_LOC_SAFE")[0] == "1" and torch.version.hip:
         try:
             import sys as _sys2
             from sglang.srt.mem_cache import allocation as _alloc

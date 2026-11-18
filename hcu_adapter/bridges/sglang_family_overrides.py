@@ -7,6 +7,7 @@ governance 2026-11-18; zero logic change. Section notes below as #
 comments (glue-numerics strips comments only).
 """
 from __future__ import annotations
+from hcu_adapter.infra import hcu_env
 
 
 
@@ -17,7 +18,6 @@ def install(_he=None) -> None:
     try:
         import functools
         import logging
-        import os
 
         from sglang.srt.arg_groups import model_override_base as _mob
 
@@ -34,7 +34,7 @@ def install(_he=None) -> None:
                 overrides = fn(server_args, hf_config)
                 if overrides.get("page_size") != 1:
                     return overrides
-                wanted = os.environ.get("HCU_DSA_PAGE_SIZE") or getattr(
+                wanted = hcu_env.resolve("HCU_DSA_PAGE_SIZE")[0] or getattr(
                     server_args, "page_size", None
                 )
                 try:

@@ -190,9 +190,11 @@ def _patch_zigzag_module(mod):
     the first numerically-divergent CP stage shows up in the server log."""
     import os
 
+    from .infra import hcu_env
+
     if getattr(mod, "_HCU_CP_DBG_PATCHED", False):
         return
-    if os.environ.get("HCU_PREFILL_CP_DEBUG", "") == "":
+    if hcu_env.resolve("HCU_PREFILL_CP_DEBUG")[0] == "":
         mod._HCU_CP_DBG_PATCHED = True
         return
 

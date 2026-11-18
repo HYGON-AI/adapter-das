@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import torch
+from hcu_adapter.infra import hcu_env
 
 
 def install(_he=None) -> None:
@@ -26,7 +27,7 @@ def install(_he=None) -> None:
     #     passes stay out of the log; HCU_DUMP_LAYERS_FIRES caps prints
     #     per hook (default 2). CUDA-graph capture passes through
     #     untouched (a sync inside capture would abort the capture).
-    if os.environ.get("HCU_DUMP_LAYERS") == "1":
+    if hcu_env.enabled("HCU_DUMP_LAYERS"):
         try:
             import sglang.srt.models.glm5_next as _g5n
 

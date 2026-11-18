@@ -9,8 +9,8 @@ comments (glue-numerics strips comments only).
 from __future__ import annotations
 
 import logging
-import os
 import torch
+from hcu_adapter.infra import hcu_env
 
 
 def install(_he=None) -> None:
@@ -24,7 +24,7 @@ def install(_he=None) -> None:
     #     (stream rms 1.4 -> 5.4, max -> 194, flat logits). HCU_MHC_EMU=1
     #     routes both to the pure-torch reference math transcribed verbatim
     #     from hyperconnection.py's _mix_compute/_combine_compute (fp32).
-    if os.environ.get("HCU_MHC_EMU") == "1":
+    if hcu_env.enabled("HCU_MHC_EMU"):
         try:
             import torch.nn.functional as _Fm
 

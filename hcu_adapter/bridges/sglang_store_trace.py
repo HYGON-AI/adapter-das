@@ -9,8 +9,8 @@ comments (glue-numerics strips comments only).
 from __future__ import annotations
 
 import logging
-import os
 import torch
+from hcu_adapter.infra import hcu_env
 
 
 def install(_he=None) -> None:
@@ -18,7 +18,7 @@ def install(_he=None) -> None:
     try:
         from sglang.srt.layers.attention.dsa import dsa_indexer as _di_mod
 
-        if os.environ.get("HCU_DUMP_TOPK") == "1" and not getattr(
+        if hcu_env.enabled("HCU_DUMP_TOPK") and not getattr(
             _di_mod, "_hcu_store_trace", False
         ):
             dsa_indexer = _di_mod
@@ -54,7 +54,7 @@ def install(_he=None) -> None:
 
     # DSA topk torch-arm probe (2026-10-15): capture prefill RAGGED topk in/out.
     try:
-        if os.environ.get("HCU_DUMP_TOPK") == "1":
+        if hcu_env.enabled("HCU_DUMP_TOPK"):
             from sglang.srt.layers.attention.dsa import dsa_topk_backend as _dtb
             _tpk = {"n": 0}
             _orig_unf = _dtb._topk_unfused

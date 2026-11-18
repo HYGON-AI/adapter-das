@@ -9,7 +9,7 @@ comments (glue-numerics strips comments only).
 from __future__ import annotations
 
 import logging
-import os
+from hcu_adapter.infra import hcu_env
 
 
 def install(_he=None) -> None:
@@ -17,9 +17,7 @@ def install(_he=None) -> None:
     # + register the quant method. Default ON (the method only activates for
     # checkpoints whose quantization_config names slimquant_w4a8 — inert
     # otherwise); HCU_SLIMQUANT=0 opts out (debug/isolation).
-    _sq_on = _he.enabled("HCU_SLIMQUANT") if _he else \
-        os.environ.get("HCU_SLIMQUANT", "1") != "0"
-    if _sq_on:
+    if hcu_env.enabled("HCU_SLIMQUANT"):
         try:
             from hcu_adapter import slimquant as _slimquant
 

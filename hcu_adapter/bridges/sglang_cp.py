@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import torch
+from hcu_adapter.infra import hcu_env
 
 
 def install(_he=None) -> None:
@@ -46,7 +47,7 @@ def install(_he=None) -> None:
     #      UNFUSE=1 (default on HIP) forces the unfused chain: hc_post +
     #      hc_ffn_pre, both _mhc_*_torch on HIP (aiter needs gfx950,
     #      tilelang is hip-gated off).
-    if os.environ.get("HCU_MHC_UNFUSE", "1") == "1" and torch.version.hip:
+    if hcu_env.resolve("HCU_MHC_UNFUSE")[0] == "1" and torch.version.hip:
         os.environ["SGLANG_OPT_FUSE_MHC_POST_PRE"] = "false"
         # stdout stays protocol-clean for pytest-xdist/execnet
         # workers; loud notices belong on stderr.

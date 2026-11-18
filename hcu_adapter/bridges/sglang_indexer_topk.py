@@ -9,8 +9,8 @@ comments (glue-numerics strips comments only).
 from __future__ import annotations
 
 import logging
-import os
 import torch
+from hcu_adapter.infra import hcu_env
 
 
 def install(_he=None) -> None:
@@ -21,7 +21,7 @@ def install(_he=None) -> None:
         import hcu_adapter.features.dsa.dsa_topk as _dsa_topk
 
         _dsa_topk.install()
-        if os.environ.get("HCU_DUMP_TOPK") == "1":
+        if hcu_env.enabled("HCU_DUMP_TOPK"):
             _tpk = {"n": 0}
 
             def _hcu_log_topk(fn_name, fn):

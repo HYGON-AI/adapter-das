@@ -9,7 +9,7 @@ comments (glue-numerics strips comments only).
 from __future__ import annotations
 
 import logging
-import os
+from hcu_adapter.infra import hcu_env
 
 
 def install(_he=None) -> None:
@@ -18,9 +18,7 @@ def install(_he=None) -> None:
     # torch (dequant -> bf16 GEMM, fp32 scales). Legacy page_size=1 only.
     # hcu_env auto-rule: emulation ON only where the arch lacks fp8;
     # explicit HCU_MQA_EMU=0/1 wins (debug).
-    _mqa_on = _he.enabled("HCU_MQA_EMU") if _he else \
-        os.environ.get("HCU_MQA_EMU") == "1"
-    if _mqa_on:
+    if hcu_env.enabled("HCU_MQA_EMU"):
         try:
             import hcu_adapter.features.dsa.mqa_logits_emu as _mqa_emu
 

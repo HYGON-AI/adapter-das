@@ -32,7 +32,7 @@ _MQA_CALL_LOG = {"n": 0}
 
 
 def _note_call(tag):
-    if os.environ.get("HCU_DUMP_MQA") == "1" and _MQA_CALL_LOG["n"] < 8:
+    if hcu_env.enabled("HCU_DUMP_MQA") and _MQA_CALL_LOG["n"] < 8:
         print(f"[HCU mqa-emu] {tag} called", flush=True)
         _MQA_CALL_LOG["n"] += 1
 
@@ -217,7 +217,7 @@ def install():
     except Exception:
         pass
 
-    if os.environ.get("HCU_DUMP_MQA") == "1":
+    if hcu_env.enabled("HCU_DUMP_MQA"):
         _log = {"n": 0}
 
         def _norm(t):

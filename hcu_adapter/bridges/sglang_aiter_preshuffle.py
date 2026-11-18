@@ -9,8 +9,8 @@ comments (glue-numerics strips comments only).
 from __future__ import annotations
 
 import logging
-import os
 import sys
+from hcu_adapter.infra import hcu_env
 
 
 def install(_he=None) -> None:
@@ -29,7 +29,7 @@ def install(_he=None) -> None:
         _dsa_utils.is_cuda = _dsa_common.is_cuda
 
         _hcu_orig_gate = _dsa_utils.aiter_can_use_preshuffle_paged_mqa
-        if os.environ.get("HCU_DSA_PRESHUFFLE") == "0":
+        if hcu_env.resolve("HCU_DSA_PRESHUFFLE")[0] == "0":
             # Legacy page_size=1 / KVBlockSize=1 DSA path (paired with the
             # HCU_MQA_EMU torch emulation on gfx936-class HCUs).
             def _hcu_gate():

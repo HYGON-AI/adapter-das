@@ -43,6 +43,7 @@ from __future__ import annotations
 import os
 
 import torch
+from hcu_adapter.infra import hcu_env
 
 try:
     import triton
@@ -179,7 +180,7 @@ def triton_paged_mqa_logits(
     # arm follows the ecosystem switch: interleave under the forced
     # preshuffle gate (GLM-5.3 kpool writer family / SetKAndS), row-major
     # in the legacy HCU_DSA_PRESHUFFLE=0 world (fused_store / kpool=1)
-    preshuffle = os.environ.get("HCU_DSA_PRESHUFFLE", "1") != "0"
+    preshuffle = hcu_env.resolve("HCU_DSA_PRESHUFFLE")[0] != "0"
     grid = (N, ((T_all + PS - 1) // PS) * (PS // slot_tile))
     _paged_mqa_logits_kernel[grid](
         q_b,

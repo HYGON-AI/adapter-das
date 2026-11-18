@@ -72,8 +72,8 @@ the shim is absent, permanently binding the name to the exception
 from __future__ import annotations
 
 import logging
-import os
 import torch
+from hcu_adapter.infra import hcu_env
 
 
 def install(_he=None) -> None:
@@ -197,7 +197,7 @@ def install(_he=None) -> None:
             "HCU adapter: kpool read tier not installed", exc_info=True
         )
     try:
-        if os.environ.get("HCU_DUMP_TOPK") == "1":
+        if hcu_env.enabled("HCU_DUMP_TOPK"):
             import sglang.srt.mem_cache.index_key_cache as _ikc
 
             if not getattr(_ikc, "_hcu_gks_trap", False):
@@ -231,9 +231,8 @@ def install(_he=None) -> None:
         )
 
     try:
-        import os as _os
 
-        if _os.environ.get("HCU_DUMP_TOPK") == "1":
+        if hcu_env.enabled("HCU_DUMP_TOPK"):
             from hcu_adapter.features.dsa import mqa_logits_emu as _mle
 
             if not getattr(_mle, "_hcu_trap", False):
@@ -282,7 +281,7 @@ def install(_he=None) -> None:
         print(f"[HCU mqr] install-fail {_e}", flush=True)
 
     try:
-        if os.environ.get("HCU_DUMP_TOPK") == "1":
+        if hcu_env.enabled("HCU_DUMP_TOPK"):
             import traceback as _tbk
 
             import sglang.srt.layers.attention.dsa.dsa_indexer_metadata as _dim
@@ -326,7 +325,7 @@ def install(_he=None) -> None:
         from sglang.srt.layers.attention.dsa import dsa_indexer_kpool as _dkp
         from sglang.srt.layers.attention.dsa import kpool_plan as _kpm
 
-        if os.environ.get("HCU_DUMP_TOPK") == "1" and not getattr(
+        if hcu_env.enabled("HCU_DUMP_TOPK") and not getattr(
             _kpm, "_hcu_plan_trap", False
         ):
             _kpm._hcu_plan_trap = True
@@ -404,7 +403,7 @@ def install(_he=None) -> None:
         from sglang.srt.layers.attention.dsa import dsa_indexer as _dstm
         from sglang.srt.layers.attention.dsa import kpool_fp8_index as _kfi
 
-        if os.environ.get("HCU_DUMP_TOPK") == "1" and not getattr(
+        if hcu_env.enabled("HCU_DUMP_TOPK") and not getattr(
             _kfi, "_hcu_kpool_trap", False
         ):
             _kfi._hcu_kpool_trap = True

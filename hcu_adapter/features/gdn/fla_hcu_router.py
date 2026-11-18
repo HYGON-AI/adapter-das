@@ -38,6 +38,7 @@ import logging
 import os
 
 import torch
+from hcu_adapter.infra import hcu_env
 
 logger = logging.getLogger("hcu.adapter")
 
@@ -112,8 +113,8 @@ def _install_conv1d(impl: str) -> None:
 
 def install() -> None:
     hip = torch.version.hip is not None
-    kda = os.environ.get("HCU_KDA_PREFILL_IMPL", "fork" if hip else "stock")
-    conv = os.environ.get("HCU_CONV1D_IMPL", "fork" if hip else "stock")
+    kda = hcu_env.resolve("HCU_KDA_PREFILL_IMPL")[0]
+    conv = hcu_env.resolve("HCU_CONV1D_IMPL")[0]
     _install_kda_prefill(kda)
     _install_conv1d(conv)
     if kda == "fork" or conv == "fork":

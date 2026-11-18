@@ -31,6 +31,7 @@ import os
 import torch
 
 from hcu_adapter.kernels.lightop_usage import _count
+from hcu_adapter.infra import hcu_env
 
 _HEAD_PAD = 132
 
@@ -124,7 +125,7 @@ def fp8_paged_mqa_logits(
     pool2d = kv_cache_fp8.reshape(kv_cache_fp8.shape[0], -1).contiguous()
     if pool2d.shape[1] == PS * 132:
         kreg = pool2d[:, : PS * 128]
-        preshuffle = os.environ.get("HCU_DSA_PRESHUFFLE", "1") != "0"
+        preshuffle = hcu_env.resolve("HCU_DSA_PRESHUFFLE")[0] != "0"
         tile = 16
         try:
             # 替代档: 无（私有 PRESHUFFLE tile 常量；仅模块体可见）

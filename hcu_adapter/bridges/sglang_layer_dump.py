@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import torch
+from hcu_adapter.infra import hcu_env
 
 
 def install(_he=None) -> None:
@@ -23,7 +24,7 @@ def install(_he=None) -> None:
     # saves xa/xb (norm outputs) of layers 0-1 to /tmp/hcu_inner.pt.
     # Prefill-sized passes only (1 < T <= 64), rank 0, file
     # HCU_DUMP_LAYERS_PATH (default /tmp/hcu_layers.pt).
-    if os.environ.get("HCU_DUMP_LAYERS") == "1":
+    if hcu_env.enabled("HCU_DUMP_LAYERS"):
         # NOTE: importing sglang model modules HERE fails — their deep chains
         # (glm4_moe -> deepseek_v2 -> dsa_backend -> `import deep_gemm`)
         # depend on bridges installed further down this file. Instead the
@@ -105,7 +106,7 @@ def install(_he=None) -> None:
 
             def _hcu_norm_out(tag):
                 def hook(mod, args, output):
-                    if os.environ.get("HCU_DUMP_INNER") != "1":
+                    if not hcu_env.enabled("HCU_DUMP_INNER"):
                         return
                     if _dump["rank"] not in (None, 0):
                         return
@@ -136,7 +137,7 @@ def install(_he=None) -> None:
                         lyr.input_layernorm.register_forward_pre_hook(
                             _hcu_layernorm_pre(i), with_kwargs=True
                         )
-                        if i < 2 and os.environ.get("HCU_DUMP_INNER") == "1":
+                        if i < 2 and hcu_env.enabled("HCU_DUMP_INNER"):
                             lyr.input_layernorm.register_forward_hook(
                                 _hcu_norm_out(f"xa{i}")
                             )

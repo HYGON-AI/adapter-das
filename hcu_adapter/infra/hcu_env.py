@@ -142,6 +142,11 @@ def _auto_mqa_emu():
     return "on" if arch_name().startswith("gfx93") else None
 
 
+def _auto_hcu_fork_impl():
+    # vendored fork kernels are hip-only builds; off-host keeps stock.
+    return "fork" if arch_name() else "stock"
+
+
 REGISTRY = {
     "HCU_VLLM_FLASHMLA_DECODE": {
         "env": "HCU_VLLM_FLASHMLA_DECODE", "default": "native",
@@ -654,6 +659,7 @@ REGISTRY = {
     },
     "HCU_KDA_PREFILL_IMPL": {
         "env": "HCU_KDA_PREFILL_IMPL", "default": "fork",
+        "auto": _auto_hcu_fork_impl,
         "about": "GLM-5.x KDA prefill（chunk_kda，42 层）内核选择："
                  "fork=vendored sglang-das hcu triton（对拍 emu cos 0.99999，"
                  "快 473-1009×；beta 约定=v0.5.21 后端已激活直通；"
@@ -665,6 +671,7 @@ REGISTRY = {
     },
     "HCU_CONV1D_IMPL": {
         "env": "HCU_CONV1D_IMPL", "default": "fork",
+        "auto": _auto_hcu_fork_impl,
         "about": "KDA causal_conv1d_fn（prefill varlen）+ causal_conv1d_update"
                  "（decode 每步）内核选择：fork=vendored sglang-das hcu triton"
                  "（对拍 emu cos 0.99999+/conv 状态位精确相等；fn 16.4×、"

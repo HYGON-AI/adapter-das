@@ -14,6 +14,7 @@ DeepEP MoE runs zero-modification (HCU_DEEPEP_BRIDGE, env-vars.md).
 from __future__ import annotations
 
 import logging
+import torch
 
 
 def install(_he=None) -> None:

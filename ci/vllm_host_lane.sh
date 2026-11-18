@@ -59,6 +59,41 @@ export VLLM_TARGET_ROOT
 export AR_ADAPTER_ROOT="${AR_ADAPTER_ROOT:-$ROOT}"
 echo "VLLM-LANE: host=vllm gpu=$GPU target_root=$VLLM_TARGET_ROOT adapter_root=$AR_ADAPTER_ROOT"
 
+# Git metadata belongs to this test phase, before source packages are resolved.
+# Installed-wheel CI preserves the checkout and merge parents alongside symlinks.
+if [ -e "$ROOT/.git" ]; then
+    git -C "$ROOT" log -1 --format='VLLM-LANE: source_head=%H source_parents=%P' \
+        || { echo "VLLM-LANE: unable to record checkout provenance"; exit 1; }
+fi
+
+# Record the installed release/owner paths without importing GPU frameworks.
+# The shared Adapter lane also supports other admitted vLLM release lines;
+# version strings here are evidence, not a new exact-wheel acceptance gate.
+env -u PYTHONPATH HCU_ADAPTER_HOST=none python3 - <<'PY'
+import importlib.metadata as metadata
+import importlib.util
+import json
+from pathlib import Path
+import sys
+
+rows = []
+for distribution, module in (
+    ("vllm", "vllm"), ("hcu-adapter", "hcu_adapter"),
+    ("hcu-vllm-das-plugin", "hcu_vllm_das"),
+    ("torch", "torch"), ("triton", "triton"),
+):
+    spec = importlib.util.find_spec(module)
+    try:
+        dist = metadata.distribution(distribution)
+        version = dist.version
+        location = str(Path(dist.locate_file("")).resolve())
+    except metadata.PackageNotFoundError:
+        version = location = None
+    rows.append(dict(distribution=distribution, version=version, location=location,
+                     module_origin=str(Path(spec.origin).resolve()) if spec and spec.origin else None))
+print("VLLM-LANE: inventory " + json.dumps(dict(python=sys.executable, packages=rows)))
+PY
+
 # Mirror of tests/adapter/conftest.py _is_vllm_host_file. conftest remains
 # the source of truth for the host-domain scoping; the per-file counts below
 # make any drift between the two lists visible in every run.

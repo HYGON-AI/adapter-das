@@ -43,6 +43,9 @@ metadata doubles 的范围见下段，不能据此记为 HCU 通过。
 `CacheBase.get_system` 设备描述，普通/AOT collector 本体及 factor 断言保留。
 复用启动 owner 夹具时，显式保留被测 owner（例如 AR 或带事件记录的 FP8/AR），
 不得替身宿主失败锁存或扩展健康接口。
+独立 host lane 记录本阶段 Git HEAD/合并父提交，以及 Core、Adapter、Plugin
+等组件的已安装版本和模块路径；镜像标签不代表 Core 版本。版本信息用于溯源，
+不能改为共享车道的精确 wheel 准入，也不能代替设备或模型验证。
 独立 host lane 须声明 `AR_ADAPTER_ROOT` 阶段根并保留显式覆盖。wheel 阶段的
 checkout 可通过包符号链接指向安装目录；解析声明文件与实际模块的精确路径，
 不能用模块是否位于 checkout 目录下判断，也不能省略外来根的拒绝对照。fresh-process 生命周期探针在子进程中

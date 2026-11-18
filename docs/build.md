@@ -45,7 +45,7 @@ Requires-Dist: sgl-kernel ==0.0.0+dtk2610.torch2130.<同戳>
 
 | 项 | 来源 | main 当前值 |
 |---|---|---|
-| 内核基线 | `sgl_kernel/version.py` 的 `__version__` | `0.0.0+hcu.dev0` |
+| 内核基线 | `sgl_kernel/version.py` 的 `__version__` | `0.4.9+hcu.1` |
 | adapter 基线 | `packaging/hcu-adapter/VERSION` | `0.5.22+hcu.1` |
 | 平台标签 | `dtk<DTK_VER>.torch<torch 主三段数字>` | `dtk2610.torch2130` |
 | 构建戳 | `git rev-parse --short=6 HEAD` + 当前时间 | `<YYMMDDHHMM>.g<commit6>` |

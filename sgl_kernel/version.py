@@ -15,4 +15,4 @@ NOT the sglang release number). Example: release/sglang_v0.5.22 pairs with
 v0.5.22 whose aot is 0.4.9 => 0.4.9+hcu.1 on that branch.
 """
 
-__version__ = "0.0.0+hcu.dev0"
+__version__ = "0.4.9+hcu.1"

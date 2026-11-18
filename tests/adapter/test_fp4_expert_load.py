@@ -322,13 +322,16 @@ def test_spawned_loader_retains_community_math(source):
         assert queue.get(timeout=90) is True
         process.join(timeout=20)
         assert process.exitcode == 0
-        if process.is_alive():
-            process.terminate()
-            process.join(timeout=10)
-        queue.close()
     finally:
         # Covers pre-start failures too (queue/Process construction): any
-        # exception path restores auto-host detection for later tests.
+        # exception path terminates the child, closes the queue and restores
+        # auto-host detection for later tests. locals() guards: an early
+        # failure inside try leaves those names unbound.
+        if "process" in locals() and process.is_alive():
+            process.terminate()
+            process.join(timeout=10)
+        if "queue" in locals():
+            queue.close()
         if saved_host is None:
             os.environ.pop(HOST_ENV, None)
         else:

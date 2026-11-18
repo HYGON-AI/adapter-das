@@ -296,6 +296,10 @@ def test_runtime_plugin_runs_guards_then_extensions_once_and_keeps_reports(
         lambda: calls.append("dtk"),
     )
     monkeypatch.setattr(bridge, "_require_vllm_hip_runtime_abi", lambda: calls.append("runtime-abi"))
+    from hcu_adapter import interpreter_cleanup
+
+    monkeypatch.setattr(interpreter_cleanup, "register_frozen_heap_cleanup",
+                        lambda: calls.append("exit-cleanup"))
     # Provider registration has its own contract tests; do not enter a real
     # platform import from this guard/extension ordering double on either arch.
     _stub_runtime_owners(monkeypatch, calls)
@@ -322,6 +326,7 @@ def test_runtime_plugin_runs_guards_then_extensions_once_and_keeps_reports(
         "platform",
         "dtk",
         "runtime-abi",
+        "exit-cleanup",
         "fp8",
         "scaled-mm", "allreduce", "mhc", "indexer", "prefill", "decode", "pcp",
         "adapter-version",

@@ -57,6 +57,7 @@ jobs:
             tests/adapter/test_common_bridge.py \
             tests/adapter/test_bootstrap.py \
             tests/adapter/test_runtime_lifecycle.py \
+            tests/adapter/test_interpreter_cleanup.py \
             tests/adapter/test_fa_vendor_kwargs.py \
             tests/adapter/test_l1_gate_ownership.py \
             tests/adapter/test_hcu_ci_preflight.py \

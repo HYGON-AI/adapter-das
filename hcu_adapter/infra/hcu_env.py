@@ -239,6 +239,11 @@ REGISTRY = {
         "env": "HCU_ADAPTER_DUMP", "default": "",
         "about": "启动时落 runtime dump JSON（每算子活跃实现+安装方式；1=打进日志）",
     },
+    "HCU_ADAPTER_LOG": {
+        "env": "HCU_ADAPTER_LOG", "default": "",
+        "about": "hcu.adapter logger 级别：默认 WARNING（安装链 INFO 静默）；"
+                 "=info/=debug 显式放开（排查）；WARNING+ 始终传播",
+    },
     # platform semantics — governance §0.5 is_cuda 路线（platform_seam.py）
     "HCU_PLATFORM_SEMANTICS": {
         "env": "HCU_PLATFORM_SEMANTICS", "default": "cuda",

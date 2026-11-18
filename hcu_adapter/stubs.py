@@ -17,7 +17,7 @@ package ``__init__`` preserves the plugin-seam contract
 from . import flash_attn as _fa
 from . import flashinfer as _fi
 from . import aiter as _aiter
-from . import hadamard as _had
+from .features.hadamard import hadamard as _had
 
 __all__ = ["register_all"]
 

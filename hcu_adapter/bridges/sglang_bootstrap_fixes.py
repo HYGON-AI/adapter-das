@@ -67,7 +67,7 @@ def install(_he=None) -> None:
     # topk_v2 kernel + the v41 full-topk fused decode arm. Replaces the
     # torch.topk fallbacks behind 57 mbtopk kernels/step (2026-10-22 trace).
     try:
-        from hcu_adapter import dsa_topk_v2
+        from hcu_adapter.features.dsa import dsa_topk_v2
 
         dsa_topk_v2.install()
     except Exception:

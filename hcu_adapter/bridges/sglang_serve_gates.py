@@ -49,7 +49,7 @@ def install(_he=None) -> None:
     # set_max_dynamic_smem (invalid argument). Eligibility -> False on
     # HIP, each layer keeps its own linear.
     try:
-        from hcu_adapter import fused_a_gemm_gate
+        from hcu_adapter.features.dsa import fused_a_gemm_gate
 
         fused_a_gemm_gate.install()
     except Exception:

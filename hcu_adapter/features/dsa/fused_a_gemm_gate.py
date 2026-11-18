@@ -98,7 +98,7 @@ def install():
         elif _patch(importer):
             rebound.append(name)
     if late:
-        from ._base import LibStubFinder, register_finder
+        from hcu_adapter._base import LibStubFinder, register_finder
 
         for name in late:
             register_finder(LibStubFinder(name, post_hooks={name: _patch}))

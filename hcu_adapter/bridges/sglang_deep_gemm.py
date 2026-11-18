@@ -159,7 +159,7 @@ def install(_he=None) -> None:
         from hcu_adapter.infra import hcu_env as _kpw_env
 
         if _kpw_env.enabled("HCU_KPOOL_WRITE_EMU"):
-            from hcu_adapter import kpool_write_emu
+            from hcu_adapter.features.dsa import kpool_write_emu
 
             kpool_write_emu.install_patch()
             logging.getLogger("hcu.adapter").info(
@@ -180,7 +180,7 @@ def install(_he=None) -> None:
         else:
             mode = "aiter"
         if mode != "aiter":
-            from hcu_adapter import kpool_write_emu as _kwe
+            from hcu_adapter.features.dsa import kpool_write_emu as _kwe
 
             _kwe.install_read_patch(mode)
             logging.getLogger("hcu.adapter").info(
@@ -234,7 +234,7 @@ def install(_he=None) -> None:
         import os as _os
 
         if _os.environ.get("HCU_DUMP_TOPK") == "1":
-            from hcu_adapter import mqa_logits_emu as _mle
+            from hcu_adapter.features.dsa import mqa_logits_emu as _mle
 
             if not getattr(_mle, "_hcu_trap", False):
                 _mle._hcu_trap = True

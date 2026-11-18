@@ -30,7 +30,7 @@ import os
 
 import torch
 
-from .kernels.lightop_usage import _count
+from hcu_adapter.kernels.lightop_usage import _count
 
 _HEAD_PAD = 132
 
@@ -177,7 +177,7 @@ def fp8_paged_mqa_logits(
     # N*T*128*2B transient memory (8K tokens x 64K window = impossible).
     impl = "loop"
     try:
-        from .hcu_env import resolve
+        from hcu_adapter.infra.hcu_env import resolve
 
         impl, _src = resolve("HCU_MQA_LOGITS_IMPL")
     except Exception:

@@ -15,10 +15,10 @@ import torch
 
 def install(_he=None) -> None:
     # DSA indexer top-k: the sgl-kernel backend ops have no HIP build; bridge
-    # to torch equivalents (see hcu_adapter.dsa_topk).
+    # to torch equivalents (see hcu_adapter.features.dsa.dsa_topk).
     try:
         import sgl_kernel as _sk
-        import hcu_adapter.dsa_topk as _dsa_topk
+        import hcu_adapter.features.dsa.dsa_topk as _dsa_topk
 
         _dsa_topk.install()
         if os.environ.get("HCU_DUMP_TOPK") == "1":

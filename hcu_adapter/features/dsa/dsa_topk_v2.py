@@ -102,7 +102,7 @@ def _rebind(name, orig, wrapped):
 
 
 def install() -> None:
-    from .infra import hcu_env as _env
+    from hcu_adapter.infra import hcu_env as _env
 
     if not _env.enabled("HCU_TOPK_V2"):
         return

@@ -243,7 +243,7 @@ def install():
             except Exception:
                 pass
             if impl == "triton":
-                from hcu_adapter.mqa_logits_triton import triton_ragged_mqa_logits as _tri_r
+                from hcu_adapter.features.dsa.mqa_logits_triton import triton_ragged_mqa_logits as _tri_r
 
                 return _tri_r(
                     q_fp8, kv, kv_scales, weights, cu_starts, cu_ends

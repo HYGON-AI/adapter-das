@@ -22,7 +22,7 @@ def install(_he=None) -> None:
         os.environ.get("HCU_MQA_EMU") == "1"
     if _mqa_on:
         try:
-            import hcu_adapter.mqa_logits_emu as _mqa_emu
+            import hcu_adapter.features.dsa.mqa_logits_emu as _mqa_emu
 
             _mqa_emu.install()
         except ModuleNotFoundError:

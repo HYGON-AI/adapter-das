@@ -19,7 +19,7 @@ def install(_he=None) -> None:
     # otherwise); HCU_SLIMQUANT=0 opts out (debug/isolation).
     if hcu_env.enabled("HCU_SLIMQUANT"):
         try:
-            from hcu_adapter import slimquant as _slimquant
+            from hcu_adapter.features.slimquant import slimquant as _slimquant
 
             _slimquant.activate()
         except Exception:

@@ -564,9 +564,7 @@ def check_layout_ownership(r):
     """
     # [a] grandfathered computation modules at top level (exhaustive over
     # the triton/tilelang inventory at rule date; shrink as families move)
-    LEGACY_LAYOUT_ALLOWLIST = {
-        "slimquant", "triton_libdev", "triton_pdl",
-    }
+    LEGACY_LAYOUT_ALLOWLIST = set()  # fully converged 2026-11-18 (E2)
     tops = []
     for f in iter_files(".py"):
         p = rel(f)
@@ -588,7 +586,7 @@ def check_layout_ownership(r):
         "dsv4": ("dsv4",), "dsv41": ("dsv41", "v41"),
         "ct_w4a8": ("ct_w4a8",), "deep_gemm": ("deep_gemm", "deepgemm"),
         "hadamard": ("hadamard",), "gdn": ("gdn", "conv1d", "kda"),
-        "dsa": ("dsa",), "mqa_logits": ("mqa",),
+        "dsa": ("dsa",), "slimquant": ("slimquant",), "mqa_logits": ("mqa",),
         "allreduce": ("allreduce", "ar_norm"), "aiter": ("aiter",),
     }
     feat_root = os.path.join(ROOT, "hcu_adapter", "features")

@@ -1019,32 +1019,14 @@ def install() -> None:
                 "HCU adapter: fa3 emu routing bridge not installed", exc_info=True
             )
 
-        # moe_wna16 quant config: upstream get_quant_method runs the
-        # modules_to_not_convert check BEFORE any isinstance guard, so a
-        # RadixAttention layer whose prefix substring-matches a skipped module
-        # (AWQ checkpoints list "self_attn", which also catches
-        # "...self_attn.attn") gets an UnquantizedLinearMethod — and RadixAttention
-        # then calls create_weights(layer) with one arg against its 6-arg
-        # signature. Every other config returns None for layers it doesn't
-        # handle; restore that contract for non-linear layers.
+        # moe_wna16 quant config non-linear layer contract restore -> hcu_adapter/bridges/sglang_moe_wna16.py
         try:
-            import sglang.srt.layers.quantization.moe_wna16 as _wna
+            from hcu_adapter.bridges import sglang_moe_wna16
 
-            _hcu_orig_wna_gqm = _wna.MoeWNA16Config.get_quant_method
-
-            def _hcu_wna_gqm(self, layer, prefix):
-                from sglang.srt.layers.linear import LinearBase
-                from sglang.srt.layers.moe.fused_moe_triton import FusedMoE
-
-                if not isinstance(layer, (LinearBase, FusedMoE)):
-                    return None
-                return _hcu_orig_wna_gqm(self, layer, prefix)
-
-            _wna.MoeWNA16Config.get_quant_method = _hcu_wna_gqm
+            sglang_moe_wna16.install(_he)
         except Exception:
             logging.getLogger("hcu.adapter").warning(
-                "HCU adapter: moe_wna16 RadixAttention guard not installed",
-                exc_info=True,
+                "HCU adapter: sglang_moe_wna16 bridge not installed", exc_info=True
             )
 
         # HCU_DUMP_INT8 serve-time W8A8Int8 apply audit (torch recompute + cos/maxerr log) -> hcu_adapter/bridges/sglang_int8_audit.py

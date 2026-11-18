@@ -41,6 +41,10 @@ def platform(monkeypatch):
     monkeypatch.delitem(bridge.__dict__, "HcuPlatform", raising=False)
     monkeypatch.setattr(bridge, "_RUNTIME_ACTIONS", bridge.ProcessLocalActions())
     imports, validations = [], []
+    # This CPU contract exercises a different owner; mHC health/admission
+    # is covered by test_vllm_mhc_bridge and combined-owner health tests.
+    from hcu_adapter.bridges import vllm_mhc
+    monkeypatch.setattr(vllm_mhc, "require_healthy", lambda: None)
 
     class Backend:
         @classmethod

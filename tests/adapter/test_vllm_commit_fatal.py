@@ -51,6 +51,20 @@ def startup(monkeypatch):
     from hcu_adapter.bridges import vllm_fp8
     monkeypatch.setattr(vllm_fp8, "install", lambda: None)
     monkeypatch.setattr(bridge, "_installed_adapter_version", lambda: "cpu")
+    # Test the host/extension latch independently of native owner publication.
+    # In particular, real FlashMLA requires child activation before a forked
+    # child can query it; its adoption/refusal has dedicated owner regressions.
+    from importlib import import_module
+    for name, action in (
+        ("scaled_mm", "install"), ("allreduce", "prepare_runtime"),
+        ("mhc", "install"), ("sparse_indexer", "install"),
+        ("flashmla", "install"), ("flashmla_decode", "install"),
+        ("pcp", "install"), ("minimax_abi", "install"),
+    ):
+        owner = import_module("hcu_adapter.bridges.vllm_" + name)
+        monkeypatch.setattr(owner, action, lambda: False)
+        if hasattr(owner, "require_healthy"):
+            monkeypatch.setattr(owner, "require_healthy", lambda: None)
     points = []
     monkeypatch.setattr(ext, "_entry_points", lambda: points)
     return points
@@ -411,6 +425,7 @@ def test_fresh_interpreter_does_not_inherit_failed_runtime(startup):
          "b._RUNTIME_ACTIONS.run_once('vllm-runtime', lambda: None); "
          "b.require_runtime_healthy()"],
         capture_output=True, text=True, timeout=10,
+        env=dict(os.environ, HCU_VLLM_MHC_IMPL="stock"),
     )
     assert result.returncode == 0, result.stderr
     with pytest.raises(bridge.LatchedVllmRuntimeError):

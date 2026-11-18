@@ -390,6 +390,7 @@ def test_adapter_version_comes_from_the_shipping_distribution(monkeypatch):
 def test_hcu_platform_defaults_to_triton_and_routes_flash_to_plugin(
     monkeypatch,
 ):
+    _stub_runtime_owners(monkeypatch)
     validation_calls = []
 
     class HcuFlashAttentionBackend:
@@ -501,6 +502,7 @@ def test_hcu_platform_defaults_to_triton_and_routes_flash_to_plugin(
 
 
 def test_hcu_platform_rejects_invalid_flash_plugin_configuration(monkeypatch):
+    _stub_runtime_owners(monkeypatch)
     class HcuFlashAttentionBackend:
         @classmethod
         def validate_configuration(cls, **kwargs):

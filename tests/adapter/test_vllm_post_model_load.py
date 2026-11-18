@@ -40,6 +40,10 @@ from hcu_adapter.extensions import ExtensionContext, ExtensionSpec, activate_ext
 def isolation(monkeypatch):
     envs.disable_envs_cache()
     monkeypatch.setattr(api, "_callbacks", api._Callbacks())
+    # This CPU contract exercises a different owner; mHC health/admission
+    # is covered by test_vllm_mhc_bridge and combined-owner health tests.
+    from hcu_adapter.bridges import vllm_mhc
+    monkeypatch.setattr(vllm_mhc, "require_healthy", lambda: None)
     monkeypatch.delenv("VLLM_ELASTIC_EP_SCALE_UP_LAUNCH", raising=False)
     yield
     envs.disable_envs_cache()

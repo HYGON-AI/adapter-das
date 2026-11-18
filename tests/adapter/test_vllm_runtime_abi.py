@@ -44,6 +44,9 @@ def startup(monkeypatch):
     # and other built-in operator registrations are outside this loader contract.
     from hcu_adapter.bridges import vllm_mhc, vllm_sparse_indexer
     monkeypatch.setattr(vllm_mhc, "install", lambda: False)
+    # This CPU contract exercises a different owner; mHC health/admission
+    # is covered by test_vllm_mhc_bridge and combined-owner health tests.
+    monkeypatch.setattr(vllm_mhc, "require_healthy", lambda: None)
     monkeypatch.setattr(vllm_sparse_indexer, "install", lambda: False)
 
     def activate(context, *, health_check_sink):

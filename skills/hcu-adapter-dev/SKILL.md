@@ -243,6 +243,8 @@ vLLM worker/executor/env-cache 覆盖查询归 `bridges.vllm_model_load`，薄 W
 `docs/frameworks/vllm032-post-model-load.md`。
 
 vLLM public registry/extension health 修改先读 `docs/vllm-flash-registry.md`。
+vLLM CPU host lane 的 owner 替身隔离与 DTK interpreter 比较 dtype 问题，
+见 `references/test-suite.md`；保留宿主锁存、原生/Graph 与模型的独立门禁。
 vLLM 冻结堆退出问题先读 `docs/frameworks/vllm033.md` 的退出清理节：
 标准 `atexit` 可在 Adapter 承载，不必替换 Core freeze 函数；须分别证明
 正常解释器、fork/spawn、再次冻结及强制退出边界。消除泄漏告警不等于

@@ -7,15 +7,16 @@ Run with HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES='' and this checkout on
 PYTHONPATH: python -m pytest tests/adapter/test_vllm_builtin_health.py.
 Real installed public selectors/spawn/fork are verified by separate probes.
 """
-from types import SimpleNamespace
+from importlib import import_module
 
 import pytest
 
 from hcu_adapter.bridges import vllm as host
-from hcu_adapter.bridges import vllm_mhc, vllm_sparse_indexer
+
+OWNERS = ('mhc', 'sparse_indexer', 'flashmla', 'flashmla_decode', 'pcp')
 
 
-@pytest.mark.parametrize('failed_owner', [None, 'mhc', 'indexer'])
+@pytest.mark.parametrize('failed_owner', [None, *OWNERS])
 def test_runtime_health_checks_each_builtin_owner(monkeypatch, failed_owner):
     calls = []
 
@@ -24,14 +25,35 @@ def test_runtime_health_checks_each_builtin_owner(monkeypatch, failed_owner):
         if name == failed_owner:
             raise RuntimeError(name + ' owner unhealthy')
 
-    monkeypatch.setattr(host, '_RUNTIME_ACTIONS',
-                        SimpleNamespace(require_runtime_healthy=lambda: check('host')))
-    monkeypatch.setattr(vllm_mhc, 'require_healthy', lambda: check('mhc'))
-    monkeypatch.setattr(vllm_sparse_indexer, 'require_healthy', lambda: check('indexer'))
+    lifecycle = host.ProcessLocalActions()
+    monkeypatch.setattr(lifecycle, 'require_runtime_healthy', lambda: check('host'))
+    monkeypatch.setattr(host, '_RUNTIME_ACTIONS', lifecycle)
+    for name in OWNERS:
+        module = import_module('hcu_adapter.bridges.vllm_' + name)
+        monkeypatch.setattr(module, 'require_healthy', lambda name=name: check(name))
     if failed_owner is None:
         host.require_runtime_healthy()
     else:
         with pytest.raises(RuntimeError, match=failed_owner + ' owner unhealthy'):
             host.require_runtime_healthy()
-    expected = ['host', 'mhc'] if failed_owner == 'mhc' else ['host', 'mhc', 'indexer']
+    checked = OWNERS if failed_owner is None else OWNERS[:OWNERS.index(failed_owner) + 1]
+    expected = ['host', *checked]
     assert calls == expected
+
+
+def test_owner_health_waits_for_real_runtime_transaction(monkeypatch):
+    lifecycle = host.ProcessLocalActions()
+    monkeypatch.setattr(host, '_RUNTIME_ACTIONS', lifecycle)
+    calls = []
+
+    def not_ready():
+        calls.append('mhc')
+        raise RuntimeError('requested owner has not activated')
+
+    module = import_module('hcu_adapter.bridges.vllm_mhc')
+    monkeypatch.setattr(module, 'require_healthy', not_ready)
+    lifecycle.run_once('vllm-runtime', host.require_runtime_healthy)
+    assert calls == []
+    with pytest.raises(RuntimeError, match='has not activated'):
+        host.require_runtime_healthy()
+    assert calls == ['mhc']

@@ -274,7 +274,8 @@ def test_registration_never_changes_official_global_gate_or_pass_manager(monkeyp
 
 
 def test_exact_target_and_declared_phase_origins():
-    declared = os.environ["AR_ADAPTER_ROOT"]
+    from importlib.metadata import distribution
+    declared = os.environ.get("AR_ADAPTER_ROOT") or distribution("hcu-adapter").locate_file("")
     assert Path(compat.__file__).resolve().is_relative_to(Path(declared).resolve())
     target = Path(os.environ["VLLM_TARGET_ROOT"])
     import importlib
@@ -286,6 +287,19 @@ def test_exact_target_and_declared_phase_origins():
 @pytest.fixture(autouse=True)
 def isolated(monkeypatch):
     assert not torch.cuda.is_initialized()
+    # Synthetic HCU/metadata doubles must not activate unrelated providers.
+    # Keep the real AR owner and canonical host failure latch below.
+    from importlib import import_module
+    for name in ("scaled_mm", "mhc", "sparse_indexer", "flashmla",
+                 "flashmla_decode", "pcp", "minimax_abi"):
+        owner = import_module("hcu_adapter.bridges.vllm_" + name)
+        monkeypatch.setattr(owner, "install", lambda: False)
+        if hasattr(owner, "require_healthy"):
+            monkeypatch.setattr(owner, "require_healthy", lambda: None)
+    # Keep both official hash collectors and the AR factor real. Only the
+    # unrelated device/system fingerprint needs a stable CPU double.
+    from vllm.compilation import caching
+    monkeypatch.setattr(caching, "get_inductor_factors", lambda: ["cpu-system-double"])
     envs.disable_envs_cache()
     registry = dict(envs.environment_variables)
     monkeypatch.setattr(adapter_registry, "_RECORDS", {})

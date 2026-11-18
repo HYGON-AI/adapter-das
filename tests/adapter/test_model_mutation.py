@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 
 import pytest
+from torch import nn
 
 from hcu_adapter import model_load as api
 from hcu_adapter.bridges import vllm_model_load as host
@@ -27,6 +28,10 @@ from test_vllm_post_model_load import config
 def isolation(monkeypatch):
     envs.disable_envs_cache()
     monkeypatch.setattr(api, "_mutation_guards", api._Callbacks())
+    # This CPU contract exercises a different owner; mHC health/admission
+    # is covered by test_vllm_mhc_bridge and combined-owner health tests.
+    from hcu_adapter.bridges import vllm_mhc
+    monkeypatch.setattr(vllm_mhc, "require_healthy", lambda: None)
     monkeypatch.delenv("VLLM_ELASTIC_EP_SCALE_UP_LAUNCH", raising=False)
     yield
     envs.disable_envs_cache()
@@ -39,7 +44,9 @@ def worker(monkeypatch, version, events):
     runner_type = v1 if version == 1 else v2
     runner = object.__new__(runner_type.GPUModelRunner)
     runner.vllm_config = cfg
-    runner.model = object()
+    runner.model = nn.Module()  # Retain the official weight-update validation.
+    if version == 2:
+        runner.speculator = None
     runner.reset_lora_state = lambda: events.append("reset-lora")
     runner.reset_encoder_cache = lambda: events.append("reset-encoder")
     runner.reset_mm_cache = lambda: events.append("reset-mm")
@@ -53,6 +60,7 @@ def worker(monkeypatch, version, events):
     monkeypatch.setattr(runner_type, "reload_weights", load)
     result.model_runner = runner
     result.weight_transfer_engine = NS(
+        model=runner.model,
         supports_draft_weight_update=True,
         start_weight_update=lambda: events.append("engine-start"),
         reset_weight_update_target=lambda: events.append("engine-reset"),
@@ -85,11 +93,6 @@ def test_target_mutation_method_provenance_and_signatures():
 
 @pytest.mark.parametrize("backend", ["ray", "external_launcher", "contract.Executor", None])
 def test_mutation_guard_query_rejects_uncovered_resolved_workers(monkeypatch, backend):
-    # On a validated gfx93x + vllm-0.33 stack the default mHC mode is
-    # aiter, and enabling the vllm env cache runs the runtime-health gate,
-    # which then demands mHC activation (MhcCompatibilityError). That seam
-    # is not what this file gates -- pin stock to keep the noise out.
-    monkeypatch.setenv("HCU_VLLM_MHC", "stock")
     cfg = config(backend)
     assert cfg.parallel_config.worker_cls == host.OFFICIAL_MODEL_LOAD_WORKER
     envs.enable_envs_cache()
@@ -101,9 +104,6 @@ def test_mutation_guard_query_rejects_uncovered_resolved_workers(monkeypatch, ba
 @pytest.mark.parametrize("operation", ["reload", "target", "draft"])
 @pytest.mark.parametrize("refuse", [False, True])
 def test_real_worker_guards_before_mutation_or_delegates(monkeypatch, version, operation, refuse):
-    # Same mHC/env-cache interaction as above: stock keeps the health gate
-    # quiet so the guard-under-test is the only thing that can reject.
-    monkeypatch.setenv("HCU_VLLM_MHC", "stock")
     events = []
     value = worker(monkeypatch, version, events)
     original_model_config = value.vllm_config.model_config

@@ -1,5 +1,26 @@
 # 自动化测试套件要求
 
+vLLM CPU owner 契约须隔离无关的原生 owner：例如 AR、Flash selector、
+runtime ABI 和模型 lifecycle 的替身不应触发 mHC 架构探测或要求其原生注册。
+在合成平台夹具中替换无关 owner 的注册和健康查询，保留宿主失败锁存和
+被测 owner 的真实检查；FlashMLA 的真实 fork 需先在子进程激活，不能将
+host latch 的重置测试同时当作原生 owner 的继承测试。
+`test_vllm_builtin_health.py` 用真实 `ProcessLocalActions` 检查全部内置 owner
+和运行事务内外的边界，不用缺少新增方法的 `SimpleNamespace` 模拟该门面。
+独立子进程无法继承 monkeypatch；需按其测试范围显式配置无关能力。
+AR 编译哈希回归保留两个真实 hash collector 和真实 AR factor；CPU 夹具
+只替换无关的 Inductor 系统指纹，不查询 GPU。来源断言优先使用显式
+`AR_ADAPTER_ROOT`；未提供时使用已安装 distribution 的根目录，仍检查
+真实加载路径和目标 Core 文件字节，不能以测试文件路径自证来源。
+模型 lifecycle 的 transfer engine 替身须提供官方 worker 实际读取的
+`model`；使用真实 CPU `nn.Module` 经过官方更新校验，不能跳过该校验。
+
+`cases/vllm_dsv41_indexer_cpu.py` 使用真实 Triton 解释器执行 GPU scorer 的
+CPU oracle。部分 DTK interpreter 将比较的布尔结果转回整数操作数 dtype，
+导致合法 mask 的 CPU 执行失败；夹具按比较结果能力探测，仅修正解释器的
+比较 handle，保留编译内核和独立分数/掩码参考。此修正不写回 vendor 包，
+不覆盖设备或 Graph 验收；解释器原生返回布尔 handle 时自动不接入。
+
 DSA writer 回归见 `tests/kernels/test_mqa_triton_gfx938.py`：在调用时解析
 新 kvcache/旧 attention 路径，区分页跨度 ABI；依赖导入错误不能当作接口迁移
 而隐藏。pytest 必须实际执行两种池布局、融合写入和派发的数值/top-k 断言，

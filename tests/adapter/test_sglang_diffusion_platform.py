@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hcu_adapter import registry
+from hcu_adapter.infra import registry
 from hcu_adapter.bridges import sglang_diffusion as diffusion
 
 

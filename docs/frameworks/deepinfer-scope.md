@@ -29,7 +29,7 @@ SGLang、vLLM、DeepInfer 的模型扩展遵循相同边界：兼容上游已有
   `sgl_kernel.__init__` 时提前加载与 DeepInfer 无关的 AOT/stub 注册。
 - `hcu_adapter/infra/hcu_env.py`、`hcu_config.py`、`registry.py`：唯一配置和注册状态。
   直接使用公共 `hcu_env`、`hcu_config`、`registry` 与 `kill_switch`，不经跨层转发。
-- `hcu_adapter.registry.replace`：登记显式安装的外部 plugin 覆盖及原提供者；
+- `hcu_adapter.infra.registry.replace`：登记显式安装的外部 plugin 覆盖及原提供者；
   adapter 不导入、不自动启用 plugin。
 
 相同算子名字不保证相同 ABI。DeepInfer 的完整限定接口单独登记，只有 dtype、scale、

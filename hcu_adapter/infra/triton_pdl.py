@@ -32,7 +32,7 @@ _PDL_LINES = (
 
 
 def install():
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
     import triton.backends.hcu.compiler as _hcu
 
     if getattr(_hcu, "_hcu_pdl_stripped", False):

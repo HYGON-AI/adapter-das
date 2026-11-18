@@ -220,7 +220,7 @@ def _apply(root, register):
     if applied:
         atomic_write(p, text)
 
-    import hcu_adapter.registry as _reg
+    import hcu_adapter.infra.registry as _reg
 
     # TEXT_PATCH_ALLOWLIST keys are (op, exact needle) — one record per
     # needle, jit_quant_fp8 pattern.

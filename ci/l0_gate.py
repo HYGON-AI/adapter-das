@@ -157,7 +157,7 @@ def check_catalog_refs(r, reg):
 
 def routing_glue_files():
     """Return the thin loader, dispatcher, and framework bridge sources."""
-    files = ["sitecustomize.py", "hcu_adapter/bootstrap.py"]
+    files = ["sitecustomize.py", "hcu_adapter/infra/bootstrap.py"]
     bridge_dir = os.path.join(ROOT, "hcu_adapter", "bridges")
     for base, _, names in os.walk(bridge_dir):
         files.extend(rel(os.path.join(base, name)) for name in sorted(names) if name.endswith(".py"))
@@ -396,7 +396,7 @@ def check_glue_has_no_numerics(r):
 def _parse_allowlist():
     """Text-patch needles allowed, parsed from registry.py (no import)."""
     src = open(os.path.join(
-        ROOT, "hcu_adapter/registry.py"), encoding="utf-8").read()
+        ROOT, "hcu_adapter/infra/registry.py"), encoding="utf-8").read()
     body = re.search(
         r"TEXT_PATCH_ALLOWLIST\s*=\s*\{(.*?)\n\}", src, re.S)
     if not body:
@@ -420,7 +420,7 @@ def check_text_patch_allowlist(r):
     needles, ok = _parse_allowlist()
     if not ok:
         r.fail("text-patch", "cannot parse TEXT_PATCH_ALLOWLIST from "
-               "hcu_adapter/registry.py")
+               "hcu_adapter/infra/registry.py")
         return
     allowed_needles = {n for _, n in needles}
     sources = []

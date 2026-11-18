@@ -95,7 +95,7 @@ def _apply(root, register):
     if text != original_text:
         atomic_write(p, text)
 
-    import hcu_adapter.registry as _reg
+    import hcu_adapter.infra.registry as _reg
 
     # TEXT_PATCH_ALLOWLIST keys are (op, exact needle) — one record per
     # needle (same-op/same-target re-registration of an immutable text

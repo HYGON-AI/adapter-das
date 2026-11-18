@@ -15,7 +15,7 @@ def install(_he=None) -> None:
     # triton extra.cuda libdevice -> hip/OCML redirect (is_cuda semantics
     # picks the cuda libdevice package; hcu backend rejects __nv_* LLVM).
     try:
-        from hcu_adapter import triton_libdev
+        from hcu_adapter.infra import triton_libdev
 
         triton_libdev.install()
     except Exception:
@@ -26,7 +26,7 @@ def install(_he=None) -> None:
     # upstream; gfx936 assembler rejects the instructions, and removing
     # them == PDL-off semantics).
     try:
-        from hcu_adapter import triton_pdl
+        from hcu_adapter.infra import triton_pdl
 
         triton_pdl.install()
     except Exception:

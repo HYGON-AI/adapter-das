@@ -196,7 +196,7 @@ def install():
     if acted and not _registered:
         _registered = True
         try:
-            from hcu_adapter import registry
+            from hcu_adapter.infra import registry
 
             registry.register(
                 "platform_detect",

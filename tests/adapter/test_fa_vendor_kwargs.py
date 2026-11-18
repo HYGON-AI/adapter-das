@@ -7,7 +7,7 @@ from types import ModuleType
 import pytest
 import torch
 
-from hcu_adapter import registry
+from hcu_adapter.infra import registry
 from hcu_adapter.bridges import sglang_fa_vendor as fa_vendor
 from sgl_kernel import flash_attn
 

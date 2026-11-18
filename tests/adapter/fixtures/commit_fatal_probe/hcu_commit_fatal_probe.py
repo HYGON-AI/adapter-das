@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 import sys
 
-from hcu_adapter.extensions import ExtensionCommitError, ExtensionSpec
+from hcu_adapter.infra.extensions import ExtensionCommitError, ExtensionSpec
 
 
 class UnrenderableError(RuntimeError):
@@ -86,14 +86,14 @@ def exercise(config=None):
     import torch
     from importlib.metadata import entry_points
     from hcu_adapter.bridges import vllm as bridge
-    import hcu_adapter.extensions as public
+    import hcu_adapter.infra.extensions as public
     import vllm.plugins
 
     _cpu_guard()
     if config is not None:
         assert config.quant_config.get_name() == "cpu_commit_probe"
     # Refuse a dirty test host instead of discovering unrelated live providers.
-    assert {p.name for p in entry_points(group="hcu_adapter.extensions")} == {
+    assert {p.name for p in entry_points(group="hcu_adapter.infra.extensions")} == {
         "commit_probe_early", "commit_probe_owner", "commit_probe_later",
     }
     adapter_points = [p for p in entry_points(group="vllm.general_plugins")

@@ -55,7 +55,7 @@ not wheel-file presence, and does not prove successful kernel execution.
 import logging
 
 from hcu_adapter.infra import hcu_env
-from hcu_adapter.registry import MECH_REBIND, MECH_SEAM, register
+from hcu_adapter.infra.registry import MECH_REBIND, MECH_SEAM, register
 
 LOG = logging.getLogger("hcu.adapter")
 

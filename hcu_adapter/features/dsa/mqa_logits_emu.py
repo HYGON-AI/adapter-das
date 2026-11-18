@@ -202,7 +202,7 @@ def install():
         _afml.fp8_mqa_logits = _ragged_fn
 
     try:
-        from hcu_adapter import registry as _reg
+        from hcu_adapter.infra import registry as _reg
 
         _reg.register(
             "attention",

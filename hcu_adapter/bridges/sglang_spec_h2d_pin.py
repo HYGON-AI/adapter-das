@@ -17,7 +17,7 @@ import logging
 import threading
 import types
 
-from .. import registry as _reg
+from ..infra import registry as _reg
 
 logger = logging.getLogger("hcu.adapter")
 _LOCK = threading.RLock()

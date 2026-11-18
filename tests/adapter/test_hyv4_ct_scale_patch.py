@@ -169,7 +169,7 @@ def test_signature_drift_rejected():
 
 def test_public_install_gate_and_no_source_writes(source, monkeypatch, tmp_path):
     from hcu_adapter.infra import hcu_env
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     path = tmp_path / "hunyuan_v4.py"
     path.write_text(source, encoding="utf-8")

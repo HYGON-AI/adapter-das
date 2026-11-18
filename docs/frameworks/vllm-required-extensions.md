@@ -38,7 +38,7 @@ unmodified official `load_general_plugins` before the actual runtime callback, i
 run-once behavior and refusal before runtime registration. These are not real
 GPU, CLI/model or kernel-evidence claims.
 
-Extension requirements use the installed `hcu_adapter.extensions` **entry-point
+Extension requirements use the installed `hcu_adapter.infra.extensions` **entry-point
 name** (`das_hcu` above). They do not use the spec's declared name (`das-hcu`).
 Capability requirements use exact `ExtensionSpec.capabilities` strings. Missing
 or failed requirements stop startup, and failure is latched in that process.

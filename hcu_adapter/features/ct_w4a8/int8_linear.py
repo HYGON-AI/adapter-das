@@ -15,7 +15,7 @@ _TARGETS = (
 
 
 def install():
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
     from sgl_kernel import int8_scaled_mm
 
     modules = []

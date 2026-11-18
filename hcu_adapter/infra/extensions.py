@@ -20,7 +20,7 @@ from typing import Protocol, runtime_checkable
 
 
 EXTENSION_API_VERSION = 1
-EXTENSION_ENTRY_POINT_GROUP = "hcu_adapter.extensions"
+EXTENSION_ENTRY_POINT_GROUP = "hcu_adapter.infra.extensions"
 
 
 @dataclass(frozen=True)

@@ -14,7 +14,7 @@ from pathlib import Path
 import sys
 
 from ...infra import hcu_env
-from hcu_adapter import registry
+from hcu_adapter.infra import registry
 
 
 def _install(artifacts=None, physical_device_count=None, tilelang_backend=None,

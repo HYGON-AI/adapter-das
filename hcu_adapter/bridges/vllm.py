@@ -14,14 +14,14 @@ from pathlib import Path
 
 from packaging.version import InvalidVersion, Version
 
-from hcu_adapter.extensions import (
+from hcu_adapter.infra.extensions import (
     ExtensionContext,
     ExtensionReport,
     ExtensionCommitError,
     RequiredExtensionError,
     activate_extensions,
 )
-from hcu_adapter.runtime_lifecycle import ProcessLocalLifecycle
+from hcu_adapter.infra.runtime_lifecycle import ProcessLocalLifecycle
 
 LOG = logging.getLogger("hcu.adapter")
 
@@ -445,7 +445,7 @@ def _log_post_install_bindings() -> None:
     the rewritten dump can. It records state, it does not activate or repair.
     """
     from hcu_adapter.infra import hcu_env
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     bound = registry.records()
     for op in ("vllm_flashmla_prefill", "vllm_flashmla_decode"):

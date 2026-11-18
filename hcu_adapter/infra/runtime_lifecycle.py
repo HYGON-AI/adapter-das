@@ -13,7 +13,7 @@ from collections.abc import Callable
 import os
 from threading import RLock, local
 
-from hcu_adapter.extensions import ExtensionCommitError, ExtensionReport, ExtensionStatus
+from hcu_adapter.infra.extensions import ExtensionCommitError, ExtensionReport, ExtensionStatus
 
 
 class ProcessLocalLifecycle:

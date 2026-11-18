@@ -83,7 +83,7 @@ def test_gfx_guard_precedes_runner_utils_import():
     from types import ModuleType, SimpleNamespace
     from unittest.mock import Mock, patch
     from hcu_adapter.infra import hcu_env, platform_seam
-    from hcu_adapter import hip_metadata, registry
+    from hcu_adapter.infra import hip_metadata, registry
 
     modules = {}
     for name in (
@@ -144,7 +144,7 @@ def test_gfx_guard_precedes_runner_utils_import():
     )
     with patch.dict(sys.modules, {**modules, "torch": torch}), patch.object(
         hcu_env, "resolve", return_value=("cuda", "default")
-    ), patch.object(registry, "register"), patch("hcu_adapter.lightop_metadata.install"), patch.object(
+    ), patch.object(registry, "register"), patch("hcu_adapter.infra.lightop_metadata.install"), patch.object(
         builtins, "FP8_E4M3_MAX", None, create=True
     ), patch.object(builtins, "FP8_E4M3_MIN", None, create=True), patch.object(
         hip_metadata, "compute_capability", return_value=(9, 3)
@@ -180,7 +180,7 @@ def test_moe_sbo_guard_uses_physical_hip_identity_and_updates_aliases():
     from unittest.mock import patch
     import pytest
     from hcu_adapter.infra import platform_seam
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     module = ModuleType("sglang.srt.layers.moe.utils")
     scheduler = ModuleType("sglang.srt.managers.scheduler")

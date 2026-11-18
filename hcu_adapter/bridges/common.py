@@ -27,7 +27,7 @@ def install() -> None:
         LOG.warning("HCU adapter: nccl topo guard not installed", exc_info=True)
 
     try:
-        from hcu_adapter import tvmffi_warmup
+        from hcu_adapter.infra import tvmffi_warmup
 
         tvmffi_warmup.install()
     except Exception:

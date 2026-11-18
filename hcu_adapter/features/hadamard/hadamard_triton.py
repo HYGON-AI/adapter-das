@@ -92,7 +92,7 @@ def _triton_hadamard_transform(x: torch.Tensor, scale: float = 1.0, **_ignored):
 def install():
     """Rebind the upstream hadamard ops module to the Triton butterfly."""
     from hcu_adapter.infra import hcu_env
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     impl, src = hcu_env.resolve("HCU_HADAMARD_IMPL")
     if impl == "emu":

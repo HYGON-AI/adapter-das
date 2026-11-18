@@ -55,7 +55,7 @@ def align_device_visibility(physical_device_count):
     device zero. Never expand an explicit HIP allocation or change an already
     initialized runtime's device order.
     """
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     cuda_mask = os.getenv('CUDA_VISIBLE_DEVICES')
     hip_mask = os.getenv('HIP_VISIBLE_DEVICES')
@@ -94,7 +94,7 @@ def align_device_visibility(physical_device_count):
 
 def apply_upstream_defaults(allow_cuda_graph):
     """Compatible defaults only; explicit upstream choices remain authoritative."""
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     defaults = {'DEEPINFER_BATCH_INVARIANT': '0', 'DEEPINFER_ENGRAM_FORCE_GPU_STORAGE': '1'}
     if not allow_cuda_graph:

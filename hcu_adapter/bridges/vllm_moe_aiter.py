@@ -13,7 +13,7 @@ from functools import lru_cache
 
 import torch
 
-from hcu_adapter.runtime_lifecycle import ProcessLocalLifecycle
+from hcu_adapter.infra.runtime_lifecycle import ProcessLocalLifecycle
 
 _PUBLICATION = ProcessLocalLifecycle(runtime_action="vllm-aiter-moe-publication")
 _OP = None

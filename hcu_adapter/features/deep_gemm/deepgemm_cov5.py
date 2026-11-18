@@ -15,7 +15,7 @@ import inspect
 import logging
 from pathlib import Path
 
-from ... import registry
+from ...infra import registry
 
 
 MODULE = "hcu_deepgemm_w4a8_cov5"

@@ -30,7 +30,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from hcu_adapter.infra import hcu_env
-from hcu_adapter import hip_metadata, watchdog_cold  # noqa: E402
+from hcu_adapter.infra import hip_metadata, watchdog_cold  # noqa: E402
 from hcu_adapter.infra import nccl_topo_guard  # noqa: E402
 from hcu_adapter.features.jit import jit_compat  # noqa: E402
 

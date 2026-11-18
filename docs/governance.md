@@ -10,7 +10,7 @@
 > 新后端、新机制）以 **plugin 形态**承载——plugin 是与 adapter **不同的
 > 代码仓**，经上游 seam / 注册机制接入，其代码不进本仓。两条线如果混进
 > glue 单体，就是历史上"同一个算子好几个库都有"的土壤。
-> 配套机制代码：`hcu_adapter/registry.py`（运行时注册表 + dump）、
+> 配套机制代码：`hcu_adapter/infra/registry.py`（运行时注册表 + dump）、
 > `ci/l0_gate.py`（三条静态规约）。本文的每条 HARD 规则都应能被 L0 检查。
 
 ## 0. 目标终态（薄入口 + 宿主分发 + 双仓边界）
@@ -24,7 +24,7 @@
 运行时 seam、函数换绑与进程内适配仍可用于恢复上游行为。
 
 - `sitecustomize.py` 固定为三行自动加载入口，只调用
-  `hcu_adapter.bootstrap.install()`；宿主探测和 common/host 顺序由
+  `hcu_adapter.infra.bootstrap.install()`；宿主探测和 common/host 顺序由
   `bootstrap.py` 负责，宿主实现位于 `hcu_adapter/bridges/`。
 - 判据一句话：**改官方代码行为**（换绑、断言放宽、判定词 wrap）是行为
   还原手段，其实现体留在本仓、按宿主放入 `hcu_adapter/bridges/`，按算子/
@@ -99,13 +99,13 @@ import、特性探测 hasattr 恒真、dlpack/numpy 标量、JIT hipcc nvcc-isms
 | **内核库** `sgl_kernel/*.py` | adapter | 算子的数值实现（triton 首档 / vendor 封装 / torch 兜底）与宿主 ABI 影子面 | 依赖 sglang 内部模块（保持 framework-free） |
 | **宿主桥** `hcu_adapter/bridges/<host>.py` | adapter | 宿主级行为还原 glue、ABI 适配和安装顺序；common 只放跨框架守卫 | 数值内核；把一个宿主的补丁装进另一个宿主；上游没有的新能力 |
 | **算子/机制桥** `hcu_adapter/<域>.py` | adapter | 函数换绑、断言放宽、判定词 wrap——install() 入口 + 开关 + register 登记 | **任何数值逻辑**（数学放内核库）；上游没有的新能力（那归 plugin 仓） |
-| **分发器** `hcu_adapter/bootstrap.py` | adapter | 探测宿主 + 先 common 后唯一宿主桥；失败隔离 | 具体桥实现、宿主 eager import、数值逻辑 |
-| **自动入口** `sitecustomize.py` | adapter | `from hcu_adapter.bootstrap import install; install()` | 探测、分支、桥实现 |
+| **分发器** `hcu_adapter/infra/bootstrap.py` | adapter | 探测宿主 + 先 common 后唯一宿主桥；失败隔离 | 具体桥实现、宿主 eager import、数值逻辑 |
+| **自动入口** `sitecustomize.py` | adapter | `from hcu_adapter.infra.bootstrap import install; install()` | 探测、分支、桥实现 |
 | **上游 seam** | sglang / vLLM（各自机制） | 正式插件接入。sglang：`--quantization`、attention-backend registry、moe-runner-backend 等（entry_points 组 `sglang.srt.plugins`）；vLLM：`platform_plugins` / `general_plugins`（§7.2，Adapter 独占注册） | — |
 | **plugin** | **独立仓** | 上游没有的新能力，目的即性能优化：算子融合、专项内核、新后端、新调度机制；优先经上游 seam 接入，无 seam 时提供自己的注册入口 | 把行为补丁反向塞回 adapter 职责面 |
 
 一句话红线（L0 `glue-numerics` 强制）：**算子数学只准出现在内核库；
-`sitecustomize.py`、`hcu_adapter/bootstrap.py` 与 `hcu_adapter/bridges/*.py`
+`sitecustomize.py`、`hcu_adapter/infra/bootstrap.py` 与 `hcu_adapter/bridges/*.py`
 不 import triton、不出现 `@triton.jit`、不引用 `tl.*`。**
 
 ## 2. 算子的两个角色（解决"重复实现"）
@@ -432,7 +432,7 @@ Adapter 不保存 Plugin backend 路径，正式 registry 发布与健康检查�
 ### 7.2 双宿主共建边界
 
 进程内 lifecycle/health 事务实现在 framework-free 的
-`hcu_adapter/runtime_lifecycle.py`；宿主桥只注入 action ID / 公开错误类型及
+`hcu_adapter/infra/runtime_lifecycle.py`；宿主桥只注入 action ID / 公开错误类型及
 启动、选型编排。共享锁、inflight、report 绑定、fork 与失败锁存不可拆成
 相互反调的宿主/owner 锁。共享回归同时覆盖双宿主 Adapter bootstrap/import
 契约与独立 consumer 生命周期；不得把它宣传为新增 SGLang engine 激活功能。
@@ -452,7 +452,7 @@ Adapter 不保存 Plugin backend 路径，正式 registry 发布与健康检查�
   `bridges/vllm.py` 禁 import sglang（common 与包内机制层禁宿主已由 §1 覆盖）；
 - **vLLM 扩展宿主权责边界（extension API v1）**：Adapter **独占**
   `vllm.platform_plugins` / `vllm.general_plugins` 两个官方入口；独立 plugin
-  经 `hcu_adapter.extensions` entry-point 组接入，只交付可选优化实现
+  经 `hcu_adapter.infra.extensions` entry-point 组接入，只交付可选优化实现
   （`ExtensionSpec` + 实现），不得复制版本/平台/DTK 门禁——宿主适配只有
   一个启动裁决点。激活发生在版本、平台和 DTK runtime guard **之后**；
   optional 扩展的干净准备失败降级为进程内报告，显式 required 扩展/capability

@@ -11,7 +11,7 @@ import sys
 import types
 
 from ...infra import hcu_env
-from hcu_adapter import registry
+from hcu_adapter.infra import registry
 
 _MODULES = {
     "": ("set_num_sms", "get_num_sms", "set_pdl", "use_deterministic_algorithms", "set_token_alignment"),

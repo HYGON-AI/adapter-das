@@ -35,7 +35,7 @@ def install(_he=None) -> None:
     # (hip=True) while every other judgement keeps the CUDA semantics.
     # Governance §0.5: judgement layers translated, hardware stays truthful.
     try:
-        import hcu_adapter.registry as _hreg
+        import hcu_adapter.infra.registry as _hreg
         import sglang.srt.arg_groups.overrides as _dsa_ov
 
         def _hcu_dsa_constraint_hook(module):

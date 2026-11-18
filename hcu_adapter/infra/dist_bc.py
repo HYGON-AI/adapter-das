@@ -72,7 +72,7 @@ def _install_function(function):
 
 
 def install():
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
     import sglang.srt.utils.common as common
 
     if hasattr(common, "broadcast_pyobj"):

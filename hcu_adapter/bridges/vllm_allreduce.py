@@ -14,10 +14,10 @@ from pathlib import Path
 import sys
 from threading import RLock
 
-from hcu_adapter import registry
+from hcu_adapter.infra import registry
 from hcu_adapter.features.aiter import allreduce as policy_api, allreduce_aiter
 from hcu_adapter.features.aiter.allreduce import AllReduceCompatibilityError, State, requested_policy
-from hcu_adapter.extensions import ExtensionCommitError
+from hcu_adapter.infra.extensions import ExtensionCommitError
 
 FACTOR = "VLLM_HCU_ADAPTER_AITER_AR_POLICY"
 WRAPPER = "vllm.distributed.device_communicators.aiter_custom_all_reduce"

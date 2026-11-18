@@ -264,7 +264,7 @@ def test_foreign_and_drift_bindings_rejected(source, monkeypatch):
 
 
 def test_public_install_and_compatibility_entries_keep_alias(source, monkeypatch, tmp_path):
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
     from hcu_adapter.features.dsv4 import dsv4_ep_bf16, dsv4_fp4_dequant_blockshape
 
     monkeypatch.setenv("SGLANG_HCU_EP_BF16", "0")
@@ -312,7 +312,7 @@ def test_spawned_loader_retains_community_math(source):
     # 40s queue budget. Skip the bridge for the child only (restored so
     # later tests in this interpreter keep auto-host detection) and keep
     # a 90s budget for cold filesystems.
-    from hcu_adapter.bootstrap import HOST_ENV  # canonical env name
+    from hcu_adapter.infra.bootstrap import HOST_ENV  # canonical env name
     saved_host = os.environ.get(HOST_ENV)
     os.environ[HOST_ENV] = "none"
     context = multiprocessing.get_context("spawn")

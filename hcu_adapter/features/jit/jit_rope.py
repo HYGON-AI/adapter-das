@@ -104,7 +104,7 @@ def _apply_minimax(csrc, register):
     if not p.exists():  # older SGLang releases do not ship this kernel
         return 0
     from hcu_adapter.infra.atomic_io import atomic_write
-    from hcu_adapter.registry import MECH_TEXT
+    from hcu_adapter.infra.registry import MECH_TEXT
 
     original = p.read_text(encoding="utf-8")
     text = original
@@ -173,7 +173,7 @@ def _apply(root, register):
 
         atomic_write(rope_p, _SHIM + rope_text)
 
-    import hcu_adapter.registry as _reg
+    import hcu_adapter.infra.registry as _reg
 
     register(
         "rotary_embedding",

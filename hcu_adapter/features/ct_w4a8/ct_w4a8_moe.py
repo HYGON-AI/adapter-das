@@ -187,7 +187,7 @@ def install():
     LOG.warning("HCU adapter: CT W4A8 MoE bridge installed (%s)", detail)
 
     try:
-        from hcu_adapter import registry
+        from hcu_adapter.infra import registry
 
         registry.register(
             "platform_detect",

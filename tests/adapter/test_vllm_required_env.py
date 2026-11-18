@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from hcu_adapter.infra import hcu_env
-from hcu_adapter import registry
+from hcu_adapter.infra import registry
 from hcu_adapter.infra import hcu_config
 from hcu_adapter.bridges import vllm as bridge
 

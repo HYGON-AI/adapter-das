@@ -5,7 +5,7 @@ import hashlib
 import inspect
 from importlib import import_module
 
-from hcu_adapter import registry
+from hcu_adapter.infra import registry
 from hcu_adapter.infra.kill_switch import op_disabled
 
 _NAMES = ("qkv", "q_norm_weight", "k_norm_weight", "cos_sin_cache", "positions",

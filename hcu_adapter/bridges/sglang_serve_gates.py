@@ -62,7 +62,7 @@ def install(_he=None) -> None:
     # loads when HCU_SIDE_PROBE is set (replay|eager); never in production.
     if os.environ.get("HCU_SIDE_PROBE"):
         try:
-            from hcu_adapter import probe_side
+            from hcu_adapter.infra import probe_side
 
             probe_side.install()
         except Exception:
@@ -74,7 +74,7 @@ def install(_he=None) -> None:
     # hcu_adapter/state_snapshot.py. Only loads when HCU_STATE_SNAPSHOT is set.
     if os.environ.get("HCU_STATE_SNAPSHOT"):
         try:
-            from hcu_adapter import state_snapshot
+            from hcu_adapter.infra import state_snapshot
 
             state_snapshot.install()
         except Exception:

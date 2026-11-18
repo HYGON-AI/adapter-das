@@ -61,7 +61,7 @@ _SHFL_TAG = "  // HCU adapter: DTK lacks the *_sync variant"
 def _apply(root, register):
     """Transform adapter-owned staging files; never pass a community root."""
 
-    import hcu_adapter.registry as _reg
+    import hcu_adapter.infra.registry as _reg
 
     p = root / _RELPATH
     text = p.read_text(encoding="utf-8")

@@ -18,7 +18,7 @@ import logging
 import threading
 import types
 
-from . import registry as _reg
+from .infra import registry as _reg
 
 _LOCK = threading.RLock()
 _DISPATCH = "_hcu_ordered_native_topk_impl"

@@ -3,7 +3,7 @@
 
 """R-12: automatic bootstrap install-sequence regression pins（总装入口回归防护）.
 
-三行 sitecustomize 自动调用 hcu_adapter.bootstrap，后者先装 common 守卫，
+三行 sitecustomize 自动调用 hcu_adapter.infra.bootstrap，后者先装 common 守卫，
 再选择唯一宿主桥；既有三十余座 sglang 桥的顺序链位于
 hcu_adapter/bridges/sglang.py。本文件把该高爆炸半径启动面的五层覆盖钉成
 可执行测试（2026-10-19，2026-10-27 随多宿主迁移更新）：
@@ -180,7 +180,7 @@ def test_sitecustomize_delegates_to_bootstrap_only():
     assert len(executable) == 2
     imported, called = executable
     assert isinstance(imported, ast.ImportFrom)
-    assert imported.module == "hcu_adapter.bootstrap"
+    assert imported.module == "hcu_adapter.infra.bootstrap"
     assert [alias.name for alias in imported.names] == ["install"]
     assert isinstance(called, ast.Expr) and isinstance(called.value, ast.Call)
     assert isinstance(called.value.func, ast.Name)

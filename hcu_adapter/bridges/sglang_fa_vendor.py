@@ -679,7 +679,7 @@ def install():
         )
         return
     from hcu_adapter.infra import hcu_env
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
     from hcu_adapter.infra import kill_switch
     from sgl_kernel import flash_attn as _sk_fa
 

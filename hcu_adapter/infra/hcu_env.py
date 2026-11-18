@@ -39,7 +39,7 @@ def arch_name():
         if not torch.cuda.is_available():
             return ""
         if torch.version.hip and not torch.cuda.is_initialized():
-            from hcu_adapter.hip_metadata import architecture
+            from hcu_adapter.infra.hip_metadata import architecture
 
             return architecture(0)
         return torch.cuda.get_device_properties(0).gcnArchName.split(":")[0]

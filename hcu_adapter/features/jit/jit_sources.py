@@ -142,7 +142,7 @@ def prepare(root, cache_root=None):
         for module in modules:
             module._apply(stage, record)
         # Check allowlists/ops before publishing or binding a compiler entry.
-        from ... import registry
+        from ...infra import registry
         from ...infra import hcu_config
         for args, kwargs in records:
             if (args[0] not in hcu_config.BACKEND_CATALOG
@@ -288,7 +288,7 @@ def install():
     """Install once per interpreter; spawn naturally builds/verifies its bundle."""
     with _LOCK:
         from sglang.kernels.jit.utils.compile import loader, spec
-        from ... import registry
+        from ...infra import registry
 
         resolver = spec.resolve_sources
         raw_loader = inspect.unwrap(loader.load_jit)

@@ -585,7 +585,7 @@ _PATCHES_INCLUDE = {
 
 def _apply(root, register):
     """Transform adapter-owned staging files; never pass a community root."""
-    import hcu_adapter.registry as _reg
+    import hcu_adapter.infra.registry as _reg
 
     # csrc/ needles keyed csrc-root-relative; include/ needles keyed
     # include-root-relative (sgl_kernel/...) -- the register target and

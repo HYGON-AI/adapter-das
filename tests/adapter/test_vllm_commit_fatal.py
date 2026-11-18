@@ -15,7 +15,7 @@ from types import ModuleType, SimpleNamespace as NS
 
 import pytest
 
-from hcu_adapter import extensions as ext
+from hcu_adapter.infra import extensions as ext
 from hcu_adapter.bridges import vllm as bridge
 
 

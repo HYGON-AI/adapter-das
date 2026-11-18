@@ -25,7 +25,7 @@ LOG = logging.getLogger("hcu.adapter")
 
 
 def install():
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     import importlib
 

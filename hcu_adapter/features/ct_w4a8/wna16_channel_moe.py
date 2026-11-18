@@ -122,7 +122,7 @@ def install():
     except ImportError:
         pass
     try:
-        from ... import registry
+        from ...infra import registry
 
         registry.register(
             "w4a16_moe",

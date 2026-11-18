@@ -10,14 +10,14 @@ meta-path finders.
 
 Sole caller: ``sgl_kernel/__init__.py``. Keeping these imports OUT of the
 package ``__init__`` preserves the plugin-seam contract
-``import hcu_adapter.extensions`` stays torch-free (governance §7.2) while
+``import hcu_adapter.infra.extensions`` stays torch-free (governance §7.2) while
 ``import sgl_kernel`` still installs every finder before any sglang import.
 """
 
-from . import flash_attn as _fa
-from . import flashinfer as _fi
-from . import aiter as _aiter
-from .features.hadamard import hadamard as _had
+from .. import flash_attn as _fa
+from .. import flashinfer as _fi
+from .. import aiter as _aiter
+from ..features.hadamard import hadamard as _had
 
 __all__ = ["register_all"]
 

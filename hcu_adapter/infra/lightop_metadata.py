@@ -95,7 +95,7 @@ class _Loader(importlib.abc.Loader):
         return self.original.create_module(spec)
 
     def exec_module(self, module):
-        from hcu_adapter import hip_metadata
+        from hcu_adapter.infra import hip_metadata
 
         source = self.original.get_source(module.__name__)
         tree = ast.parse(source, filename=module.__file__)
@@ -108,7 +108,7 @@ class _Loader(importlib.abc.Loader):
         }
         module.__dict__['_hcu_metadata'] = hip_metadata
         exec(compile(tree, module.__file__, 'exec'), module.__dict__)
-        from hcu_adapter import registry
+        from hcu_adapter.infra import registry
 
         registry.register(
             "platform_detect", "hip-metadata-import", target=module.__name__,
@@ -142,7 +142,7 @@ def install():
     # a device, and the dummy then opens a context on device 0 in every rank.
     import aiter
     from aiter.jit.core import get_module
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     original_meta_size = aiter.meta_size
     if not getattr(original_meta_size, "_hcu_context_free", False):
@@ -180,7 +180,7 @@ def rewrite_function(function, *, in_place=False):
     import textwrap
     import types
 
-    from hcu_adapter import hip_metadata
+    from hcu_adapter.infra import hip_metadata
 
     source = textwrap.dedent(inspect.getsource(function))
     tree = ast.parse(source)
@@ -205,7 +205,7 @@ def rewrite_function(function, *, in_place=False):
             raise RuntimeError('Metadata rewrite changed function closure')
         function.__code__ = function_code
         replacement = function
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     registry.register(
         "platform_detect", replacement,
@@ -255,7 +255,7 @@ def rewrite_resolution_function(function, transform):
         raise RuntimeError("Official resolution function source changed")
     tree = ast.Module(body=definitions, type_ignores=[])
     if '_hcu_metadata' in function.__code__.co_names:
-        from hcu_adapter import hip_metadata
+        from hcu_adapter.infra import hip_metadata
 
         if function.__globals__.get('_hcu_metadata') is not hip_metadata:
             raise RuntimeError("Unknown HCU metadata provider in resolution function")

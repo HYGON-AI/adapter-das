@@ -256,7 +256,7 @@ def install_deepep_w4a16():
     DeepEPMoE.run_moe_core = run_moe_core
     _deepep_installed = True
     try:
-        from hcu_adapter import registry
+        from hcu_adapter.infra import registry
 
         registry.register(
             "w4a16_moe",

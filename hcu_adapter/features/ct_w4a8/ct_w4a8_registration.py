@@ -15,9 +15,9 @@ import os
 from threading import RLock
 
 from hcu_adapter.infra import hcu_env
-from hcu_adapter import registry
+from hcu_adapter.infra import registry
 from hcu_adapter.infra.kill_switch import op_disabled
-from hcu_adapter.extensions import ExtensionCommitError, ExtensionSpec
+from hcu_adapter.infra.extensions import ExtensionCommitError, ExtensionSpec
 from hcu_adapter.features.dsv41.dsv41_activation import _require_release
 
 MODE_VARIABLE = "HCU_VLLM_CT_W4A8_IMPL"

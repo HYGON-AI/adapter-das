@@ -56,7 +56,7 @@ def _install_moe_hardware_guard(module):
 
     import torch
 
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     original = getattr(module, "initialize_moe_config", None)
     if not isinstance(original, FunctionType) or getattr(original, "_hcu_moe_hardware", False):
@@ -302,7 +302,7 @@ def install():
     import torch
 
     from hcu_adapter.infra import hcu_env
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     # sgl-kernel 版本门 + 平台 env 默认（R-04/R-08 A 类；上方
     # platform_env_defaults 的 docstring 是逐项落账与判由）。
@@ -364,7 +364,7 @@ def install():
             if not hasattr(_common, name):
                 setattr(_common, name, getattr(_device, name))
 
-    from hcu_adapter import hip_metadata
+    from hcu_adapter.infra import hip_metadata
 
     original_current_device = torch.cuda.current_device
     if not getattr(original_current_device, "_hcu_current_device", False):
@@ -458,7 +458,7 @@ def install():
 
     def _hcu_get_memory_capacity():
         if torch.version.hip:
-            from hcu_adapter.hip_metadata import minimum_memory_capacity
+            from hcu_adapter.infra.hip_metadata import minimum_memory_capacity
 
             return minimum_memory_capacity()
         return original_memory_capacity()
@@ -469,7 +469,7 @@ def install():
 
     def _hcu_get_device_sm():
         if torch.version.hip and not torch.cuda.is_initialized():
-            from hcu_adapter.hip_metadata import compute_capability
+            from hcu_adapter.infra.hip_metadata import compute_capability
 
             major, minor = compute_capability()
             return major * 10 + minor
@@ -481,14 +481,14 @@ def install():
 
     def _hcu_get_device_capability(device_id=0):
         if torch.version.hip and not torch.cuda.is_initialized():
-            from hcu_adapter.hip_metadata import compute_capability
+            from hcu_adapter.infra.hip_metadata import compute_capability
 
             return compute_capability(device_id)
         return original_capability(device_id)
 
     def _hcu_get_device_core_count(device_id=0):
         if torch.version.hip and not torch.cuda.is_initialized():
-            from hcu_adapter.hip_metadata import multiprocessor_count
+            from hcu_adapter.infra.hip_metadata import multiprocessor_count
 
             return multiprocessor_count(device_id)
         return original_core_count(device_id)
@@ -496,7 +496,7 @@ def install():
     _common.get_device_capability = _hcu_get_device_capability
     _common.get_device_core_count = _hcu_get_device_core_count
 
-    from hcu_adapter import lightop_metadata
+    from hcu_adapter.infra import lightop_metadata
 
     lightop_metadata.install()
     # Preserve the original eager-import order and cached hardware predicates.

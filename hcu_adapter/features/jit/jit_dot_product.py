@@ -60,7 +60,7 @@ def _apply(root, register):
     if text != original_text:
         atomic_write(p, text)
 
-    import hcu_adapter.registry as _reg
+    import hcu_adapter.infra.registry as _reg
 
     for needle in registered:
         register(

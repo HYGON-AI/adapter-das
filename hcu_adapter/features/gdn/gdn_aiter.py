@@ -209,7 +209,7 @@ def install():
             )
         return
 
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     try:
         _install_fwd_h_aiter(registry)

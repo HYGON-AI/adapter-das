@@ -8,7 +8,7 @@ import os
 import sys
 
 from ...infra import hcu_env
-from hcu_adapter import registry
+from hcu_adapter.infra import registry
 
 
 def _configure_worker_kernels(allow_cuda_graph=False):

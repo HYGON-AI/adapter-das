@@ -26,7 +26,7 @@ def platform_plugin():
 
 # anchor-baseline(④): main@5792cf6e diffusion TP passes use_srt_custom_allreduce directly to GroupCoordinator.
 def install_collective_policy():
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
     from hcu_adapter.infra import kill_switch
 
     refused = kill_switch.op_disabled('aiter_ar')
@@ -114,7 +114,7 @@ def get_platform_class():
             return vae
 
         def init_backend(self):
-            from hcu_adapter import registry
+            from hcu_adapter.infra import registry
 
             registry.register(
                 'platform_detect', 'cuda',

@@ -32,7 +32,7 @@ _HEALED_MARK = "slot_move_pointer_buffers"
 def install():
     import importlib
 
-    import hcu_adapter.registry as _reg
+    import hcu_adapter.infra.registry as _reg
 
     mod = importlib.import_module(
         "sglang.srt.mem_cache.memory_pool"

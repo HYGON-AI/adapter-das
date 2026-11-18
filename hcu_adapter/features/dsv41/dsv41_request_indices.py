@@ -6,7 +6,7 @@ import logging
 import threading
 import types
 
-from ... import registry
+from ...infra import registry
 
 _LOCK = threading.RLock()
 _DISPATCH = "_hcu_dsv41_request_indices_impl"

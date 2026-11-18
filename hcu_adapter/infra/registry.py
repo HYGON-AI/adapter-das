@@ -388,7 +388,7 @@ def register(op, impl, target, mechanism, role=ROLE_ACTIVE, source=None,
     Raises on: unknown op (not in catalog), role violation, duplicate
     binding of a target, non-allowlisted text patch.
     """
-    from .infra import hcu_config
+    from . import hcu_config
 
     if op not in hcu_config.BACKEND_CATALOG:
         raise ValueError(
@@ -408,7 +408,7 @@ def register(op, impl, target, mechanism, role=ROLE_ACTIVE, source=None,
     if role not in (ROLE_ACTIVE, ROLE_REF):
         raise ValueError("Unknown implementation role: " + role)
     if op in hcu_config._DEEPINFER_CATALOG:
-        from .ops.selector import guard
+        from ..ops.selector import guard
         guard(op)
         candidates = hcu_config._DEEPINFER_CATALOG[op]
         if impl not in {item["implementation"] for item in candidates.values()}:
@@ -484,8 +484,8 @@ def dump(path=None):
     hcu_env.log_summary's data)}. CI and the config-level bisection
     scripts consume this; humans read log_summary().
     """
-    from .infra import hcu_config
-    from .infra import hcu_env
+    from . import hcu_config
+    from . import hcu_env
 
     unbound = [op for op in hcu_config.BACKEND_CATALOG if op not in _RECORDS and op not in {r["op"] for r in _OVERRIDES.values()}]
     doc = {
@@ -517,7 +517,7 @@ def log_summary(logger=None):
             "HCU adapter runtime: %-18s <- %-40s [%s/%s] via %s",
             op, r["impl"], r["role"], r["mechanism"], r["target"],
         )
-    from .infra import hcu_config
+    from . import hcu_config
 
     unbound = [op for op in hcu_config.BACKEND_CATALOG if op not in _RECORDS and op not in {r["op"] for r in _OVERRIDES.values()}]
     if unbound:
@@ -528,7 +528,7 @@ def log_summary(logger=None):
 
 
 def snapshot():
-    from .infra import hcu_config as config
+    from . import hcu_config as config
     return {
         "overrides": overrides(),
         "bindings": {op: {"implementation": record["implementation"],
@@ -542,8 +542,8 @@ _OVERRIDES = {}
 
 
 def replace(owner, name, implementation, *, namespace, expected):
-    from .infra import hcu_config as config
-    from .ops.selector import guard
+    from . import hcu_config as config
+    from ..ops.selector import guard
     module_name = getattr(owner, "__name__", type(owner).__name__)
     if not hasattr(owner, "__path__") and hasattr(owner, "__module__"):
         module_name = owner.__module__ + "." + getattr(owner, "__qualname__", module_name)

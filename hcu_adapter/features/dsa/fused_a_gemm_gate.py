@@ -74,7 +74,7 @@ def install():
     if not _patch(module):
         return
 
-    import hcu_adapter.registry as _reg
+    import hcu_adapter.infra.registry as _reg
 
     # Validate registration before publishing to the importers: a rejected
     # registration must not leave an active but unreported gate.

@@ -151,7 +151,7 @@ def install():
     if torch.version.hip is None:
         return
     import sglang.srt.layers.quantization.fp8 as fp8
-    from ... import registry
+    from ...infra import registry
 
     _install_method(fp8.Fp8MoEMethod)
     registry.register(

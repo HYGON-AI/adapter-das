@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-import hcu_adapter.bootstrap as bootstrap
-from hcu_adapter.bootstrap import (
+import hcu_adapter.infra.bootstrap as bootstrap
+from hcu_adapter.infra.bootstrap import (
     ACTIVE_HOST_ENV,
     detect_host,
     propagate_host,

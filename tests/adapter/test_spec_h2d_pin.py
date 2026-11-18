@@ -153,7 +153,7 @@ def test_invalid_stock_allocation_is_not_hidden(caplog):
 
 def test_public_install_and_disable(source, monkeypatch, tmp_path):
     from hcu_adapter.infra import hcu_env
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     ns, batch, _, results = _case(source)
     module = types.ModuleType("sglang.srt.speculative.eagle_utils")
@@ -206,7 +206,7 @@ def test_spawned_interpreter_installs_its_own_binding(source):
     # Same child-startup economics as the wqkv/fp4 spawn tests: the
     # auto-installed host bridge adds a ~25s sglang import the child never
     # uses, and under load it pushed past the old 40s queue budget.
-    from hcu_adapter.bootstrap import HOST_ENV  # canonical env name
+    from hcu_adapter.infra.bootstrap import HOST_ENV  # canonical env name
     saved_host = os.environ.get(HOST_ENV)
     os.environ[HOST_ENV] = "none"
     context = multiprocessing.get_context("spawn")

@@ -104,7 +104,7 @@ def _install_function(entry):
 
 
 def install():
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
     from sglang.srt.utils.common import maybe_reindex_device_id
 
     _install_function(maybe_reindex_device_id)

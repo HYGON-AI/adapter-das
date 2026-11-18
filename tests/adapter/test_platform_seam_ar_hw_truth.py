@@ -21,7 +21,7 @@ import types
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from hcu_adapter.infra import platform_seam
-from hcu_adapter import registry  # noqa: E402
+from hcu_adapter.infra import registry  # noqa: E402
 
 _NAME = platform_seam._AR_MODULE
 _HW = {"_is_cuda": False, "_is_hip": True, "_is_musa": False}

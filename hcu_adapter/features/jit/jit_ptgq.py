@@ -43,7 +43,7 @@ _REPL = "if (__all(skip)) return;  // HCU: DTK hipcc has no __all_sync"
 
 def _apply(root, register):
     """Transform adapter-owned staging files; never pass a community root."""
-    import hcu_adapter.registry as _reg
+    import hcu_adapter.infra.registry as _reg
 
     csrc = root / "csrc"
     p = csrc / _RELPATH

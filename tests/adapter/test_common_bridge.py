@@ -28,7 +28,7 @@ def test_common_guards_run_in_pre_import_order(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
-        hcu_adapter,
+        hcu_adapter.infra,
         "tvmffi_warmup",
         SimpleNamespace(install=lambda: events.append("tvmffi")),
         raising=False,
@@ -59,7 +59,7 @@ def test_one_common_guard_failure_does_not_block_later_guards(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
-        hcu_adapter,
+        hcu_adapter.infra,
         "tvmffi_warmup",
         SimpleNamespace(install=lambda: events.append("tvmffi")),
         raising=False,

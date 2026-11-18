@@ -16,7 +16,7 @@ def install(_he=None) -> None:
     # runtime binding retains imported aliases without source writes;
     # needs sglang.srt.utils.common importable -- after the seam above.
     try:
-        from hcu_adapter import dist_bc
+        from hcu_adapter.infra import dist_bc
 
         dist_bc.install()
     except Exception:
@@ -28,7 +28,7 @@ def install(_he=None) -> None:
     # watchdog factory BEFORE scheduler.py from-imports it; explicit
     # --watchdog-timeout always wins (watchdog_cold.py).
     try:
-        from hcu_adapter import watchdog_cold
+        from hcu_adapter.infra import watchdog_cold
 
         watchdog_cold.install()
     except Exception:
@@ -38,7 +38,7 @@ def install(_he=None) -> None:
     # KV-pool stride tensor fix (torch2.11 numpy-scalar dtype infer); text
     # patch per governance §3 tier-3, allowlist entry "kv_pool_strides".
     try:
-        from hcu_adapter import kv_fix
+        from hcu_adapter.infra import kv_fix
 
         kv_fix.install()
     except Exception:

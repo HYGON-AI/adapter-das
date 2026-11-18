@@ -96,7 +96,7 @@ def minimax_h3_rotary_embedding(positions, query, key, head_size, cos_sin_cache,
 
 
 
-from hcu_adapter import registry as _registry
+from hcu_adapter.infra import registry as _registry
 
 _registry.register("minimax_h3_rotary_embedding", "H3 partial RoPE Triton/torch candidate",
                    "sgl_kernel.minimax_h3_rotary_embedding", _registry.MECH_SEAM)

@@ -203,7 +203,7 @@ def _apply(root, register):
     if missing:
         raise RuntimeError("jit_quant_fp8: upstream needles changed: " + ",".join(missing))
 
-    import hcu_adapter.registry as _reg
+    import hcu_adapter.infra.registry as _reg
 
     # v0.5.23+ only: the bf16 packed fast-path store (see _NEEDLE_BF16_FAST).
     # Pre-v0.5.23 trees legitimately lack the path, so tolerate absence (one

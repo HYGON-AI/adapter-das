@@ -816,7 +816,7 @@ def log_summary():
         LOG.warning("HCU adapter env: " + " ".join(parts))
     else:
         LOG.warning("HCU adapter env: all defaults (no explicit HCU_* vars)")
-    from .. import registry as _reg
+    from . import registry as _reg
 
     _reg.log_summary(LOG)
     out = os.environ.get("HCU_ADAPTER_DUMP", "")

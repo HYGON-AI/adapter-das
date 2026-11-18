@@ -317,7 +317,7 @@ def install() -> None:
 
 
         try:
-            from hcu_adapter import spec_h2d_pin
+            from hcu_adapter.bridges import sglang_spec_h2d_pin as spec_h2d_pin
 
             spec_h2d_pin.install()
         except Exception:

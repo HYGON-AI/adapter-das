@@ -244,8 +244,15 @@ def test_bootstrap_bridges_wire_both_guards():
     # common.install runs before the host bridge (test_bootstrap.py); keep
     # topology hygiene in common and the scheduler wrapper in the host chain.
     assert "nccl_topo_guard.install()" in common
-    # watchdog wraps the factory before scheduler.py imports it
-    assert "watchdog_cold.install()" in sglang
+    # watchdog wraps the factory before scheduler.py imports it; the call
+    # lives in the bootstrap_fixes bridge module since the layout A-batch
+    # split, installed in-order by the host chain (seam-first, before any
+    # deep sglang.srt import).
+    bootstrap_fixes = (
+        ROOT / "hcu_adapter" / "bridges" / "sglang_bootstrap_fixes.py"
+    ).read_text(encoding="utf-8")
+    assert '_install_bridge("bootstrap_fixes"' in sglang
+    assert "watchdog_cold.install()" in bootstrap_fixes
 
 
 def test_aiter_layout_probe_reads_source_without_importing_sglang():
@@ -310,7 +317,7 @@ if __name__ == "__main__":
 # Explicit vendor opt-in must never override the high-risk fast-off.
 def test_vendor_disable_overrides_explicit_opt_in(monkeypatch):
     import types
-    from hcu_adapter import fa_vendor
+    from hcu_adapter.bridges import sglang_fa_vendor as fa_vendor
     monkeypatch.setitem(sys.modules, 'flash_attn', types.ModuleType('flash_attn'))
     monkeypatch.setenv('HCU_FA_IMPL', 'vendor')
     monkeypatch.setenv('HCU_DISABLE_OPS', 'vendor_fa')

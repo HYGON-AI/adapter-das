@@ -17,7 +17,7 @@ import logging
 import threading
 import types
 
-from . import registry as _reg
+from .. import registry as _reg
 
 logger = logging.getLogger("hcu.adapter")
 _LOCK = threading.RLock()
@@ -96,7 +96,7 @@ def _install_function(function):
 
 
 def install():
-    from . import hcu_env
+    from .. import hcu_env
 
     if not hcu_env.enabled("HCU_SPEC_H2D_PIN"):
         return

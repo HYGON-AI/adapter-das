@@ -8,7 +8,7 @@ import torch
 @pytest.fixture(scope='module')
 def native_attention():
     from sglang.multimodal_gen.runtime.layers.attention.backends.flash_attn import FlashAttentionImpl
-    from hcu_adapter import fa_vendor
+    from hcu_adapter.bridges import sglang_fa_vendor as fa_vendor
     fa_vendor.install()
     from sglang.kernels.ops.attention import flash_attention
     from sglang.kernels.ops.attention import flash_attention_v3

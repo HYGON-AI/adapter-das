@@ -55,7 +55,7 @@ def install(_he=None) -> None:
     # fa3 attention vendor routing (DTK flash_attn wheel; emu fallback).
     # Needs sgl_kernel.flash_attn importable (below pulls it in).
     try:
-        from hcu_adapter import fa_vendor
+        from hcu_adapter.bridges import sglang_fa_vendor as fa_vendor
 
         fa_vendor.install()
     except Exception:

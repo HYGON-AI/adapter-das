@@ -16,7 +16,7 @@ import types
 import pytest
 import torch
 
-from hcu_adapter import spec_h2d_pin as bridge
+from hcu_adapter.bridges import sglang_spec_h2d_pin as bridge
 
 
 _SOURCE = """def eagle_prepare_for_decode(batch):

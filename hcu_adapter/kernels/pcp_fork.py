@@ -210,7 +210,7 @@ def validate_config(cfg) -> bool:
                 errors.append(str(error))
             except ValueError as error:
                 errors.append(str(error))
-    from hcu_adapter.fp4_indexer import applicable as fp4_applicable, validate_config as validate_fp4
+    from hcu_adapter.features.dsv41.fp4_indexer import applicable as fp4_applicable, validate_config as validate_fp4
     if fp4_applicable(cfg):
         # The FP4 owner supplies its producer/cache/reader while PCP preserves
         # replicated K preparation and rank-local query metadata.

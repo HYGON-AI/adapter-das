@@ -20,7 +20,7 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import is_layer_s
 from vllm.models.deepseek_v41.quant_config import DeepseekV4FP8Config
 from vllm.platforms import current_platform
 
-from hcu_adapter.dsv41_activation import QUANTIZATION_METHOD, check_health
+from hcu_adapter.features.dsv41.dsv41_activation import QUANTIZATION_METHOD, check_health
 
 # The Channel-FP8 MoE method is plugin-private mechanism (HCU DeepGEMM experts),
 # so the adapter cannot import it. The plugin injects it during activation; a

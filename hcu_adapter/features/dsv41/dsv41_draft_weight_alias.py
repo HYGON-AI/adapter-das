@@ -32,8 +32,8 @@ from vllm.models.deepseek_v41.amd.dspark import (
     DSparkDeepseekV4ForCausalLM as NativeDSpark,
 )
 
-from hcu_adapter.dsv41_activation import check_health
-from hcu_adapter.dsv41_channel_fp8 import HcuDSV41ChannelFP8Config
+from hcu_adapter.features.dsv41.dsv41_activation import check_health
+from hcu_adapter.features.dsv41.dsv41_channel_fp8 import HcuDSV41ChannelFP8Config
 
 _STATE = "_hcu_dsv41_scale_alias_load"
 _gate = RLock()

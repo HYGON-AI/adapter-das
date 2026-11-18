@@ -153,7 +153,7 @@ def resolve_graph_capture_allowed():
     activates it binds a zero-argument ``graph_allowed`` resolver that reads its
     historical module object; honouring that resolver is what keeps a patch on
     the plugin's patch point reaching every caller -- including
-    ``hcu_adapter.fp4_indexer``, which must not import the plugin.
+    ``hcu_adapter.features.dsv41.fp4_indexer``, which must not import the plugin.
     """
     resolver = _resolvers.get("graph_allowed")
     return graph_capture_allowed if resolver is None else resolver()
@@ -187,8 +187,8 @@ def build():
             rocm_aiter_sparse_attn_indexer as native_indexer,
         )
 
-        from hcu_adapter.dsv41_channel_fp8 import _is_v41
-        from hcu_adapter.fp4_indexer import applicable as fp4_applicable
+        from hcu_adapter.features.dsv41.dsv41_channel_fp8 import _is_v41
+        from hcu_adapter.features.dsv41.fp4_indexer import applicable as fp4_applicable
 
         logger = init_logger(__name__)
         _registered = False
@@ -267,7 +267,7 @@ def build():
                 raise ValueError(
                     "FP8 indexer requires final1D or effective2D context lengths")
             if q.is_cuda:
-                from hcu_adapter.v41_fp8_indexer_triton import rectangular_logits
+                from hcu_adapter.features.dsv41.v41_fp8_indexer_triton import rectangular_logits
                 return rectangular_logits(q, cache, weights, context_lens,
                                           block_tables, max_model_len)
             logits = torch.full((batch * next_n, max_model_len), -float("inf"),
@@ -448,7 +448,7 @@ def build():
                 if meta.num_decode_tokens:
                     if meta.decode is None:
                         raise ValueError("missing V41 decode metadata")
-                    from hcu_adapter.v41_fp8_indexer_triton import decode_indexer
+                    from hcu_adapter.features.dsv41.v41_fp8_indexer_triton import decode_indexer
                     decode_indexer(q, cache, weights, meta.decode,
                                    meta.num_decode_tokens, selected_out, compress_ratio,
                                    candidates, candidate_block_size, candidate_write,

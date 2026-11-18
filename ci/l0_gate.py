@@ -568,7 +568,7 @@ def check_layout_ownership(r):
         "deep_gemm_contig_triton", "deep_gemm_dtk", "deep_gemm_fp8_triton",
         "deep_gemm_masked_triton", "dsa_mqa_logits_emu",
         "hadamard_triton", "kpool_read_triton", "mqa_logits_triton",
-        "slimquant", "triton_libdev", "triton_pdl", "v41_fp8_indexer_triton",
+        "slimquant", "triton_libdev", "triton_pdl",
     }
     tops = []
     for f in iter_files(".py"):

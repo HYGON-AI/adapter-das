@@ -77,7 +77,7 @@ def install(_he=None) -> None:
 
     # EP token padding needs a reserved request row in V4.1 metadata.
     try:
-        from hcu_adapter import dsv41_request_indices
+        from hcu_adapter.features.dsv41 import dsv41_request_indices
 
         dsv41_request_indices.install()
     except Exception:

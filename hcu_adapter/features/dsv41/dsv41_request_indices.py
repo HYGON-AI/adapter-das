@@ -6,7 +6,7 @@ import logging
 import threading
 import types
 
-from . import registry
+from ... import registry
 
 _LOCK = threading.RLock()
 _DISPATCH = "_hcu_dsv41_request_indices_impl"
@@ -22,7 +22,7 @@ class _RequestTorch:
 
     def repeat_interleave(self, requests, repeats, *, output_size=None):
         if isinstance(repeats, self._torch.Tensor) and output_size is not None:
-            from .kernels.request_indices_emu import padded_request_indices
+            from hcu_adapter.kernels.request_indices_emu import padded_request_indices
 
             return padded_request_indices(requests, repeats, output_size)
         return self._torch.repeat_interleave(requests, repeats, output_size=output_size)

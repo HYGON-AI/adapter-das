@@ -24,7 +24,8 @@ import inspect
 import os
 from threading import RLock
 
-from hcu_adapter import dsv41_dspark_registration, registry
+from hcu_adapter import registry
+from hcu_adapter.features.dsv41 import dsv41_dspark_registration
 from hcu_adapter.infra import hcu_env
 from hcu_adapter.kill_switch import op_disabled
 from hcu_adapter.extensions import ExtensionCommitError, ExtensionContext, ExtensionSpec
@@ -220,7 +221,7 @@ def activate_extension(context: ExtensionContext) -> None:
         try:
             try:
                 quant = _import_module("vllm.model_executor.layers.quantization")
-                candidate = _import_module("hcu_adapter.dsv41_channel_fp8")
+                candidate = _import_module("hcu_adapter.features.dsv41.dsv41_channel_fp8")
             except BaseException as error:
                 # Native imports may register operators before failing. Do not
                 # label such a partially prepared process as a clean fallback.

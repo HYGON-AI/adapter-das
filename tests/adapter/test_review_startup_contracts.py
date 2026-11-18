@@ -9,7 +9,8 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from hcu_adapter import ct_w4a8_registration as ct, hcu_config, registry
+from hcu_adapter import hcu_config, registry
+from hcu_adapter.features.ct_w4a8 import ct_w4a8_registration as ct
 from hcu_adapter.bridges import vllm as host, vllm_pcp as pcp
 from hcu_adapter.extensions import ExtensionCommitError, ExtensionContext
 from hcu_adapter.runtime_lifecycle import ProcessLocalLifecycle

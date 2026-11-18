@@ -15,7 +15,7 @@ def install(_he=None) -> None:
     # Both CT and explicit w8a8_int8 consumers can miss the CUDA-gated
     # GEMM import. Bind the existing implementation in their own globals.
     try:
-        from hcu_adapter import int8_linear
+        from hcu_adapter.features.ct_w4a8 import int8_linear
 
         int8_linear.install()
     except Exception:

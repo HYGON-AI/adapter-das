@@ -155,7 +155,7 @@ def install():
         cls.get_moe_scheme = _make_healed_get_moe_scheme(cls.get_moe_scheme)
         detail = "get_moe_scheme KeyError('Linear') scoped heal"
     elif route == "int8":
-        from hcu_adapter import ct_w4a8_int8_moe
+        from hcu_adapter.features.ct_w4a8 import ct_w4a8_int8_moe
 
         ct_w4a8_int8_moe.install()
         detail = (
@@ -172,7 +172,7 @@ def install():
         # dispatch uses expert-major masked tensors and bypasses the regular
         # fused_experts seam, so install its adapter-owned W4A16 branch too.
         try:
-            from hcu_adapter import w4a16_moe
+            from hcu_adapter.features.ct_w4a8 import w4a16_moe
 
             w4a16_moe.install_deepep_w4a16()
             detail += "; DeepEP LL expert-major W4A16 branch"

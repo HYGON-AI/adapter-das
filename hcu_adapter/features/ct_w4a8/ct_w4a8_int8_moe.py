@@ -252,8 +252,8 @@ def install():
     from sglang.srt.layers.moe.fused_moe_triton.layer import FusedMoE
     from sglang.srt.layers.moe.token_dispatcher import DispatchOutputChecker
     from sglang.srt.layers.moe.token_dispatcher.deepep import DeepEPLLCombineInput
-    from .kernels.w4a8_int8_native_triton import w4a8_int8_native_masked_experts
-    from . import registry
+    from hcu_adapter.kernels.w4a8_int8_native_triton import w4a8_int8_native_masked_experts
+    from ... import registry
 
     loader = FusedMoE._weight_loader_impl
     loader_code = _adapted_loader_code(loader)

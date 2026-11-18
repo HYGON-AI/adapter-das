@@ -7,7 +7,7 @@ from types import SimpleNamespace as NS
 import pytest
 import torch
 
-from hcu_adapter import ct_w4a8_int8_moe as native
+from hcu_adapter.features.ct_w4a8 import ct_w4a8_int8_moe as native
 
 
 def entry():
@@ -316,7 +316,8 @@ def test_core_rejects_invalid_combine_output(fault):
 def test_explicit_int8_install_does_not_wrap_config_constructor(monkeypatch):
     import sys
     from types import ModuleType
-    from hcu_adapter import ct_w4a8_moe, registry
+    from hcu_adapter import registry
+    from hcu_adapter.features.ct_w4a8 import ct_w4a8_moe
     from hcu_adapter.infra import hcu_env
 
     class OfficialConfig:

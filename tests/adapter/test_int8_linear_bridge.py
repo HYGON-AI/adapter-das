@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hcu_adapter import int8_linear
+from hcu_adapter.features.ct_w4a8 import int8_linear
 
 
 def consumer(path, owner, entry):

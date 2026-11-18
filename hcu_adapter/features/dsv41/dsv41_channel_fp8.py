@@ -176,7 +176,7 @@ class HcuDSV41ChannelFP8Config(DeepseekV4FP8Config):
             if isinstance(method, CompressedTensorsLinearMethod) and isinstance(
                 layer.scheme, CompressedTensorsW8A8Fp8
             ):
-                from hcu_adapter.channel_fp8_empty_linear import HcuDSV41ChannelFP8LinearMethod
+                from hcu_adapter.features.ct_w4a8.channel_fp8_empty_linear import HcuDSV41ChannelFP8LinearMethod
 
                 return HcuDSV41ChannelFP8LinearMethod(channel_config)
             return method

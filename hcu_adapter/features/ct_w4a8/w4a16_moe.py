@@ -68,7 +68,7 @@ _deepep_installed = False
 
 
 def _mode() -> str:
-    from .infra import hcu_env
+    from hcu_adapter.infra import hcu_env
 
     v, _src = hcu_env.resolve("HCU_W4A16_MOE_IMPL")
     return (v or "auto").strip().lower()
@@ -125,7 +125,7 @@ def w4a16_deepep_ll(
         raise ValueError(message)
 
     if backend == "triton":
-        from .kernels.grouped_gemm_triton import w4a16_masked
+        from hcu_adapter.kernels.grouped_gemm_triton import w4a16_masked
 
         # Read the loaded packed bytes directly. Caching a second full expert
         # stack per layer exceeds the real model's remaining device memory.
@@ -260,7 +260,7 @@ def install_deepep_w4a16():
 
         registry.register(
             "w4a16_moe",
-            "hcu_adapter.w4a16_moe.w4a16_deepep_ll",
+            "hcu_adapter.features.ct_w4a8.w4a16_moe.w4a16_deepep_ll",
             "sglang.srt.layers.moe.ep_moe.DeepEPMoE.run_moe_core",
             registry.MECH_REBIND,
             detail="CT W4A8->W4A16 DeepEP LL raw-weight Triton branch",

@@ -63,7 +63,7 @@ def install(_he=None) -> None:
         )
 
     try:
-        from hcu_adapter import w4a16_moe as _w16m
+        from hcu_adapter.features.ct_w4a8 import w4a16_moe as _w16m
 
         _w16m.install()
     except ImportError:
@@ -74,7 +74,7 @@ def install(_he=None) -> None:
         )
 
     try:
-        from hcu_adapter import wna16_channel_moe as _wnch
+        from hcu_adapter.features.ct_w4a8 import wna16_channel_moe as _wnch
 
         _wnch.install()
     except ImportError:
@@ -86,7 +86,7 @@ def install(_he=None) -> None:
         )
 
     try:
-        from hcu_adapter import moe_c_w4a16 as _mcw
+        from hcu_adapter.features.ct_w4a8 import moe_c_w4a16 as _mcw
 
         _mcw.install()
     except ImportError:
@@ -97,7 +97,7 @@ def install(_he=None) -> None:
         )
 
     try:
-        from hcu_adapter import ct_w4a8_moe as _cw4a8
+        from hcu_adapter.features.ct_w4a8 import ct_w4a8_moe as _cw4a8
 
         _cw4a8.install()
     except ImportError:

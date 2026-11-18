@@ -208,22 +208,24 @@ def test_spawned_interpreter_installs_its_own_binding(source):
     from hcu_adapter.bootstrap import HOST_ENV  # canonical env name
     saved_host = os.environ.get(HOST_ENV)
     os.environ[HOST_ENV] = "none"
-    context = multiprocessing.get_context("spawn")
-    queue = context.Queue()
-    process = context.Process(target=_spawn_worker, args=(source, queue))
-    process.start()
     try:
+        context = multiprocessing.get_context("spawn")
+        queue = context.Queue()
+        process = context.Process(target=_spawn_worker, args=(source, queue))
+        process.start()
         assert queue.get(timeout=90) == ([3, 7], True)
         process.join(timeout=20)
         assert process.exitcode == 0
-    finally:
         if process.is_alive():
             process.terminate()
             process.join(timeout=10)
+        queue.close()
+    finally:
+        # Covers pre-start failures too (queue/Process construction): any
+        # exception path restores auto-host detection for later tests.
         if saved_host is None:
             os.environ.pop(HOST_ENV, None)
         else:
             os.environ[HOST_ENV] = saved_host
-        queue.close()
 
 

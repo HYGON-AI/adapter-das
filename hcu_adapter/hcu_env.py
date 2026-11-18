@@ -109,14 +109,6 @@ def has_aiter_custom_allreduce():
         return False
 
 
-def _active_host():
-    return os.environ.get("_HCU_ADAPTER_ACTIVE_HOST")
-
-
-def _auto_ar_norm_impl():
-    # SGLang validates the actual communicator after device binding
-    # (ar_norm_aiter AFTER hook); skip the wheel-layout gate there.
-    check_layout = not (_active_host() == "sglang")
 def _auto_ar_norm_impl(*, check_layout=True):
     # fused AR+RMSNorm rides the SAME aiter GraphSafe communicator the
     # plain AR auto-rule already vets: refuse wherever HCU_AITER_AR

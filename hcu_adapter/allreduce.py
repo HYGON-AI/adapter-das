@@ -65,6 +65,19 @@ def _flag(name):
     raise AllReduceCompatibilityError(f"{name} must be a boolean")
 
 
+def _provider_flag(name):
+    # _flag's boolean contract over the provider-consistent value: the
+    # provider reads this input from the environment itself, so a
+    # config-layer override must be refused instead of advertised
+    # (see _provider_value).
+    value = _provider_value(name).strip().lower()
+    if value in ("1", "true", "yes", "on"):
+        return True
+    if value in ("0", "false", "no", "off", ""):
+        return False
+    raise AllReduceCompatibilityError(f"{name} must be a boolean")
+
+
 def requested_policy():
     # A kill veto is not an availability failure, even when required. Do not
     # parse irrelevant vendor options (or probe any architecture) while killed.
@@ -90,7 +103,7 @@ def requested_policy():
     if small not in ("off", "ll", "ll128", "auto"):
         raise AllReduceCompatibilityError("invalid AITER_AR_SMALL_MESSAGE")
     return Policy(True, size * MIB, max(128, 2 * size) * MIB, transport,
-                  _flag("AITER_AR_ENABLE_REG_CAPTURE"), small)
+                  _provider_flag("AITER_AR_ENABLE_REG_CAPTURE"), small)
 
 
 def effective_sources():

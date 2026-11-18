@@ -10,6 +10,7 @@ import importlib.metadata
 import json
 import os
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import sys
@@ -75,38 +76,44 @@ def main():
         raise FileExistsError(output)
     jit = stage / "jit"
     stage.mkdir(parents=True, exist_ok=False)
-    jit.mkdir()
-    # Reuse unrelated image modules; only CAR is absent and therefore rebuilt.
-    for binary in (package / "jit").glob("*.so"):
-        if binary.name != MODULE:
-            (jit / binary.name).symlink_to(binary)
-    build_env = dict(AITER_JIT_DIR=str(jit), AITER_CODE_OBJECT_VERSION="5",
-                     CK_CODE_OBJECT_VERSION="5", GPU_ARCHS="gfx936",
-                     MAX_JOBS=str(args.jobs), AITER_REBUILD="0")
-    child = (
-        "import os; from pathlib import Path; import aiter; "
-        "from aiter.jit.core import get_module; aiter.meta_size(); "
-        "assert Path(get_module('module_custom_all_reduce').__file__).resolve().parent "
-        "== Path(os.environ['AITER_JIT_DIR']).resolve()"
-    )
-    subprocess.run([sys.executable, "-c", child], check=True,
-                   env=dict(os.environ, HCU_ADAPTER_HOST="none", **build_env))
-    binary = jit / MODULE
-    if binary.is_symlink() or code_object_abis(binary) != [3]:
-        raise RuntimeError("Isolated CAR binary must contain gfx936 COV5 device code")
-    if sources(package) != manifest or sha256(original) != ORIGINAL_BINARY:
-        raise RuntimeError("Installed Aiter changed during the build")
-    report = {
-        "aiter_version": VERSION, "source_digest": SOURCE_DIGEST,
-        "source_files": manifest, "original_binary_sha256": ORIGINAL_BINARY,
-        "binary": "jit/" + MODULE, "binary_sha256": sha256(binary),
-        "build_env": dict(build_env, AITER_JIT_DIR="<output-dir>/jit"),
-        "scope": "Same image sources, COV5/gfx936 CAR only; numerical/graph/model validation required",
-    }
-    (stage / "provenance.json").write_text(json.dumps(report, indent=2) + "\n")
-    if output.exists():
-        raise FileExistsError(output)
-    stage.rename(output)
+    try:
+        jit.mkdir()
+        # Reuse unrelated image modules; only CAR is absent and therefore rebuilt.
+        for binary in (package / "jit").glob("*.so"):
+            if binary.name != MODULE:
+                (jit / binary.name).symlink_to(binary)
+        build_env = dict(AITER_JIT_DIR=str(jit), AITER_CODE_OBJECT_VERSION="5",
+                         CK_CODE_OBJECT_VERSION="5", GPU_ARCHS="gfx936",
+                         MAX_JOBS=str(args.jobs), AITER_REBUILD="0")
+        child = (
+            "import os; from pathlib import Path; import aiter; "
+            "from aiter.jit.core import get_module; aiter.meta_size(); "
+            "assert Path(get_module('module_custom_all_reduce').__file__).resolve().parent "
+            "== Path(os.environ['AITER_JIT_DIR']).resolve()"
+        )
+        subprocess.run([sys.executable, "-c", child], check=True,
+                       env=dict(os.environ, HCU_ADAPTER_HOST="none", **build_env))
+        binary = jit / MODULE
+        if binary.is_symlink() or code_object_abis(binary) != [3]:
+            raise RuntimeError("Isolated CAR binary must contain gfx936 COV5 device code")
+        if sources(package) != manifest or sha256(original) != ORIGINAL_BINARY:
+            raise RuntimeError("Installed Aiter changed during the build")
+        report = {
+            "aiter_version": VERSION, "source_digest": SOURCE_DIGEST,
+            "source_files": manifest, "original_binary_sha256": ORIGINAL_BINARY,
+            "binary": "jit/" + MODULE, "binary_sha256": sha256(binary),
+            "build_env": dict(build_env, AITER_JIT_DIR="<output-dir>/jit"),
+            "scope": "Same image sources, COV5/gfx936 CAR only; numerical/graph/model validation required",
+        }
+        (stage / "provenance.json").write_text(json.dumps(report, indent=2) + "\n")
+        if output.exists():
+            raise FileExistsError(output)
+        stage.rename(output)
+    except BaseException:
+        # A failed stage holds no usable artifact; drop it so the retry does
+        # not die at stage.mkdir(exist_ok=False) above.
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
     print(json.dumps({"output": str(output), "binary_sha256": report["binary_sha256"]}))
 
 

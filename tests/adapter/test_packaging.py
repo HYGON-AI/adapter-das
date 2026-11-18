@@ -96,8 +96,10 @@ def _copy_repo(tmp_path):
 
 @pytest.fixture(scope="module")
 def kernel_wheel(tmp_path_factory):
+    # dedicated wheel dir: _build_wheel globs "*.whl" from wheel_dir, so a
+    # shared basetemp would let this fixture bind to another target's wheel
     return _build_wheel(_copy_repo(tmp_path_factory.mktemp("src-kernel")),
-                        tmp_path_factory.getbasetemp(), "kernel")
+                        tmp_path_factory.mktemp("wheel-kernel"), "kernel")
 
 
 @pytest.fixture(scope="module")
@@ -106,7 +108,7 @@ def adapter_wheel(tmp_path_factory):
     # at the repo root (src-layout mapping, nothing copied)
     source = _copy_repo(tmp_path_factory.mktemp("src-adapter"))
     return _build_wheel(source / "packaging" / "hcu-adapter",
-                        tmp_path_factory.getbasetemp(), "adapter")
+                        tmp_path_factory.mktemp("wheel-adapter"), "adapter")
 
 
 def _members(wheel):

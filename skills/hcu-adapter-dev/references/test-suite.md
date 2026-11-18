@@ -220,6 +220,15 @@ CPU required-policy 用例须显式隔离 native ABI 与 FP8 注册前置条件�
 负控，只隔离后续 FP8 provider；扩展替身须接收并检查公开
 `health_check_sink` 参数。前置隔离不能用于设备或 native ABI 验收。
 
+vLLM required-owner 的 loaded-Graph 故障探针使用独立可丢弃服务；正常
+模型精度和原退出 grace 的配对结果单独保留。先由真实模型产生成功请求，
+确认 manager 持有真实设备 Graph 且发生 FULL replay，再注入 owner 绑定
+漂移。可用仅转发原调用的观察器记录 Worker guard、官方 runner 委托和
+FULL replay 计数；拒绝须来自真实 guard，且后两者计数不再增加。恢复
+provider 不能清除已锁存失败。worker 可能随拒绝退出，观察记录须在退出前
+持久化，不能仅凭 HTTP 失败或启动 capture 日志判定通过。该故障服务的
+预期引擎失败不计入正常生命周期成绩，也不替代其独立验收。
+
 | 维度 | 断言 | 不测会漏掉的 bug（真实案例） |
 |---|---|---|
 | 1 数值契约 | vs torch fp32 参考：cos ≥ 0.9999 且 maxrel ≤ tol | rope cache 半分布局（fbc540c）："能跑"但语义错 |

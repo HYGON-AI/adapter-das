@@ -19,7 +19,7 @@ def install(_he=None) -> None:
     # lacks. Triton radix-2 butterfly by default (HCU_HADAMARD_IMPL),
     # torch emu kept as the =emu reference arm.
     try:
-        from hcu_adapter import hadamard_triton
+        from hcu_adapter.features.hadamard import hadamard_triton
 
         hadamard_triton.install()
     except Exception:

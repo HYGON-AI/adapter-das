@@ -96,7 +96,7 @@ def install():
 
     impl, src = hcu_env.resolve("HCU_HADAMARD_IMPL")
     if impl == "emu":
-        from hcu_adapter.hadamard_emu import hadamard_transform as fn
+        from hcu_adapter.features.hadamard.hadamard_emu import hadamard_transform as fn
     else:
         fn = _triton_hadamard_transform
 

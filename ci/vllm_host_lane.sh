@@ -69,7 +69,7 @@ fi
 # Record the installed release/owner paths without importing GPU frameworks.
 # The shared Adapter lane also supports other admitted vLLM release lines;
 # version strings here are evidence, not a new exact-wheel acceptance gate.
-env -u PYTHONPATH HCU_ADAPTER_HOST=none python3 - <<'PY'
+if ! env -u PYTHONPATH HCU_ADAPTER_HOST=none python3 - <<'PY'
 import importlib.metadata as metadata
 import importlib.util
 import json
@@ -93,6 +93,10 @@ for distribution, module in (
                      module_origin=str(Path(spec.origin).resolve()) if spec and spec.origin else None))
 print("VLLM-LANE: inventory " + json.dumps(dict(python=sys.executable, packages=rows)))
 PY
+then
+    echo "VLLM-LANE: unable to record component inventory"
+    exit 1
+fi
 
 # Mirror of tests/adapter/conftest.py _is_vllm_host_file. conftest remains
 # the source of truth for the host-domain scoping; the per-file counts below

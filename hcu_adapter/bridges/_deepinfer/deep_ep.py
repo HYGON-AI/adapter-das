@@ -3,7 +3,7 @@
 
 """Explicitly bridge the installed HCU DeepEP without replacing its package."""
 
-from ..infra import hcu_env
+from ...infra import hcu_env
 from hcu_adapter import registry
 
 

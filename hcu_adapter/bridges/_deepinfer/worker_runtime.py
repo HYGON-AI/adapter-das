@@ -7,7 +7,7 @@ from functools import partial
 import os
 import sys
 
-from ..infra import hcu_env
+from ...infra import hcu_env
 from hcu_adapter import registry
 
 

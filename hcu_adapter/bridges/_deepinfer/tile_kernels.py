@@ -10,7 +10,7 @@ operators raise at call time, naming the actual unresolved production symbol.
 import sys
 import types
 
-from ..infra import hcu_env
+from ...infra import hcu_env
 from hcu_adapter import registry
 
 _MODULES = {

@@ -200,7 +200,7 @@ def install():
         or getattr(deepgemm, "get_num_sms", None) is None
     )
     if _missing_paged_mqa:
-        from ... import dsa_mqa_logits_emu as _dpm
+        from ..dsa import dsa_mqa_logits_emu as _dpm
 
         if getattr(shim, "get_num_sms", None) is None:
             shim.get_num_sms = _dpm.get_num_sms
@@ -219,7 +219,7 @@ def install():
     # clean_logits=False only expect stale data outside [ks,ke), never use
     # it).
     if getattr(deepgemm, "fp8_mqa_logits", None) is None:
-        from ... import mqa_logits_emu as _mle
+        from ..dsa import mqa_logits_emu as _mle
 
         def _fp8_mqa_logits(q_fp8, kv, weights, cu_starts, cu_ends,
                             clean_logits=True, **_kw):

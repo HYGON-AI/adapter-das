@@ -44,7 +44,7 @@ logger = logging.getLogger("hcu.adapter")
 
 def _install_kda_prefill(impl: str) -> None:
     if impl == "emu":
-        from hcu_adapter import kda_prefill_emu
+        from hcu_adapter.features.gdn import kda_prefill_emu
 
         kda_prefill_emu.install_patch()
         return
@@ -95,7 +95,7 @@ def _install_kda_prefill(impl: str) -> None:
 
 def _install_conv1d(impl: str) -> None:
     if impl == "emu":
-        from hcu_adapter import conv1d_fn_emu, conv1d_update_emu
+        from hcu_adapter.features.gdn import conv1d_fn_emu, conv1d_update_emu
 
         conv1d_update_emu.install_patch()
         conv1d_fn_emu.install_patch()

@@ -45,7 +45,7 @@ def install(_he=None) -> None:
     # compare finds the divergence. HCU_KDA_PREFILL_IMPL / HCU_CONV1D_IMPL =
     # emu (default) | fork | stock.
     try:
-        from hcu_adapter import fla_hcu_router
+        from hcu_adapter.features.gdn import fla_hcu_router
 
         fla_hcu_router.install()
     except Exception:
@@ -66,7 +66,7 @@ def install(_he=None) -> None:
     # HCU_LINEAR_ATTN_GDN=aiter; default keeps upstream triton fla).
     # Requires sglang importable (imports the fla modules it rebinds).
     try:
-        from hcu_adapter import gdn_aiter
+        from hcu_adapter.features.gdn import gdn_aiter
 
         gdn_aiter.install()
     except Exception:
@@ -74,7 +74,7 @@ def install(_he=None) -> None:
             "HCU adapter: gdn aiter router not installed", exc_info=True
         )
     try:
-        from hcu_adapter import gdn_cutedsl_fallback
+        from hcu_adapter.features.gdn import gdn_cutedsl_fallback
 
         gdn_cutedsl_fallback.install()
     except Exception:

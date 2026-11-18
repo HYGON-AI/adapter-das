@@ -16,7 +16,7 @@ import math
 import pytest
 import torch
 
-from hcu_adapter.conv1d_update_emu import causal_conv1d_update_emu
+from hcu_adapter.features.gdn.conv1d_update_emu import causal_conv1d_update_emu
 
 
 def _case():

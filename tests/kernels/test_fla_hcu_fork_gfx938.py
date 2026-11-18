@@ -39,7 +39,7 @@ def _check(name, a, b, cos_min=0.9999, rel_max=0.02):
 
 def test_kda_prefill_chunk():
     from hcu_adapter.fla_hcu.kda import chunk_kda
-    from hcu_adapter.kda_prefill_emu import kda_extend_emu
+    from hcu_adapter.features.gdn.kda_prefill_emu import kda_extend_emu
 
     import os
     _t1 = int(os.environ.get('GATE_T1', '1536')); _t2 = int(os.environ.get('GATE_T2', '512'))

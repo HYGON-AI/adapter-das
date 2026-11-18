@@ -15,7 +15,7 @@ import logging
 
 import torch
 
-from .registry import MECH_REBIND, register
+from hcu_adapter.registry import MECH_REBIND, register
 
 LOG = logging.getLogger("hcu.adapter")
 

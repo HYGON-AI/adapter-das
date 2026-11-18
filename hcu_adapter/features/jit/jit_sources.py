@@ -109,7 +109,7 @@ def prepare(root, cache_root=None):
     community = next((p for p in (root, *root.parents) if (p / ".git").exists()), root)
     if cache == community or community in cache.parents:
         raise RuntimeError("jit_sources: cache must be outside the community JIT tree")
-    modules = [importlib.import_module("hcu_adapter." + n) for n in _TRANSFORMS]
+    modules = [importlib.import_module("hcu_adapter.features.jit." + n) for n in _TRANSFORMS]
     from . import jit_compat
 
     assets = _assets(root)
@@ -142,7 +142,7 @@ def prepare(root, cache_root=None):
         for module in modules:
             module._apply(stage, record)
         # Check allowlists/ops before publishing or binding a compiler entry.
-        from . import registry, hcu_config
+        from ... import registry, hcu_config
         for args, kwargs in records:
             if (args[0] not in hcu_config.BACKEND_CATALOG
                     or (args[0], kwargs["detail"]) not in registry.TEXT_PATCH_ALLOWLIST):
@@ -287,7 +287,7 @@ def install():
     """Install once per interpreter; spawn naturally builds/verifies its bundle."""
     with _LOCK:
         from sglang.kernels.jit.utils.compile import loader, spec
-        from . import registry
+        from ... import registry
 
         resolver = spec.resolve_sources
         raw_loader = inspect.unwrap(loader.load_jit)

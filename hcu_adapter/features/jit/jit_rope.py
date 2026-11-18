@@ -129,7 +129,7 @@ def _apply_minimax(csrc, register):
 # shim appended to rope.cuh: mask-form syncwarp for HIP; identity on CUDA
 # (nvcc's __builtin has the mask overload; define only under __HIP__).
 _SHIM = """/*
- HCU adapter portability shim (appended by hcu_adapter.jit_rope)
+ HCU adapter portability shim (appended by hcu_adapter.features.jit.jit_rope)
  */
 #if defined(__HIP_DEVICE_COMPILE__) || defined(__HIP_PLATFORM_AMD__)
 __attribute__((device, always_inline)) inline void __syncwarp_full_mask(unsigned mask = 0xffffffffu) {

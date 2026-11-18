@@ -48,7 +48,7 @@ def install(_he=None) -> None:
     # Compile adapted csrc/include assets from an immutable adapter cache.
     # Community sources remain untouched; cached function aliases are retained.
     try:
-        from hcu_adapter import jit_sources
+        from hcu_adapter.features.jit import jit_sources
 
         jit_sources.install()
     except Exception:
@@ -81,7 +81,7 @@ def install(_he=None) -> None:
     # them. View fp8 args as uint8 before module.run (byte-identical; the
     # kernel writes raw fp8 patterns into the same storage).
     try:
-        from hcu_adapter import jit_fp8_ffi
+        from hcu_adapter.features.jit import jit_fp8_ffi
 
         jit_fp8_ffi.install()
     except Exception:
@@ -94,7 +94,7 @@ def install(_he=None) -> None:
     # journal (ci/l1_gpu_gate.sh run_seg). Observability only -- a missed
     # install costs a log line, never numerics.
     try:
-        from hcu_adapter import jit_build_log
+        from hcu_adapter.features.jit import jit_build_log
 
         jit_build_log.install()
     except Exception:

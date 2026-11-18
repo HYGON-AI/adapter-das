@@ -452,7 +452,7 @@ Adapter 不保存 Plugin backend 路径，正式 registry 发布与健康检查�
   `bridges/vllm.py` 禁 import sglang（common 与包内机制层禁宿主已由 §1 覆盖）；
 - **vLLM 扩展宿主权责边界（extension API v1）**：Adapter **独占**
   `vllm.platform_plugins` / `vllm.general_plugins` 两个官方入口；独立 plugin
-  经 `hcu_adapter.infra.extensions` entry-point 组接入，只交付可选优化实现
+  经 `hcu_adapter.extensions` entry-point 组接入（实现位于 hcu_adapter/infra/extensions.py，协议名不随文件迁移变更），只交付可选优化实现
   （`ExtensionSpec` + 实现），不得复制版本/平台/DTK 门禁——宿主适配只有
   一个启动裁决点。激活发生在版本、平台和 DTK runtime guard **之后**；
   optional 扩展的干净准备失败降级为进程内报告，显式 required 扩展/capability

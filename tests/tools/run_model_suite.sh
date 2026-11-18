@@ -43,13 +43,19 @@ need_mib() {  # rough VRAM need per model id (MiB), includes graph/act margin
 }
 
 free_mib() {  # free VRAM (MiB) of HCU[$1]
-  local out t u
+  # unit-adaptive: DTK images differ -- older ones report "(KiB)", the
+  # 0.5.22-dtk2610 image reports "(MiB)". Dividing a MiB reading by 1024
+  # again made every idle card read as 64 MiB free and the suite waited
+  # forever on an empty machine (2026-11-19 bw47, 7/8 cards idle).
+  local out tline uline t u
   out=$(/opt/dtk/bin/rocm-smi --showmeminfo vram 2>/dev/null)
-  t=$(echo "$out" | grep -A1 "HCU\[$1\]" | grep "Total Memory" | head -1 \
-      | tr -d ' ' | grep -o '[0-9]*$')
-  u=$(echo "$out" | grep -A2 "HCU\[$1\]" | grep "Used Memory" | head -1 \
-      | tr -d ' ' | grep -o '[0-9]*$')
-  echo $(( (t - u) / 1024 ))
+  tline=$(echo "$out" | grep -A1 "HCU\[$1\]" | grep "Total Memory" | head -1 | tr -d ' ')
+  uline=$(echo "$out" | grep -A2 "HCU\[$1\]" | grep "Used Memory" | head -1 | tr -d ' ')
+  t=${tline##*:}; u=${uline##*:}
+  case "$tline" in
+    *"(KiB)"*) echo $(( (t - u) / 1024 )) ;;
+    *)         echo $(( t - u )) ;;
+  esac
 }
 
 stop_server() {

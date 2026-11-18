@@ -93,7 +93,7 @@ def exercise(config=None):
     if config is not None:
         assert config.quant_config.get_name() == "cpu_commit_probe"
     # Refuse a dirty test host instead of discovering unrelated live providers.
-    assert {p.name for p in entry_points(group="hcu_adapter.infra.extensions")} == {
+    assert {p.name for p in entry_points(group="hcu_adapter.extensions")} == {
         "commit_probe_early", "commit_probe_owner", "commit_probe_later",
     }
     adapter_points = [p for p in entry_points(group="vllm.general_plugins")

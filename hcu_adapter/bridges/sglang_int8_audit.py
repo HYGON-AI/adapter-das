@@ -208,12 +208,19 @@ def install(_he=None) -> None:
                 import sglang.srt.layers.vocab_parallel as _vp
 
                 _Emb = _vp.VocabParallelEmbedding
+                # capture the UN-patched forward first (review P2): reading
+                # _Emb.forward after the assignment below re-enters this
+                # wrapper -- the self-referencing partial recursed forever on
+                # the first embedding forward. Same shape as _rms_fwd above.
+                _emb_orig_forward = _Emb.forward
 
                 def _emb_audited(self, x):
-                    out = self._hcu_orig_fwd(x) if hasattr(self, "_hcu_orig_fwd") else None
-                    if out is None:
-                        self._hcu_orig_fwd = functools.partial(_Emb.forward, self)
-                        out = self._hcu_orig_fwd(x)
+                    orig = getattr(self, "_hcu_orig_fwd", None)
+                    if orig is None:
+                        orig = self._hcu_orig_fwd = functools.partial(
+                            _emb_orig_forward, self
+                        )
+                    out = orig(x)
                     if not getattr(self, "_hcu_audited", False):
                         self._hcu_audited = True
                         try:

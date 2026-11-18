@@ -39,6 +39,7 @@ def _stub_runtime_owners(monkeypatch, calls=None):
         ('vllm_flashmla', 'install', 'prefill'),
         ('vllm_flashmla_decode', 'install', 'decode'),
         ('vllm_pcp', 'install', 'pcp'),
+        ('vllm_minimax_abi', 'install', 'minimax-abi'),
     ):
         owner = import_module('hcu_adapter.bridges.' + name)
         monkeypatch.setattr(owner, action, lambda label=label: calls.append(label) if calls is not None else None)
@@ -329,6 +330,7 @@ def test_runtime_plugin_runs_guards_then_extensions_once_and_keeps_reports(
         "exit-cleanup",
         "fp8",
         "scaled-mm", "allreduce", "mhc", "indexer", "prefill", "decode", "pcp",
+        "minimax-abi",
         "adapter-version",
         ("extensions", "0.1.0", "0.32.0+rocm723"),
     ]

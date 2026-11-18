@@ -44,9 +44,12 @@
   （activation.cu 原始来源为 FlashInfer，Apache-2.0）
 - 引入版本：上游 v0.5.22 `python/sglang/kernels/aot/{csrc,include}`
 - 本地路径：逐字引入仅加 HYGON 出处头（不改动内容）：
-  `csrc/elementwise/activation.cu`、`include/utils.h`、
+  `csrc/elementwise/activation.cu`、
   `include/hip/{hip_act_and_mul.cuh,hip_vec_dtypes.h,hip_math_def.h}`、
-  `include/hip/impl/hip_vec_{bf16,fp32,half}_impl.h`。
+  `include/hip/impl/hip_vec_{bf16,fp32,half}_impl.h`；以及
+  `include/activation_utils.h`（上游 utils.h 的最小节选：dispatch 宏 +
+  hip 头包含，逐字，出处见文件头注释；完整 utils.h 的 FP8 段 gfx942
+  门控不兼容 gfx936，不引入）。
   同模式的历史逐字引入一并补登记：`csrc/attention/merge_attn_states.cu`、
   `include/pytorch_extension_utils_rocm.h`。
 - HYGON 修改：仅文件头加出处注释；构建经 `setup_hip.py -DUSE_ROCM=1`。

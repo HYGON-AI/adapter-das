@@ -18,7 +18,9 @@
 // csrc/elementwise/activation.cu (v0.5.22); only this provenance header is
 // added. The ROCm branch (USE_ROCM) is the one exercised here -- it needs the
 // co-vendored include/hip/hip_act_and_mul.cuh chain (hip_vec_dtypes.h,
-// hip_math_def.h, impl/*) and include/utils.h, all verbatim upstream.
+// hip_math_def.h, impl/*) plus the include/activation_utils.h dispatch
+// excerpt (minimal slice of upstream utils.h; the full header is gfx942-gated
+// on FP8 and does not build for gfx936).
 // Built by setup_hip.py with -DUSE_ROCM=1 (mirrors the upstream ROCm build).
 
 /*

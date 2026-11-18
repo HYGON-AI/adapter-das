@@ -15,7 +15,10 @@ limitations under the License.
 
 #pragma once
 
-#include "utils.h"
+// HYGON: upstream includes the full utils.h here; this tree points the
+// chain at the minimal activation_utils.h excerpt instead (the full
+// header's gfx942-gated FP8 section hard-fails gfx936).
+#include "activation_utils.h"
 
 #define kBitsToLoad 128
 #define kBytesToLoad (kBitsToLoad / 8)

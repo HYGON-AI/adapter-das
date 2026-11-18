@@ -77,7 +77,7 @@ def _clone(function, namespace):
 
 def _loader(original):
     def load(self, layer):
-        from .infra import hcu_env
+        from ...infra import hcu_env
 
         method = self
         if (hcu_env.resolve("SGLANG_HCU_EP_BF16")[0] == "1"
@@ -151,7 +151,7 @@ def install():
     if torch.version.hip is None:
         return
     import sglang.srt.layers.quantization.fp8 as fp8
-    from . import registry
+    from ... import registry
 
     _install_method(fp8.Fp8MoEMethod)
     registry.register(

@@ -18,7 +18,7 @@ import types
 import pytest
 import torch
 
-from hcu_adapter import dsv4_wqkv_scale_patch as bridge
+from hcu_adapter.features.dsv4 import dsv4_wqkv_scale_patch as bridge
 
 _SOURCE = """def load_weights(self, weights, is_nextn=False):
     params = dict(self.named_parameters())

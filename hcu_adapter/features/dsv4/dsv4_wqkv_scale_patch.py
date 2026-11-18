@@ -94,8 +94,8 @@ def _install_function(function):
 
 
 def install():
-    from . import registry
-    from .infra import hcu_env
+    from ... import registry
+    from ...infra import hcu_env
 
     if not hcu_env.enabled("HCU_DSV4_WQKV_SCALE"):
         return

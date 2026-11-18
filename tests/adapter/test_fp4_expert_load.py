@@ -16,7 +16,7 @@ import types
 import pytest
 import torch
 
-from hcu_adapter import fp4_expert_load as bridge
+from hcu_adapter.features.dsv4 import fp4_expert_load as bridge
 
 _TABLE = [0, .5, 1, 1.5, 2, 3, 4, 6, 0, -.5, -1, -1.5, -2, -3, -4, -6]
 _LOAD = """def process_weights_after_loading_block_quant(self, layer):
@@ -264,7 +264,8 @@ def test_foreign_and_drift_bindings_rejected(source, monkeypatch):
 
 
 def test_public_install_and_compatibility_entries_keep_alias(source, monkeypatch, tmp_path):
-    from hcu_adapter import dsv4_ep_bf16, dsv4_fp4_dequant_blockshape, registry
+    from hcu_adapter import registry
+    from hcu_adapter.features.dsv4 import dsv4_ep_bf16, dsv4_fp4_dequant_blockshape
 
     monkeypatch.setenv("SGLANG_HCU_EP_BF16", "0")
     method, layer, _, calls, _ = _method(source, monkeypatch)

@@ -45,7 +45,7 @@ def install(_he=None) -> None:
     # DSV4 CT-int8 q/kv scales must use the existing fused loader arm.
     # Extend its endswith arguments at runtime after operator/vendor setup.
     try:
-        from hcu_adapter import dsv4_wqkv_scale_patch
+        from hcu_adapter.features.dsv4 import dsv4_wqkv_scale_patch
 
         dsv4_wqkv_scale_patch.install()
     except Exception:
@@ -56,7 +56,7 @@ def install(_he=None) -> None:
     # HYV4 load_weights renames every .weight_scale to fp8 _inv; CT int8
     # keeps .weight_scale. Class-local loader wrapper, no source writes.
     try:
-        from hcu_adapter import hyv4_ct_scale_patch
+        from hcu_adapter.features.dsv4 import hyv4_ct_scale_patch
 
         hyv4_ct_scale_patch.install()
     except Exception:
@@ -67,7 +67,7 @@ def install(_he=None) -> None:
     # Import quantization only after operator/vendor setup. The original
     # loader receives a private cast interface; community files stay intact.
     try:
-        from hcu_adapter import fp4_expert_load
+        from hcu_adapter.features.dsv4 import fp4_expert_load
 
         fp4_expert_load.install()
     except Exception:

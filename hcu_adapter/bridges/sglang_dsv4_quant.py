@@ -19,7 +19,7 @@ def install(_he=None) -> None:
     # the swiglu-clamp rebind above (the fallback branch depends on it).
     # HCU_SILU_FUSED_QUANT=0 restores the pair.
     try:
-        from hcu_adapter import dsv4_silu_fused_quant
+        from hcu_adapter.features.dsv4 import dsv4_silu_fused_quant
 
         dsv4_silu_fused_quant.install()
     except Exception:
@@ -31,7 +31,7 @@ def install(_he=None) -> None:
     # manual tree patches): use_fused_stats flip + mhc_boundary_hip import
     # backfill under the cuda-semantics seam. HCU_MHC_STATS=0 disables.
     try:
-        from hcu_adapter import dsv4_mhc_stats
+        from hcu_adapter.features.dsv4 import dsv4_mhc_stats
 
         dsv4_mhc_stats.install()
     except Exception:
@@ -47,7 +47,7 @@ def install(_he=None) -> None:
     # (tmp_fetch/parity_sparse_triton.py). HCU_DSV41_SPARSE_TRITON=0
     # restores the torch fallbacks.
     try:
-        from hcu_adapter import dsv4_sparse_triton_gates
+        from hcu_adapter.features.dsv4 import dsv4_sparse_triton_gates
 
         dsv4_sparse_triton_gates.install()
     except Exception:

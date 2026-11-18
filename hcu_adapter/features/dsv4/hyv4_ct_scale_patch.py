@@ -80,8 +80,8 @@ def _install_class(cls):
 
 
 def install():
-    from . import registry
-    from .infra import hcu_env
+    from ... import registry
+    from ...infra import hcu_env
 
     if not hcu_env.enabled("HCU_HYV4_CT_SCALE"):
         return

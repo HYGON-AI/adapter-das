@@ -16,8 +16,9 @@ import sys
 from types import ModuleType, SimpleNamespace
 import pytest
 import torch
-from hcu_adapter import registry as adapter_registry, allreduce_aiter
-from hcu_adapter.allreduce import MIB
+from hcu_adapter import registry as adapter_registry
+from hcu_adapter.features.aiter import allreduce_aiter
+from hcu_adapter.features.aiter.allreduce import MIB
 from hcu_adapter.extensions import ExtensionCommitError
 from hcu_adapter.bridges import vllm as bridge, vllm_allreduce as compat
 from vllm import envs, _aiter_ops as ops_module

@@ -52,7 +52,7 @@ import logging
 
 def install(_he=None) -> None:
     try:
-        from hcu_adapter import aiter_moe as _amo
+        from hcu_adapter.features.aiter import aiter_moe as _amo
 
         _amo.install()
     except ImportError:

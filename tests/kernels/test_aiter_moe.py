@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from hcu_adapter import aiter_moe
+from hcu_adapter.features.aiter import aiter_moe
 
 # Which shapes the DTK aiter registry will actually serve with a validated
 # asm/moe_c solution drifts with the image's tune tables (2026-11-16 image:

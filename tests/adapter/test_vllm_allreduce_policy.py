@@ -12,7 +12,7 @@ def test_existing_kill_precedes_registered_optin(monkeypatch, kill, optin, expec
     monkeypatch.setenv("HCU_DISABLE_OPS", kill)
     monkeypatch.setenv("HCU_AITER_AR", optin)
     monkeypatch.setenv("VLLM_ROCM_USE_AITER_CUSTOM_AR", "1")
-    policy = importlib.import_module("hcu_adapter.allreduce").requested_policy()
+    policy = importlib.import_module("hcu_adapter.features.aiter.allreduce").requested_policy()
     assert policy.selected is expected
 
 
@@ -24,7 +24,8 @@ def test_vllm_auto_does_not_probe_sglang(monkeypatch):
 
 
 def test_existing_config_selection_and_explicit_kill_precedence(monkeypatch, tmp_path):
-    from hcu_adapter import allreduce, hcu_config
+    from hcu_adapter import hcu_config
+    from hcu_adapter.features.aiter import allreduce
     config=tmp_path/'hcu.json'
     config.write_text('{"version":1,"ops":{"allreduce":"aiter"}}')
     monkeypatch.setenv('HCU_CONFIG',str(config))

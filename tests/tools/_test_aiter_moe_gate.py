@@ -88,7 +88,7 @@ def _ref_blockwise(x, w1q, w1s, w2q, w2s, tw, ti, NI, TOPK):
 
 
 def main():
-    from hcu_adapter import aiter_moe
+    from hcu_adapter.features.aiter import aiter_moe
     from hcu_adapter.infra.hcu_env import resolve
 
     dev = "cuda"

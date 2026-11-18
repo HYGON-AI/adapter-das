@@ -118,7 +118,7 @@ def install(_he=None) -> None:
     # 15.1x, scaled_fp8_quant natives via upstream's own aiter calls, and
     # the whole-row fused silu+quant arm (HCU_QUANT_IMPL, auto default).
     try:
-        from hcu_adapter import quant_aiter
+        from hcu_adapter.features.aiter import quant_aiter
 
         quant_aiter.install()
     except Exception:
@@ -131,7 +131,7 @@ def install(_he=None) -> None:
     # GraphSafe fused kernels (HCU_AR_NORM_IMPL, auto default; full-TP-
     # group-only, per-call decline to stock).
     try:
-        from hcu_adapter import ar_norm_aiter
+        from hcu_adapter.features.aiter import ar_norm_aiter
 
         ar_norm_aiter.install()
     except Exception:
@@ -144,7 +144,7 @@ def install(_he=None) -> None:
     # version and any runtime-built artifacts so they get harvested or the
     # wheel version pinned (see the module docstring for the harvest rule).
     try:
-        from hcu_adapter import aiter_jit_cache
+        from hcu_adapter.features.aiter import aiter_jit_cache
 
         aiter_jit_cache.report()
     except Exception:

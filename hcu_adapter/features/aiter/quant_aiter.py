@@ -63,8 +63,8 @@ LOG = logging.getLogger("hcu.adapter")
 def install():
     import os
 
-    from . import registry as _reg
-    from .infra import hcu_env
+    from ... import registry as _reg
+    from hcu_adapter.infra import hcu_env
 
     impl = hcu_env.resolve("HCU_QUANT_IMPL")[0]
     if impl == "stock":

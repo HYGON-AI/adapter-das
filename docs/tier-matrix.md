@@ -1,8 +1,19 @@
 # 算子档位矩阵（自动生成，勿手改）
 
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-17）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
+> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-18）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
+
+## vllm_inverse_rope
+
+Plugin HCU inverse GPT-J RoPE on V41 PCP BF16 attention output
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| hcu | candidate Packaged native kernel compiled befo |
+| stock | candidate Default: original Core inverse RoPE |
+
+路由变量：（auto）
 
 ## cuda_graph
 
@@ -42,7 +53,7 @@ V41 LightOp FP4 indexer with variable allocator pages
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| lightop | candidate Default for FP4 cache only; PCP1 eag |
+| lightop | candidate Eligible V4.1 auto defaults to MXFP4 |
 | stock | candidate Explicit stock fallback: existing FP |
 
 路由变量：`HCU_VLLM_FP4_INDEXER_IMPL`
@@ -91,6 +102,17 @@ vLLM 0.33 V4.1 PCP attention owned by the adapter kernel module
 
 路由变量：`HCU_VLLM_PCP_IMPL`
 
+## vllm_pcp_q_rope
+
+vLLM V4.1 PCP prefill Q-only RoPE
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| hcu | candidate Opt-in eager gfx938 PCP prefill, in- |
+| stock | candidate Default: upstream fused query prepar |
+
+路由变量：（auto）
+
 ## vllm_dsv41_pcp_compat
 
 vLLM V4.1 compatibility for the opt-in PCP extension
@@ -98,6 +120,16 @@ vLLM V4.1 compatibility for the opt-in PCP extension
 | 档位 | 状态 / 备注 |
 |---|---|
 | scoped | candidate FP8 SHUFFLE scoring, delayed mHC and |
+
+路由变量：（auto）
+
+## mamba_state_scatter
+
+SGLang Mamba verify-state copy launch geometry
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate gfx936/gfx938 FP32 entries >=1024: f |
 
 路由变量：（auto）
 
@@ -229,6 +261,60 @@ vLLM AR-only gate compatibility; global AITER and real architecture unchanged
 
 路由变量：（auto）
 
+## sglang_grouped_topk
+
+SGLang biased single-group MoE routing
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Opt-in upstream fused router for FP3 |
+| torch | validated Default current upstream dispatch |
+
+路由变量：（auto）
+
+## int8_scaled_mm
+
+SGLang symmetric per-token/per-channel INT8 dense GEMM
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | validated Default stride-aware INT32 accumulat |
+| lightop | candidate Opt-in BF16 prefill M>=32, K multipl |
+| hipblaslt | candidate Opt-in LightOp hipBLASLt for bias-fr |
+
+路由变量：（auto）
+
+## hicache_mla_transfer
+
+MLA HiCache byte transfers through device pointer tables and pinned host memory
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Layer-first and page-first MLA trans |
+
+路由变量：（auto）
+
+## sglang_mla_sparse
+
+SGLang BF16 NoPE sparse MLA interface
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| emu | candidate Default Torch compatibility implemen |
+| dtk | candidate Opt-in H1-64 D512 topk2048-2112 nati |
+
+路由变量：（auto）
+
+## sglang_mla_fp8
+
+SGLang V32_NO_ROPE packed E4M3 sparse MLA decode
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| emu | candidate SGLang-only 528-byte rows; FP32 atte |
+
+路由变量：（auto）
+
 ## silu_and_mul
 
 gated activation out = silu(x[:,:d]) * x[:,d:]
@@ -309,7 +395,7 @@ DSA paged MQA logits
 | 档位 | 状态 / 备注 |
 |---|---|
 | triton | production auto ladder landing tier (lightop is |
-| emu | production torch emulation — correct opt-out (H |
+| emu | candidate 2026-10-30: restored upstream per-he |
 | aiter | planned probed absent 2026-10-18: the on-box |
 | lightop | planned lightop.gemmopt.paged_mqa_logits wir |
 | deepgemm | broken deepgemm wheel direct call via mqa_v |
@@ -481,6 +567,16 @@ fa3 backend 注意力面（kvcache 分页/统一窗 + varlen prefill）
 
 路由变量：`HCU_FA_IMPL`
 
+## sglang_tree_sampling
+
+SGLang target-only speculative tree sampling
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Tree traversal, residual mass and CD |
+
+路由变量：（auto）
+
 ## sampling
 
 top-k/top-p/min-p renorm+sample（§0.5 is_cuda sampler 面）
@@ -502,6 +598,18 @@ GDN/gated-delta-rule 线性注意力（sglang fla 面）
 | aiter | validated auto 首选（2026-11 档位：aiter > triton）：D |
 
 路由变量：`HCU_LINEAR_ATTN_GDN`
+
+## linear_attn_gdn_verify
+
+SGLang GDN MTP target verification
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | production explicit upstream rollback; also aut |
+| aiter | validated vendor verify bridge in gdn_aiter.py |
+| auto | production default policy: qualified DTK2610 st |
+
+路由变量：`HCU_LINEAR_ATTN_GDN_VERIFY`
 
 ## fused_moe
 

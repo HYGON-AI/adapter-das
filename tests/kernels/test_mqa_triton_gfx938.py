@@ -110,9 +110,28 @@ def _golden(q_fp8, k_dec, s_dec, w, lens, bt, pages, PS, width, dev):
                     break
                 t = int(bt[i, p]) * PS + s
                 dots = (qdec[i] * k_dec[t].unsqueeze(0)).sum(-1)
-                out[i, col] = float(dots @ w[i].float()) * float(s_dec[t])
+                out[i, col] = float(dots.relu() @ w[i].float()) * float(s_dec[t])
     return out.to(dev)
 
+
+
+def test_golden_rectifies_each_head_before_weighted_sum():
+    # Official SGLang baa9befa paged-MQA computes sum_h w_h*max(dot_h, 0).
+    # Opposite head signs distinguish that contract from both the old oracle
+    # and rectifying after head reduction. Nonidentity page tables, distinct
+    # scales and different row lengths also exercise reference addressing.
+    q = torch.tensor([[[1., 0.], [-1., 0.]],
+                      [[0., 1.], [0., -1.]]]).to(torch.float8_e4m3fn)
+    k = torch.tensor([[2., 3.], [-4., 5.], [6., -7.], [-8., -9.]])
+    scales = torch.tensor([0.5, 2., 0.25, 1.])
+    weights = torch.tensor([[2., 3.], [4., 5.]])
+    lengths = torch.tensor([[3], [2]], dtype=torch.int32)
+    blocks = torch.tensor([[1, 0], [0, 1]], dtype=torch.int32)
+    actual = _golden(q, k, scales, weights, lengths, blocks,
+                     pages=2, PS=2, width=4, dev="cpu")
+    # Independently evaluated integer/rational math, not a second tensor dot.
+    expected = torch.tensor([[3., 24., 2., 0.], [6., 40., 0., 0.]])
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
 
 def _rel_topk(ref, got, lens):
     r = ref[:, :512].float()

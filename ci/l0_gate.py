@@ -48,13 +48,28 @@ SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", "build", "d
 # helpers
 # ---------------------------------------------------------------------------
 
+_FILE_CACHE = {}
+
+
+def _walk_files(exts):
+    """One os.walk per distinct extension set (cached): 10 iter_files call
+    sites used to re-walk the whole tree (120s+ timeout on NFS mounts in
+    the L1 container -- single-digit seconds locally, ~4-10x on network
+    filesystems)."""
+    if exts not in _FILE_CACHE:
+        out = []
+        for dirpath, dirnames, filenames in os.walk(ROOT):
+            dirnames[:] = [d for d in dirnames
+                           if d not in SKIP_DIRS and not d.startswith("tmp")]
+            for fn in filenames:
+                if fn.endswith(exts):
+                    out.append(os.path.join(dirpath, fn))
+        _FILE_CACHE[exts] = tuple(out)
+    return _FILE_CACHE[exts]
+
+
 def iter_files(*exts):
-    for dirpath, dirnames, filenames in os.walk(ROOT):
-        dirnames[:] = [d for d in dirnames
-                       if d not in SKIP_DIRS and not d.startswith("tmp")]
-        for fn in filenames:
-            if fn.endswith(exts):
-                yield os.path.join(dirpath, fn)
+    yield from _walk_files(tuple(sorted(exts)))
 
 
 def rel(p):

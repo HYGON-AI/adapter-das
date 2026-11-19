@@ -220,6 +220,25 @@ def _gated_mul_impl(
                 f"out shape {tuple(out.shape)} != {tuple(input.shape[:-1] + (d,))}"
             )
 
+    # cpp tier (setup_hip.py wheel, vendored activation.cu): the upstream
+    # kernel reads raw data_ptrs with token_idx*d indexing, so only fully
+    # contiguous, 16B-aligned fp16/bf16/fp32 tensors may take it; d tails are
+    # handled inside the kernel and the 16B contract was checked at entry.
+    native = native_op(
+        {"silu": "silu_and_mul", "gelu": "gelu_and_mul", "gelu_tanh": "gelu_tanh_and_mul"}[act]
+    )
+    if (
+        native is not None
+        and input.is_cuda
+        and input.is_contiguous()
+        and out.is_contiguous()
+        and input.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and input.data_ptr() % 16 == 0
+        and out.data_ptr() % 16 == 0
+    ):
+        native(out, input)
+        return out
+
     use_triton = (
         not force_native
         and HAS_TRITON
@@ -317,6 +336,21 @@ def gelu_quick(input: torch.Tensor, out: torch.Tensor = None) -> torch.Tensor:
     else:
         if out.shape != input.shape:
             raise ValueError(f"out shape {out.shape} != input shape {input.shape}")
+
+    # cpp tier (setup_hip.py wheel, vendored activation.cu): act_only kernel,
+    # same contiguous/aligned/dtype contract as the gated ops above.
+    native = native_op("gelu_quick")
+    if (
+        native is not None
+        and input.is_cuda
+        and input.is_contiguous()
+        and out.is_contiguous()
+        and input.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and input.data_ptr() % 16 == 0
+        and out.data_ptr() % 16 == 0
+    ):
+        native(out, input)
+        return out
 
     use_triton = (
         HAS_TRITON

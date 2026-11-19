@@ -25,6 +25,23 @@ _installed_pid: int | None = None
 LOG = logging.getLogger("hcu.adapter")
 
 
+def _apply_adapter_log_level() -> None:
+    """Default-quiet adapter chatter: install-path INFO lines (225+ call
+    sites) only appear with an explicit HCU_ADAPTER_LOG=info|debug; WARNING
+    and above always propagate (the host handler owns formatting/output)."""
+    from . import hcu_env
+
+    level, _ = hcu_env.resolve("HCU_ADAPTER_LOG")
+    LOG.setLevel(
+        {"debug": logging.DEBUG, "info": logging.INFO}.get(level, logging.WARNING)
+    )
+    if not LOG.handlers:
+        LOG.addHandler(logging.NullHandler())
+
+
+_apply_adapter_log_level()
+
+
 def _choice(raw: object, *, variable: str, allowed: frozenset[str]) -> str:
     value = str(raw or "").strip().lower()
     if value not in allowed:

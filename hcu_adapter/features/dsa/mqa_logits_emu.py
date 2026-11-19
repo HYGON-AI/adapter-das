@@ -21,6 +21,7 @@ Gated by env ``HCU_MQA_EMU=1`` (usually together with HCU_DSA_PRESHUFFLE=0).
 import logging
 import os
 
+from hcu_adapter.infra import hcu_env
 import torch
 
 logger = logging.getLogger(__name__)

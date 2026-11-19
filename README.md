@@ -80,6 +80,16 @@ pip install -e packaging/hcu-adapter   # hcu-adapter（适配层）
 # 之后正常安装/运行 sglang（不要安装官方 sgl-kernel wheel，避免同名冲突）
 ```
 
+> **性能提示（务必装 native wheel）**：`pip install -e .` / 纯 python wheel 是
+> **无 native .so** 的影子包——cpp 档永久缺席，对应算子回落 sglang 运行期
+> ninja JIT（冷容器逐变体 hipcc 编译，单实例 ~1 分钟、整包 20 分钟级，
+> 调试/单测/启动推理全都会卡在首次编译）。部署与性能验证一律用
+> `bash packaging/build.sh` 产出的 native 双 wheel；容器内快速验证可用
+> `AMDGPU_TARGETS=gfx936 python setup_hip.py build_ext --inplace`
+> 就地构建 `sgl_kernel/native_ops*.so`（`torch._C._dispatch_has_kernel(
+> "sgl_kernel::silu_and_mul")` 变 True 即生效）。已覆盖的 AOT 算子清单见
+> `setup_hip.py` 文件头。
+
 > **升级提示**（entry-points 迁移动作，vllm plugin 注册归属变化）：vllm
 > entry-points 已从 sgl-kernel 迁至 hcu-adapter。已部署环境升级到双 dist 版
 > **必须先卸载旧版 sgl-kernel**（`pip uninstall sgl-kernel`）再安装两张新

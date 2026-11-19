@@ -303,6 +303,7 @@ def _spawn_worker(source, queue):
                       for n, ref in refs.items()))
 
 
+@pytest.mark.fresh_process
 def test_spawned_loader_retains_community_math(source):
     import multiprocessing
 

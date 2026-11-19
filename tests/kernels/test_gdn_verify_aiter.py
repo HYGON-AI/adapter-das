@@ -316,6 +316,7 @@ def test_auto_target_verify_unqualified_normalization_uses_upstream(automatic_ve
     check_result(p, meta, out, ref_out, ref_cache, written, before)
 
 
+@pytest.mark.fresh_process
 def test_explicit_verify_rollback_in_fresh_sglang_process():
     env = dict(os.environ, HCU_LINEAR_ATTN_GDN_VERIFY="triton",
                HCU_ADAPTER_HOST="sglang")

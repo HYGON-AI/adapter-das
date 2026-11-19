@@ -293,6 +293,7 @@ def _spawn_worker(source, queue):
     queue.put(True)
 
 
+@pytest.mark.fresh_process
 def test_spawned_interpreter_adapts_its_own_original_loader(source, monkeypatch):
     import multiprocessing
 

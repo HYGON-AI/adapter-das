@@ -213,7 +213,7 @@ fi
 # (cold containers must export /root/.cache/sglang/jit as a new seed rather
 # than raising the budget further); the pre-layout 900s no longer fits the
 # post-layout test volume even with ZERO JIT compiles.
-run_seg kernels 1500  python3 -m pytest tests/kernels tests/adapter -vv --no-header -m "not emu_parity" \
+run_seg kernels 1500  python3 -m pytest tests/kernels tests/adapter -vv --no-header -m "not emu_parity and not fresh_process" \
     --tb=short -o faulthandler_timeout=120 --durations=60 \
     "${FAMILY_DESELECT[@]}"
 
@@ -398,7 +398,7 @@ gates_fail=0
 # (~100 s) instead of the sum (~330 s; 2026-11-17 nmz16 cold-start timing).
 # Per-gate log files are merged into GATES_LOG in fixed name order afterwards.
 gate_names=(_test_hcu_config _test_fa3_emu_cp _test_rope_fallback_vs_fused \
-           _test_aiter_moe_gate _test_contig_triton)
+           _test_aiter_moe_gate _test_contig_triton _test_fresh_process_class)
 declare -A gate_pid gate_out
 echo "L1: gates start (5 concurrent)"
 for g in "${gate_names[@]}"; do
@@ -407,9 +407,14 @@ for g in "${gate_names[@]}"; do
     # The config gate only exercises config resolution + kernel tiers;
     # skipping the host-bridge install halves its interpreter startup
     # (52s -> 26s on the 2026-11-16 image) and it has no bridge surface.
-    case "$g" in _test_hcu_config) gate_env=(env HCU_ADAPTER_HOST=none) ;; *) gate_env=() ;; esac
+    case "$g" in _test_hcu_config) gate_env=(env HCU_ADAPTER_HOST=none) ;;
+        _test_fresh_process_class) gate_env=() ;;
+        *) gate_env=() ;; esac
+    # W4-2: the fresh-process lane pays ~26s interpreter+torch per spawn
+    # (~370s across 9 tests) -- it needs a wider budget than the fixed 300s.
+    case "$g" in _test_fresh_process_class) gate_tmo=900 ;; *) gate_tmo=300 ;; esac
     gate_out[$g]="/tmp/l1_gate_$g.log"
-    timeout 300 "${gate_env[@]}" python3 "$f" > "${gate_out[$g]}" 2>&1 &
+    timeout "$gate_tmo" "${gate_env[@]}" python3 "$f" > "${gate_out[$g]}" 2>&1 &
     gate_pid[$g]=$!
 done
 for g in "${gate_names[@]}"; do

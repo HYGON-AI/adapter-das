@@ -229,6 +229,7 @@ def _publish_child(root, cache, queue):
         queue.put(("error", repr(exc)))
 
 
+@pytest.mark.fresh_process
 def test_spawn_concurrent_publish(source, tmp_path):
     root, _ = source
     before = _snapshot(root)

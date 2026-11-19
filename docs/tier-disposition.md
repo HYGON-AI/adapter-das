@@ -57,6 +57,7 @@
 | R-12 桥隔离静默走上游 | bridges try-isolation | 配置档失败=首用报错 | **部分完成**（W2-5：失败升 ERROR + 启动降级汇总行，gate 可断言；per-op 首用报错待 enforcement 引擎批） |
 | 安装链碎行降噪 | bridges/features 12 处成功行 | warning→info（P7 默认静默） | **完成**（W2-5） |
 | emu_parity mark + gate 过滤 | pyproject markers / 三 KDA 巨头 / l1_gpu_gate `-m "not emu_parity"` / ci/emu_parity_nightly.sh | CI 250s→0，手工/nightly 通道保留（W4-1） | **完成** |
+| fresh_process 搬运 | 9 个 spawn/distributed 测试打标→kernels 段 deselect→gates 第 6 并发 lane（900s 预算，语义不变） | 实测 380s 串行→并发吸收（W4-2） | **完成** |
 | KDA/conv1d emu 兜底 | gdn 族路由 | 无可用档=报错（gfx938 接受断供） | **完成**（=emu 路由即 RuntimeError，运行时值 fork\|stock；W2-5） |
 | P7 启动 tier 表 | `bridges/sglang.py` install 尾部 + `registry.log_summary` | 完成（桥装完后集中打表，一行一算子） | **完成**（W2-4） |
 | wizard/validator 拒退役档 | `hcu_config._validate` + wizard | status=retired 选择即报错（3b-9） | **完成**（W2-4） |

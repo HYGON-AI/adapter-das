@@ -208,12 +208,12 @@ PY
     done <<< "$family_nodes"
     echo "L1: kernels transfers $((${#FAMILY_DESELECT[@]} / 2)) cases to blocking matrix"
 fi
-# 900s assumes a SEEDED jit cache (gfx936 seed tar into /root/.cache): cold
-# containers ninja-compile dozens of csrc variants mid-suite and blow any
-# fixed budget -- export /root/.cache/sglang/jit after a warm run instead
-# of raising this (per-token-group-quant/activation have no vendor AOT
-# equivalents yet; R-09 aiter tier covers only part of the shapes).
-run_seg kernels 900  python3 -m pytest tests/kernels tests/adapter -vv --no-header \
+# 1500s = measured (1122s wall, seed v3, blocking-mode deselect, 0 JIT
+# builds, 1908P/6F on 2026-11-19) + margin. The seed contract still holds
+# (cold containers must export /root/.cache/sglang/jit as a new seed rather
+# than raising the budget further); the pre-layout 900s no longer fits the
+# post-layout test volume even with ZERO JIT compiles.
+run_seg kernels 1500  python3 -m pytest tests/kernels tests/adapter -vv --no-header \
     --tb=short -o faulthandler_timeout=120 --durations=60 \
     "${FAMILY_DESELECT[@]}"
 

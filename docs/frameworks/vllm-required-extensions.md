@@ -110,10 +110,11 @@ and the repository's review requirements remain separate merge gates.
 
 ### Current-main integration (2026-11-19)
 
-The integration retains main `9e2340aaa8358de6c064fc8dd7d54d4488971c5d`
-owner fixtures and host-lane provenance. The shared lifecycle and thin Worker
-execution guard remain the only production changes from main; no numerical
-kernel, native/build source or official runner body is changed. Built-in health
+The integration retains main `8490a6b6072bda681982e95b23cbcae313b1eec6`
+owner fixtures, host-lane provenance and the incoming SGLang compatibility work.
+The production delta from main remains confined to the shared lifecycle, vLLM
+platform bridge and thin Worker execution guard; no numerical kernel,
+native/build source or official runner body is changed. Built-in health
 regressions keep main's real lifecycle, activation deferral and failure-rendering
 reentry coverage, and additionally check forward ordering before requested owners.
 The Worker replay fixture restores device queries after its explicit import-only

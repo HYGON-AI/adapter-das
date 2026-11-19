@@ -25,6 +25,8 @@ HOSTnone 本身不阻止惰性健康查询探测真实 HCU、选择尚未激活�
 不替换宿主 runtime latch、required-extension 检查或官方 Worker 方法。
 runtime ABI 的合成启动夹具同时隔离无关内置 install，保留真实官方 loader、
 显式 runtime 路径优先级和 admission/AR 准备失败锁存断言。
+缺库、无效 ELF、错误库及已加载库优先级须经过真实构造器验证；
+仅在官方模块导入期提供架构 metadata，恢复查询后继续拒绝设备访问。
 `test_vllm_builtin_health.py` 与各 owner 的 drift/lifecycle 套件不选择该夹具，
 须独立执行；不能把此夹具扩为自动全局隔离或作为 native/model 验收。
 合并新 main 时，保留真实 `ProcessLocalActions` 的锁存、激活暂缓与格式化重入
@@ -1169,13 +1171,6 @@ stride；Graph 同时改变输入值与映射元数据。桥接测试保留已�
 已经安装路由的进程：隔离原始 JIT 后测试，再恢复进入测试前的绑定，不能把
 HOSTnone 单独通过误作完整 suite 兼容证据。
 
-
-CPU runtime-loader contracts keep the actual official constructor, library
-discovery and ctypes error paths. If the ROCm platform import queries GPU
-architecture in a device-hidden process, scope its metadata double to that
-import, restore the original query, and reject GPU queries during the loader
-assertions. Retain missing-library, invalid-ELF, wrong-library and loaded-library
-precedence cases. This import boundary does not qualify device/runtime ABI.
 
 Mamba scatter routing CPU regressions exercise exact gfx936/gfx938 architecture names
 and feature suffixes, per-input-device probe caching, retained aliases and source-row

@@ -9,7 +9,7 @@
 
 | # | emu 实现 | 兄弟档 | 分类 | 处置 | 状态 |
 |---|---|---|---|---|---|
-| 1 | `hcu_adapter/bridges/sglang_mqa_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
+| 1 | `hcu_adapter/bridges/sglang_mqa_emu.py` | — | B(补triton/寻源vendor) | 改判：桥本体是 triton 面装载器（HCU_MQA_EMU_IMPL=triton 默认），运行时 fallback 已拆 | **完成**（W2-2） |
 | 2 | `hcu_adapter/features/dsa/dsa_mqa_logits_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
 | 3 | `hcu_adapter/features/dsa/kpool_write_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
 | 4 | `hcu_adapter/features/dsa/mqa_logits_emu.py` | `hcu_adapter/features/dsa/mqa_logits_triton.py`, `hcu_adapter/kernels/mqa_logits_lightop.py` | A(拆降级) | 待处置 | 待处置 |
@@ -51,8 +51,8 @@
 | shadow 三层梯子 try-descent | `sgl_kernel/elementwise.py` 等 | 解析期定档，缺实现=启动报错 | 待处置 |
 | aiter one-strike（失败置 None 落 triton） | `sgl_kernel/elementwise.py` | 移除，vendor 错误直曝 | 待处置 |
 | aiter_moe 无调优配置→stock triton (log-once) | fused_moe 桥 | 硬报错或显式配置 | 待处置 |
-| mqa triton 臂 torch-emu fallback | `bridges/sglang_mqa_emu.py` | 拆（emu 退运行时） | 待处置 |
-| HCU_FA3_EMU=1 默认 | env 注册表 | 默认翻转+报错 | 待处置 |
-| _auto_mqa_emu auto 落 emu | `infra/hcu_env.py` | auto 不落 emu | 待处置 |
+| mqa triton 臂 torch-emu fallback | `bridges/sglang_mqa_emu.py` | 拆（emu 退运行时） | **完成**（per-call emu 回落拆除，严格分发；W2-2） |
+| HCU_FA3_EMU=1 默认 | env 注册表 | 默认翻转+报错 | **完成**（default=0，docs 同步；W2-2） |
+| _auto_mqa_emu auto 落 emu | `infra/hcu_env.py` | auto 不落 emu | **完成**（return None；W2-2） |
 | R-12 桥隔离静默走上游 | bridges try-isolation | 配置档失败=首用报错 | 待处置 |
 | KDA/conv1d emu 兜底 | gdn 族路由 | 无可用档=报错（gfx938 接受断供） | 待处置 |

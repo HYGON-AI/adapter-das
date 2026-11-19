@@ -315,7 +315,7 @@ RMSNorm (plain); the fused-add family is its own op below
 | triton | production auto ladder fallback (lightop > aite |
 | aiter | candidate auto second; aiter.rmsnorm_forward(x |
 | lightop | candidate auto first when lightop imports; Pub |
-| torch | production reference path |
+| torch | retired reference path |
 
 路由变量：`HCU_RMS_NORM_IMPL`
 

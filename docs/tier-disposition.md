@@ -48,7 +48,7 @@
 
 | 降级点 | 位置 | 处置 | 状态 |
 |---|---|---|---|
-| shadow 三层梯子 try-descent | `sgl_kernel/elementwise.py` 等 | 解析期定档，缺实现=启动报错 | **部分完成**（W2-1：elementwise silu 族严格化+torch 退役；layernorm/rotary/gemm_fp8 等剩余梯子待后续批逐文件严格化） |
+| shadow 三层梯子 try-descent | `sgl_kernel/elementwise.py` 等 | 解析期定档，缺实现=启动报错 | **完成**（W2-1 elementwise silu 族；W2-6 批收齐：layernorm rms/fused_add 双解析严格化+分发零降档+aiter one-strike 移除+gemma/dtype 缺口改具名报错、rotary CUDA 无核档即报错、gemm_fp8 ptgq v1/v2 CUDA 无 native 即报错；torch 全部退出三个文件的 CUDA 路径，CPU 契约面保留） |
 | aiter one-strike（失败置 None 落 triton） | `sgl_kernel/elementwise.py` | 移除，vendor 错误直曝 | 待处置 |
 | aiter_moe 无调优配置→stock triton (log-once) | fused_moe 桥 | 硬报错或显式配置 | **完成**（显式 aiter 拒绝/无配置=RuntimeError；auto=确定性选择保留+log-once；包裹层 except→orig 全量吞错拆除；W2-3） |
 | mqa triton 臂 torch-emu fallback | `bridges/sglang_mqa_emu.py` | 拆（emu 退运行时） | **完成**（per-call emu 回落拆除，严格分发；W2-2） |

@@ -243,13 +243,29 @@ def test_fused_add_backend_default_ladder(monkeypatch):
         _reset_fused_add_cache(ln)
 
 
-def test_fused_add_backend_unknown_value_falls_through_ladder(monkeypatch):
+def test_fused_add_backend_unknown_value_is_a_hard_error(monkeypatch):
+    """governance 3b-8: unknown explicit tier raises at resolution --
+    no silent ladder descent."""
     monkeypatch.setenv("HCU_FUSED_ADD_RMS_IMPL", "wat")
     import sgl_kernel.layernorm as ln
 
     _reset_fused_add_cache(ln)
     try:
-        assert ln._resolve_fused_add_impl() in ("lightop", "triton")
+        with pytest.raises(ValueError, match="unknown tier 'wat'"):
+            ln._resolve_fused_add_impl()
+    finally:
+        _reset_fused_add_cache(ln)
+
+
+def test_fused_add_torch_tier_retired_from_runtime(monkeypatch):
+    """governance 3b-9: torch/emu are development-time only."""
+    monkeypatch.setenv("HCU_FUSED_ADD_RMS_IMPL", "torch")
+    import sgl_kernel.layernorm as ln
+
+    _reset_fused_add_cache(ln)
+    try:
+        with pytest.raises(ValueError, match="unknown tier 'torch'"):
+            ln._resolve_fused_add_impl()
     finally:
         _reset_fused_add_cache(ln)
 

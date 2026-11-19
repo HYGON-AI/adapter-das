@@ -86,6 +86,16 @@ def rotary_embedding(
     use_triton = HAS_TRITON and query.is_cuda and cos_sin_cache.is_cuda and is_neox
     if key is not None and use_triton:
         use_triton = key.is_cuda
+    if not use_triton and query.is_cuda:
+        # governance 3b-8 (2026-11-19): CUDA tensors get the kernel tier or
+        # a named error -- the silent torch fallback made "what actually
+        # ran" unknowable. (is_neox False = interleaved layout has no
+        # kernel tier in this package; CPU tensors keep the torch face.)
+        raise RuntimeError(
+            "rotary_embedding: no kernel tier for this call (triton=%s "
+            "neox=%s) and runtime fallback is forbidden (governance "
+            "3b-8) -- the interleaved layout needs a kernel tier or an "
+            "explicit torch request for development" % (HAS_TRITON, is_neox))
     if not use_triton:
         impl = (
             _rotary_embedding_neox_torch

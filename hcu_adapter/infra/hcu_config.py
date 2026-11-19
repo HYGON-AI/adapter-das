@@ -333,7 +333,7 @@ BACKEND_CATALOG = {
                         "note": "auto first when lightop imports; Public "
                                 "BF16 plain RMSNorm; other dtypes/Gemma use "
                                 "the lower tiers"},
-            "torch": {"status": "production",
+            "torch": {"status": "retired",
                       "note": "reference path"},
         },
     },

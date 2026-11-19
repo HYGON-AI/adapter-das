@@ -73,34 +73,23 @@ def _resolve_rms_impl():
     its own tier (HCU_FUSED_ADD_RMS_IMPL)."""
     global _RMS_IMPL
     if _RMS_IMPL is None:
-        requested, source = None, "default"
-        try:
-            from hcu_adapter.infra import hcu_env
+        from hcu_adapter.infra import hcu_env
+        from hcu_adapter.infra import tier_policy
 
-            requested, source = hcu_env.resolve("HCU_RMS_NORM_IMPL")
-        except Exception:
-            import traceback
-
-            traceback.print_exc()
-        try:
-            from hcu_adapter.infra import tier_policy
-
-            tier, _impl = tier_policy.pick(
-                "rms_norm",
-                {
-                    "lightop": _probe_lightop_rms,
-                    "aiter": _probe_aiter_rms,
-                    "triton": lambda: True,
-                    "torch": lambda: True,
-                },
-                requested=requested if source == "explicit" else None,
-            )
-            _RMS_IMPL = tier
-        except Exception:
-            import traceback
-
-            traceback.print_exc()
-            _RMS_IMPL = "triton"
+        requested, source = hcu_env.resolve("HCU_RMS_NORM_IMPL")
+        # governance 3b-8/9 (2026-11-19): strict single-tier resolution --
+        # torch is retired from runtime candidates (CPU-tensor contract
+        # faces compute torch math directly, outside this ladder), and
+        # resolution failures propagate instead of defaulting to triton.
+        _RMS_IMPL = tier_policy.pick(
+            "rms_norm",
+            {
+                "lightop": _probe_lightop_rms,
+                "aiter": _probe_aiter_rms,
+                "triton": lambda: True,
+            },
+            requested=requested if source == "explicit" else None,
+        )[0]
     return _RMS_IMPL
 
 
@@ -114,33 +103,18 @@ def _resolve_fused_add_impl():
     Explicit HCU_FUSED_ADD_RMS_IMPL wins (lightop|triton|torch)."""
     global _FUSED_ADD_IMPL
     if _FUSED_ADD_IMPL is None:
-        requested, source = None, "default"
-        try:
-            from hcu_adapter.infra import hcu_env
+        from hcu_adapter.infra import hcu_env
+        from hcu_adapter.infra import tier_policy
 
-            requested, source = hcu_env.resolve("HCU_FUSED_ADD_RMS_IMPL")
-        except Exception:
-            import traceback
-
-            traceback.print_exc()
-        try:
-            from hcu_adapter.infra import tier_policy
-
-            tier, _impl = tier_policy.pick(
-                "fused_add_rmsnorm",
-                {
-                    "lightop": _probe_lightop_fused_add,
-                    "triton": lambda: True,
-                    "torch": lambda: True,
-                },
-                requested=requested if source == "explicit" else None,
-            )
-            _FUSED_ADD_IMPL = tier
-        except Exception:
-            import traceback
-
-            traceback.print_exc()
-            _FUSED_ADD_IMPL = "triton"
+        requested, source = hcu_env.resolve("HCU_FUSED_ADD_RMS_IMPL")
+        _FUSED_ADD_IMPL = tier_policy.pick(
+            "fused_add_rmsnorm",
+            {
+                "lightop": _probe_lightop_fused_add,
+                "triton": lambda: True,
+            },
+            requested=requested if source == "explicit" else None,
+        )[0]
     return _FUSED_ADD_IMPL
 
 
@@ -325,30 +299,33 @@ def _do_rmsnorm(
         raise ValueError(f"out shape {tuple(out.shape)} != {tuple(input.shape)}")
 
     impl = _resolve_rms_impl()
-    if gemma and impl != "triton":
-        impl = "triton"  # vendor backend covers the plain norm only
-    if impl == "torch" or not input.is_cuda:
+    if not input.is_cuda:
         return _rmsnorm_native(input, weight, eps, gemma, out)
+    # governance 3b-8 (2026-11-19): strict single-tier dispatch -- the
+    # resolved tier serves the call or the error names op+tier+reason.
+    # The old silent demotions (gemma->triton, dtype gaps -> next tier,
+    # aiter one-strike -> triton) made "what actually ran" unknowable.
+    if gemma and impl != "triton":
+        raise RuntimeError(
+            "rmsnorm: gemma norm is served by the triton tier only; "
+            "resolved tier %r cannot take this call (governance 3b-8, "
+            "no silent demotion) -- set HCU_RMS_NORM_IMPL=triton for "
+            "gemma models or extend the vendor coverage" % impl)
     if impl == "lightop":
-        # BF16 plain norm is the qualified lightop contract; other dtypes
-        # continue down the ladder (aiter -> triton) instead of stopping here.
+        if input.dtype == weight.dtype == out.dtype != torch.bfloat16:
+            raise RuntimeError(
+                "rmsnorm: lightop contract is BF16-only; got %s "
+                "(governance 3b-8: no silent aiter/triton demotion) -- "
+                "select another tier explicitly" % input.dtype)
         if input.dtype == weight.dtype == out.dtype == torch.bfloat16:
             return _lightop_rmsnorm(input, weight, eps, out)
-        impl = "aiter" if _aiter_rms_fn() is not None else "triton"
     if impl == "aiter":
-        if input.dtype in (torch.bfloat16, torch.float16):
-            try:
-                out.copy_(_aiter_rmsnorm(input, weight, eps))
-                return out
-            except Exception:
-                # One-strike: a broken vendor kernel falls to triton for
-                # this call and every later one (impl continues below).
-                import traceback
-
-                traceback.print_exc()
-                impl = "triton"
-        else:
-            impl = "triton"  # vendor bf16/fp16 only; fall through
+        if input.dtype not in (torch.bfloat16, torch.float16):
+            raise RuntimeError(
+                "rmsnorm: aiter contract is bf16/fp16-only; got %s "
+                "(governance 3b-8)" % input.dtype)
+        out.copy_(_aiter_rmsnorm(input, weight, eps))
+        return out
 
     use_triton = (
         HAS_TRITON
@@ -427,21 +404,31 @@ def _do_fused_add(
     gemma: bool,
 ) -> None:
     impl = _resolve_fused_add_impl()
-    if impl == "lightop" and _try_lightop_fused_add(input, residual, weight, eps, gemma):
-        return
-    use_triton = (
-        impl != "torch"
-        and HAS_TRITON
-        and input.is_cuda
-        and residual.is_cuda
-        and input.dtype in (torch.bfloat16, torch.float16, torch.float32)
-        and input.is_contiguous()
-        and residual.is_contiguous()
-        and input.shape == residual.shape
-    )
-    if not use_triton:
+    if not input.is_cuda:
         _fused_add_rmsnorm_native(input, residual, weight, eps, gemma)
         return
+    # governance 3b-8: strict -- the resolved tier serves the call or the
+    # error carries op+tier+reason. The old _try_lightop_fused_add
+    # False-descent and the CUDA->torch fallthrough are gone.
+    if impl == "lightop":
+        if not _try_lightop_fused_add(input, residual, weight, eps, gemma):
+            raise RuntimeError(
+                "fused_add_rmsnorm: lightop tier refused the call "
+                "(dtype/shape contract) and runtime fallback is "
+                "forbidden (governance 3b-8) -- select triton explicitly")
+        return
+    # impl == "triton"
+    if not (HAS_TRITON
+            and input.dtype in (torch.bfloat16, torch.float16, torch.float32)
+            and input.is_contiguous()
+            and residual.is_contiguous()
+            and input.shape == residual.shape):
+        raise RuntimeError(
+            "fused_add_rmsnorm: triton tier cannot serve this call "
+            "(triton=%s dtype=%s contiguous=%s/%s same-shape=%s); "
+            "runtime fallback is forbidden (governance 3b-8)"
+            % (HAS_TRITON, input.dtype, input.is_contiguous(),
+               residual.is_contiguous(), input.shape == residual.shape))
 
     check_cuda_tensor(input, residual, weight)
     x_2d = input.view(-1, input.shape[-1])

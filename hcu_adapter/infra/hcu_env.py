@@ -245,6 +245,13 @@ REGISTRY = {
         "about": "hcu.adapter logger 级别：默认 WARNING（安装链 INFO 静默）；"
                  "=info/=debug 显式放开（排查）；WARNING+ 始终传播",
     },
+    # R-12 strict bridges (bridges/sglang.py, governance 3b-8)
+    "HCU_STRICT_BRIDGES": {
+        "env": "HCU_STRICT_BRIDGES", "default": "1",
+        "about": "桥安装失败=拒绝起服（零降级，§3b-8）：失败即 "
+                 "RuntimeError 带修复指引；0=降级为审计记录（排障 "
+                 "专用，会打 DEGRADED 汇总）",
+    },
     # serve-time AOT requirement (bridges/sglang_native_ops_gate.py)
     "HCU_REQUIRE_NATIVE": {
         "env": "HCU_REQUIRE_NATIVE", "default": "1",

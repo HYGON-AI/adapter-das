@@ -54,7 +54,7 @@
 | mqa triton 臂 torch-emu fallback | `bridges/sglang_mqa_emu.py` | 拆（emu 退运行时） | **完成**（per-call emu 回落拆除，严格分发；W2-2） |
 | HCU_FA3_EMU=1 默认 | env 注册表 | 默认翻转+报错 | **完成**（default=0，docs 同步；W2-2） |
 | _auto_mqa_emu auto 落 emu | `infra/hcu_env.py` | auto 不落 emu | **完成**（return None；W2-2） |
-| R-12 桥隔离静默走上游 | bridges try-isolation | 配置档失败=首用报错 | **部分完成**（W2-5：失败升 ERROR + 启动降级汇总行，gate 可断言；per-op 首用报错待 enforcement 引擎批） |
+| R-12 桥隔离静默走上游 | bridges try-isolation | 配置档失败=首用报错 | **完成**（终态=启动拒绝：HCU_STRICT_BRIDGES=1 默认，桥失败即 RuntimeError 拒绝起服——比 per-op 首用报错更强更简（免逐 topic 毒包装表）；0=审计模式留排障；W5-2 修复 W2-5 的半落地雷：_FAILED_BRIDGES 曾引用未定义） |
 | 安装链碎行降噪 | bridges/features 12 处成功行 | warning→info（P7 默认静默） | **完成**（W2-5） |
 | emu_parity mark + gate 过滤 | pyproject markers / 三 KDA 巨头 / l1_gpu_gate `-m "not emu_parity"` / ci/emu_parity_nightly.sh | CI 250s→0，手工/nightly 通道保留（W4-1） | **完成** |
 | gate 零降级断言 | tests/tools/_test_zero_degradation.py（第 7 并发 lane）：桥装完后 _FAILED_BRIDGES 空 + registry 无 emu 落点 | W5-1 落地 | **完成** |

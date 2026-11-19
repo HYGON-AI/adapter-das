@@ -381,3 +381,17 @@ def install() -> None:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: grouped_topk/sampling bridge not installed", exc_info=True
             )
+
+        # P7 (governance 3b-8, 2026-11-19): the tier resolution table is
+        # the ONE thing serve startup prints loudly -- one line per op
+        # (op -> impl [role/mechanism] via target) plus the catalog ops
+        # still on the upstream path. Performance triage starts here:
+        # diff this table between the fast day and the slow day.
+        try:
+            from hcu_adapter.infra import registry
+
+            registry.log_summary()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: tier table print failed", exc_info=True
+            )

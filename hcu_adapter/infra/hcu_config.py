@@ -41,6 +41,9 @@ UI both render from it. status:
     broken      once shipped, now convicted of corruption -- selecting
                 raises at config load (env override still possible for
                 A/B triage)
+    retired     exited runtime routing (governance 3b-9, e.g. emu/torch
+                tiers) -- selecting raises at config load; the emu files
+                remain as development-time parity tools only
     planned     catalogued for the future UI, NOT wired -- selecting
                 raises at config load
 """
@@ -1081,7 +1084,21 @@ def _validate(doc, path):
                 + ", ".join(
                     sorted(
                         b for b, s in spec["backends"].items()
-                        if s["status"] not in ("planned", "broken")
+                        if s["status"] not in ("planned", "broken", "retired")
+                    )
+                )
+            )
+        if status == "retired":
+            note = spec["backends"][backend].get("note", "")
+            raise HcuConfigError(
+                f"{path}: ops.{op}: backend {backend!r} is retired from "
+                f"runtime routing (governance 3b-9) and refused: {note} "
+                "Selectable backends: "
+                + ", ".join(
+                    sorted(
+                        b for b, st in spec["backends"].items()
+                        if st["status"] not in
+                        ("planned", "broken", "retired")
                     )
                 )
             )
@@ -1093,7 +1110,7 @@ def _validate(doc, path):
                 + ", ".join(
                     sorted(
                         b for b, s in spec["backends"].items()
-                        if s["status"] not in ("planned", "broken")
+                        if s["status"] not in ("planned", "broken", "retired")
                     )
                 )
             )

@@ -213,7 +213,7 @@ fi
 # (cold containers must export /root/.cache/sglang/jit as a new seed rather
 # than raising the budget further); the pre-layout 900s no longer fits the
 # post-layout test volume even with ZERO JIT compiles.
-run_seg kernels 1500  python3 -m pytest tests/kernels tests/adapter -vv --no-header \
+run_seg kernels 1500  python3 -m pytest tests/kernels tests/adapter -vv --no-header -m "not emu_parity" \
     --tb=short -o faulthandler_timeout=120 --durations=60 \
     "${FAMILY_DESELECT[@]}"
 

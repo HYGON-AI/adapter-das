@@ -280,3 +280,11 @@ Q/K、V、累计 gate 一致，首次可比数值分歧出现在激活后的 bet
 定位钩子必须跟随实际 dispatch：vendor GLM/HCU 使用 `HcuKDAKernel` 和
 `fla.hcu.kda`，不能只检查通用 `TritonKDAKernel`。CP 下还要排除 padding、
 部分和/归约后张量的布局差异。
+
+## 动态批次输入拷贝
+
+并发请求出现乱码时，在怀疑 draft 权重或 attention 前，对比 runner
+固定输入缓冲区加载前后的 input IDs、positions、seq_lens、request
+indices 和 cache locations。HCU FastJIT 的 tuple 参数缓存可能使
+small_copy 在 batch 改变后漏写；首条正常不能证明其他行有效。
+修复与真实 GPU 变输入 graph 回归见 [small-copy 手册](../../../docs/small-copy-jit.md)。

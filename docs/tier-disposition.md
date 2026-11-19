@@ -26,7 +26,7 @@
 | 15 | `hcu_adapter/kernels/grouped_gemm_emu.py` | `hcu_adapter/kernels/grouped_gemm_triton.py` | A(拆降级) | 待处置 | 待处置 |
 | 16 | `hcu_adapter/kernels/index_ops_emu.py` | `hcu_adapter/kernels/index_ops.py`, `hcu_adapter/kernels/index_ops_triton.py` | A(拆降级) | 待处置 | 待处置 |
 | 17 | `hcu_adapter/kernels/kv_cache_emu.py` | 上游 `kernels/ops/kvcache/` 家族 | B(补triton/寻源vendor) | **接上游 triton 档**（寻源 2026-11-19：aiter 无 paged KV set/get 原语，仅有 rope_cached*/ep_scatter/quant 族；上游树内已有 cache_ops.py、triton_store_cache.py、fused_fp8_qkv_kv_cache.py、kv_read_table.py、copy/zero_pages、hicache/hisparse——覆盖 load_paged/store_paged 的 gather/quant/scatter 语义）| **寻源完成**；接线任务：DeepInfer fused_transform/kv_cache 消费面换上游调用 + GPU 对拍（W3-1） |
-| 18 | `hcu_adapter/kernels/mhc_emu.py` | `hcu_adapter/bridges/vllm_dsv41/mhc.py`, `hcu_adapter/kernels/mhc_aiter.py`, `hcu_adapter/kernels/mhc_lightop.py` | A(拆降级) | 待处置 | 待处置 |
+| 18 | `hcu_adapter/kernels/mhc_emu.py` | vllm_dsv41/mhc + mhc_aiter + mhc_lightop | A(拆降级) | emu 件实为**分发器**（:242 即转发 mhc_lightop.hc_projection；HCU_MHC_IMPL=aiter 默认）——vendor 档是运行时；内部 torch 臂梯子随 W2 enforcement 批严格化 | **完成**（W3-6 核实；梯子严格化归 enforcement 批统一处理） |
 | 19 | `hcu_adapter/kernels/mla_attention_emu.py` | `hcu_adapter/kernels/mla_attention_dtk.py` | A(拆降级) | 待处置 | 待处置 |
 | 20 | `hcu_adapter/kernels/mla_layout.py`（原 mla_layout_emu） | — | B(补triton/寻源vendor) | **机制化改名**（寻源 2026-11-19：上游 0522 与 aiter 均无等价算子；本件是权重装载期一次性字节保持排列——torch 跨步拷贝即 HBM 带宽级，triton 无收益，无仿真语义无降级梯——`_emu` 后缀属命名错位） | **完成**（W3-2：改名+豁免清单+消费点重接；无运行时行为变化） |
 | 21 | `hcu_adapter/kernels/moe_gate_emu.py` | `hcu_adapter/kernels/moe_gate_lightop.py` | A(拆降级) | 待处置 | 待处置 |
@@ -36,11 +36,11 @@
 | 25 | `hcu_adapter/kernels/request_indices_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
 | 26 | `hcu_adapter/kernels/rope_emu.py` | `hcu_adapter/kernels/rope_lightop.py`, `hcu_adapter/kernels/rope_triton.py` | A(拆降级) | 待处置 | 待处置 |
 | 27 | `hcu_adapter/kernels/sampling_emu.py` | `bridges/_sglang/sampling.py`（top_k/top_p renorm 面，**非同面**——ZOS fused_sample/random_sampling 无覆盖） | 改判 B | **开发 triton**（ZOS 采样数值面：fused_sample/random_sampling，deepinfer 774ce24 锚，device-only；上游参考与 tilelang 核允许数值差——属性测试非位级） | **任务开立**（W3-5） |
-| 28 | `hcu_adapter/kernels/sglang_mhc_prenorm_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
+| 28 | `hcu_adapter/kernels/sglang_mhc_prenorm_emu.py` | — | B(补triton/寻源vendor) | **改判 vendor 路由面**：实现=全 FP32 torch GEMM（hipBLAS 经 torch.matmul）——DeepGEMM split-K 合约的 HCU 承接，GEMM 本体已在 vendor 库；`_emu` 命名低估了它 | **完成**（W3-6 改判；如需去 dtk/hipblas 直连消除 torch 层再开任务，当前性能路径成立） |
 | 29 | `hcu_adapter/kernels/state_and_constraints_emu.py` | `hcu_adapter/kernels/state_and_constraints_triton.py` | A(拆降级) | triton 档已在运行时接线（tilelang_ops:632 mask_logits）；emu=开发参考（§3b-9） | **完成**（W3-3 核实，无需改动） |
-| 30 | `hcu_adapter/kernels/verification_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
-| 31 | `hcu_adapter/kernels/vision_attention_emu.py` | `hcu_adapter/bridges/_deepinfer/vision_attention.py` | A(拆降级) | 待处置 | 待处置 |
-| 32 | `hcu_adapter/kernels/vision_emu.py` | `hcu_adapter/kernels/vision_triton.py` | A(拆降级) | 待处置 | 待处置 |
+| 30 | `hcu_adapter/kernels/verification_emu.py` | — | B(补triton/寻源vendor) | **开发 triton**（ZOS 验证元数据六件套 + sum_smaller_probs 归约；:445-484 全量在挂；与 sampling 同族同优先级——投机解码热路径） | **任务开立**（W3-6） |
+| 31 | `hcu_adapter/kernels/vision_attention_emu.py` | bridges/_deepinfer/vision_attention.py（**调用面**非实现档，兄弟列误配） | 改判 B | **开发 triton**（有界内存 FP32 varlen ViT attention 整体在 torch——真数值面） | **任务开立**（W3-6；ViT 路径使用频率先确认再排期） |
+| 32 | `hcu_adapter/kernels/vision_emu.py` | `hcu_adapter/kernels/vision_triton.py` | A(拆降级) | rgb_pad_to_patches → **triton 档已接线**（tilelang_ops:668）；replace_input_embeds（:656）= 嵌入替换机制臂（装载/预处理变换，mla_layout 类语义） | **完成**（W3-6 核实；replace 臂如需彻底去 _emu 名可随下批机制改名） |
 | 33 | `hcu_adapter/kernels/weight_scale.py`（原 _emu） | — | B(补triton/寻源vendor) | **机制化改名**（装载期 UE8M0 scale ABI 布局，tile-kernels 2.1.0 GPU ABI 对齐，docstring 自证"loading-time candidate, not a GEMM implementation"；无数值语义无降级梯） | **完成**（W3-3） |
 | 34 | `hcu_adapter/kernels/zos_metadata_emu.py` | `hcu_adapter/kernels/zos_metadata_triton.py` | A(拆降级) | triton 档已在运行时接线（tilelang_ops:361-406 四函数）；emu=开发参考（§3b-9）；W3-3 曾误判改名已即时撤销 | **完成**（W3-3 核实，无需改动） |
 

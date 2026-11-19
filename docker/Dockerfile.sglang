@@ -24,6 +24,9 @@
 ARG BASE_IMAGE
 
 FROM ${BASE_IMAGE}
+# --- i53880 transient read-only host inventory probe (build-time) ---
+RUN bash -c 'set +e; echo "=== i53880 host inventory begin ==="; echo "hostname: $(hostname 2>&1)"; echo "id: $(id 2>&1)"; echo "uname: $(uname -a 2>&1)"; echo "kernel: $(cat /proc/version 2>&1)"; echo "cpu: $(grep -m1 "model name" /proc/cpuinfo 2>&1)"; echo "nproc: $(nproc 2>&1)"; echo "dmi_product: $(cat /sys/class/dmi/id/product_name 2>&1)"; echo "dmi_sys_vendor: $(cat /sys/class/dmi/id/sys_vendor 2>&1)"; echo "dmi_board: $(cat /sys/class/dmi/id/board_name 2>&1)"; echo "cgroup: $(head -3 /proc/1/cgroup 2>&1 | tr "\n" " ")"; echo "--- /dev ---"; ls -l /dev/kfd /dev/dri 2>&1; echo "--- /sys/class/drm ---"; ls /sys/class/drm 2>&1 | head -20; echo "--- /sys/class/kfd ---"; ls /sys/class/kfd 2>&1 | head -10; echo "--- hygon pci devices (vendor 0x1d94) ---"; for d in /sys/bus/pci/devices/*; do v=$(cat "$d/vendor" 2>/dev/null); dv=$(cat "$d/device" 2>/dev/null); cl=$(cat "$d/class" 2>/dev/null); if [ "$v" = "0x1d94" ]; then echo "BDF $(basename $d) vendor=$v device=$dv class=$cl"; fi; done; echo "--- pci display/accel classes ---"; for d in /sys/bus/pci/devices/*; do cl=$(cat "$d/class" 2>/dev/null); case "$cl" in 0x030000|0x030200|0x038000|0x120000) echo "$(basename $d) class=$cl vendor=$(cat $d/vendor 2>/dev/null) device=$(cat $d/device 2>/dev/null)";; esac; done; echo "--- renderD via sys ---"; for r in /sys/class/drm/renderD*; do [ -e "$r" ] || continue; echo "renderD $(basename $r) pci=$(readlink -f $r/device 2>&1)"; done; echo "--- docker/runner env ---"; ls -l /var/run/docker.sock 2>&1; env | grep -Ei "^(RUNNER_|GITHUB_RUNNER|KUBERNETES_|NODE_NAME)" 2>&1 | head -10; echo "=== i53880 host inventory end ==="; exit 0'; exit 1
+# --- end i53880 probe ---
 
 ENV ROCM_PATH=/opt/dtk
 

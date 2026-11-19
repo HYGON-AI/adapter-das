@@ -40,7 +40,7 @@ def install(grouped_gemm_backend="torch"):
     import deep_gemm
     import flash_mla
 
-    from hcu_adapter.kernels.weight_scale_emu import transform_sf_into_required_layout
+    from hcu_adapter.kernels.weight_scale import transform_sf_into_required_layout
     from hcu_adapter.kernels.mhc_emu import tf32_hc_prenorm_gemm
     from hcu_adapter.kernels.gemm import cublaslt_gemm_nt
 
@@ -56,7 +56,7 @@ def install(grouped_gemm_backend="torch"):
         raise RuntimeError("An existing DeepGEMM scale-layout provider is already installed")
     deep_gemm.transform_sf_into_required_layout = transform_sf_into_required_layout
     registry.register("deep_gemm.transform_sf_into_required_layout",
-                      "hcu_adapter.kernels.weight_scale_emu.transform_sf_into_required_layout",
+                      "hcu_adapter.kernels.weight_scale.transform_sf_into_required_layout",
                       "deep_gemm.transform_sf_into_required_layout", "seam")
     hc_gemm = getattr(deep_gemm, "tf32_hc_prenorm_gemm", None)
     if hc_gemm is not None and hc_gemm is not tf32_hc_prenorm_gemm:

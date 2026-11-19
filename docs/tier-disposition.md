@@ -17,7 +17,7 @@
 | 6 | `hcu_adapter/features/gdn/conv1d_update_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
 | 7 | `hcu_adapter/features/gdn/kda_prefill_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
 | 8 | `hcu_adapter/features/hadamard/hadamard_emu.py` | `hcu_adapter/features/hadamard/hadamard.py`, `hcu_adapter/features/hadamard/hadamard_triton.py` | A(拆降级) | 待处置 | 待处置 |
-| 9 | `hcu_adapter/kernels/compress_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
+| 9 | `hcu_adapter/kernels/compress_emu.py` | — | B(补triton/寻源vendor) | **开发 triton**（真数值热路径：窗口 FP32 softmax + 加权 latent 求和 + 环形写回，每步执行；deepinfer 的 tilelang CUDA 核在 HCU 不存在——tilelang_ops 的 backend 即本仓提供者清单，当前 launch 体直跑 emu） | **任务开立**（W3-3；triton 实现 + emu 手工对拍后切档） |
 | 10 | `hcu_adapter/kernels/deepselect_emu.py` | `hcu_adapter/bridges/_deepinfer/deepselect.py`, `hcu_adapter/kernels/deepselect_lightop.py` | A(拆降级) | 待处置 | 待处置 |
 | 11 | `hcu_adapter/kernels/engram_init_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
 | 12 | `hcu_adapter/kernels/engram_runtime_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
@@ -37,12 +37,12 @@
 | 26 | `hcu_adapter/kernels/rope_emu.py` | `hcu_adapter/kernels/rope_lightop.py`, `hcu_adapter/kernels/rope_triton.py` | A(拆降级) | 待处置 | 待处置 |
 | 27 | `hcu_adapter/kernels/sampling_emu.py` | `hcu_adapter/bridges/_sglang/sampling.py` | A(拆降级) | 待处置 | 待处置 |
 | 28 | `hcu_adapter/kernels/sglang_mhc_prenorm_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
-| 29 | `hcu_adapter/kernels/state_and_constraints_emu.py` | `hcu_adapter/kernels/state_and_constraints_triton.py` | A(拆降级) | 待处置 | 待处置 |
+| 29 | `hcu_adapter/kernels/state_and_constraints_emu.py` | `hcu_adapter/kernels/state_and_constraints_triton.py` | A(拆降级) | triton 档已在运行时接线（tilelang_ops:632 mask_logits）；emu=开发参考（§3b-9） | **完成**（W3-3 核实，无需改动） |
 | 30 | `hcu_adapter/kernels/verification_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
 | 31 | `hcu_adapter/kernels/vision_attention_emu.py` | `hcu_adapter/bridges/_deepinfer/vision_attention.py` | A(拆降级) | 待处置 | 待处置 |
 | 32 | `hcu_adapter/kernels/vision_emu.py` | `hcu_adapter/kernels/vision_triton.py` | A(拆降级) | 待处置 | 待处置 |
-| 33 | `hcu_adapter/kernels/weight_scale_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
-| 34 | `hcu_adapter/kernels/zos_metadata_emu.py` | `hcu_adapter/kernels/zos_metadata_triton.py` | A(拆降级) | 待处置 | 待处置 |
+| 33 | `hcu_adapter/kernels/weight_scale.py`（原 _emu） | — | B(补triton/寻源vendor) | **机制化改名**（装载期 UE8M0 scale ABI 布局，tile-kernels 2.1.0 GPU ABI 对齐，docstring 自证"loading-time candidate, not a GEMM implementation"；无数值语义无降级梯） | **完成**（W3-3） |
+| 34 | `hcu_adapter/kernels/zos_metadata_emu.py` | `hcu_adapter/kernels/zos_metadata_triton.py` | A(拆降级) | triton 档已在运行时接线（tilelang_ops:361-406 四函数）；emu=开发参考（§3b-9）；W3-3 曾误判改名已即时撤销 | **完成**（W3-3 核实，无需改动） |
 
 ## 运行时降级点拆除台账（W2，governance §3b-8 违规清单）
 

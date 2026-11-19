@@ -498,7 +498,11 @@ _KERNEL_MECHANISMS = {"runtime_config", "lightop_usage",
                    # W3-2: byte-preserving weight permutations --
                    # layout mechanism, no tier semantics (no fallback
                    # ladder exists; torch strided copies at HBM bw)
-                   "mla_layout"}
+                   "mla_layout",
+                   # W3-3: same mechanism class -- load-time ABI layouts and
+                   # device-side metadata/state plumbing (graph-capture-safe,
+                   # no numeric emulation semantics, no fallback ladder)
+                   "weight_scale"}
 
 
 def check_impl_naming(r):

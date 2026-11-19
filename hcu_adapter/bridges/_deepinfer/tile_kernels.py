@@ -83,7 +83,7 @@ def install():
     from hcu_adapter.kernels.quant_emu import per_token_cast
     if native:
         from hcu_adapter.kernels.quant_lightop import per_token_cast
-    from hcu_adapter.kernels.weight_scale_emu import batched_transpose_weight_sf
+    from hcu_adapter.kernels.weight_scale import batched_transpose_weight_sf
 
     for suffix, symbol, provider in (
         ("engram", "fused_weight", fused_weight),
@@ -98,7 +98,7 @@ def install():
         registry.register(op, "hcu_adapter.kernels.engram_runtime_emu." + symbol, op, "seam")
     sys.modules["tile_kernels.quant"].batched_transpose_weight_sf = batched_transpose_weight_sf
     registry.register("tile_kernels.quant.batched_transpose_weight_sf",
-                      "hcu_adapter.kernels.weight_scale_emu.batched_transpose_weight_sf",
+                      "hcu_adapter.kernels.weight_scale.batched_transpose_weight_sf",
                       "tile_kernels.quant.batched_transpose_weight_sf", "seam")
     sys.modules["tile_kernels.quant"].per_token_cast = per_token_cast
     registry.register("tile_kernels.quant.per_token_cast", per_token_cast.__module__ + '.per_token_cast',

@@ -1,6 +1,6 @@
 # 算子档位矩阵（自动生成，勿手改）
 
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-18）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
+> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-19）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
@@ -338,6 +338,7 @@ RMSNorm (plain); the fused-add family is its own op below
 | aiter | candidate auto second; aiter.rmsnorm_forward(x |
 | lightop | candidate auto first when lightop imports; Pub |
 | torch | production reference path |
+| lightop_opt | candidate Explicit BF16 LightOp op.rms_norm_op |
 
 路由变量：`HCU_RMS_NORM_IMPL`
 
@@ -350,6 +351,7 @@ residual += input; input = rmsnorm(residual)*w, in-place
 | triton | production auto ladder fallback (lightop > trit |
 | lightop | validated auto first (2026-11 tier order) for  |
 | torch | production reference path |
+| lightop_opt | candidate Explicit LightOp op.fused_add_rms_no |
 
 路由变量：`HCU_FUSED_ADD_RMS_IMPL`
 

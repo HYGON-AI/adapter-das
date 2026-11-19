@@ -24,8 +24,8 @@ import torch
 
 from .compat import HAS_TRITON, check_cuda_tensor, next_power_of_2
 
-_RMS_IMPL = None  # cached backend choice: "lightop" | "aiter" | "triton" | "torch"
-_FUSED_ADD_IMPL = None      # cached fused-add tier: "lightop" | "triton" | "torch"
+_RMS_IMPL = None
+_FUSED_ADD_IMPL = None
 _LIGHTOP_FUSED_ADD = None   # resolved (fused_add_rms_norm, gemma_fused_add_rmsnorm)
 
 
@@ -33,6 +33,13 @@ def _probe_lightop_rms():
     import lightop
 
     return getattr(lightop, "rms_norm", None)
+
+
+def _probe_lightop_opt_rms():
+    from lightop import op
+
+    fn = getattr(op, "rms_norm_opt", None)
+    return fn if callable(fn) else None
 
 
 def _is_adapter_stub(fn) -> bool:
@@ -66,6 +73,18 @@ def _probe_lightop_fused_add():
     return _LIGHTOP_FUSED_ADD
 
 
+def _probe_lightop_opt_fused_add():
+    global _LIGHTOP_FUSED_ADD
+    import lightop
+    from lightop import op
+
+    fn = getattr(op, "fused_add_rms_norm_opt", None)
+    if not callable(fn):
+        return None
+    _LIGHTOP_FUSED_ADD = (fn, getattr(lightop, "gemma_fused_add_rmsnorm", None))
+    return _LIGHTOP_FUSED_ADD
+
+
 def _resolve_rms_impl():
     """rms_norm backend ladder: lightop > aiter > triton (explicit wins).
 
@@ -89,6 +108,7 @@ def _resolve_rms_impl():
                 "rms_norm",
                 {
                     "lightop": _probe_lightop_rms,
+                    "lightop_opt": _probe_lightop_opt_rms,
                     "aiter": _probe_aiter_rms,
                     "triton": lambda: True,
                     "torch": lambda: True,
@@ -111,7 +131,7 @@ def _resolve_fused_add_impl():
     variance_epsilon, limit=-1.0) plus the gemma_fused_add_rmsnorm variant.
     The DTK aiter wheel exposes no fused-add export, so aiter is absent from
     the candidate map (the ladder still holds: no implementation to pick).
-    Explicit HCU_FUSED_ADD_RMS_IMPL wins (lightop|triton|torch)."""
+    Explicit HCU_FUSED_ADD_RMS_IMPL wins (lightop|lightop_opt|triton|torch)."""
     global _FUSED_ADD_IMPL
     if _FUSED_ADD_IMPL is None:
         requested, source = None, "default"
@@ -130,6 +150,7 @@ def _resolve_fused_add_impl():
                 "fused_add_rmsnorm",
                 {
                     "lightop": _probe_lightop_fused_add,
+                    "lightop_opt": _probe_lightop_opt_fused_add,
                     "triton": lambda: True,
                     "torch": lambda: True,
                 },
@@ -149,8 +170,8 @@ def _try_lightop_fused_add(input, residual, weight, eps, gemma):
 
     Guarded to the shapes the wheel's launcher documents; a raising vendor
     call is one-strike: traceback printed once, the tier disabled for the
-    process, and THIS call falls back — an opt-in knob must never crash a
-    serving process that would otherwise have run on triton."""
+    process, and THIS call falls back. An explicit optimized non-Gemma call
+    propagates the provider error because the in-place operands may have changed."""
     global _LIGHTOP_FUSED_ADD
     if (
         _LIGHTOP_FUSED_ADD is None
@@ -163,6 +184,8 @@ def _try_lightop_fused_add(input, residual, weight, eps, gemma):
     ):
         return False
     fn = _LIGHTOP_FUSED_ADD[1] if gemma else _LIGHTOP_FUSED_ADD[0]
+    if fn is None:
+        return False
     try:
         # in-place on both, matching the sgl_kernel contract; the vendor
         # kernel is row-wise, so flatten leading dims to the canonical 2D
@@ -171,6 +194,10 @@ def _try_lightop_fused_add(input, residual, weight, eps, gemma):
            weight, eps)
         return True
     except Exception:
+        if _FUSED_ADD_IMPL == "lightop_opt":
+            if not gemma:
+                raise
+            return False
         import traceback
 
         traceback.print_exc()
@@ -195,8 +222,8 @@ def _aiter_rmsnorm(input, weight, eps):
     return out.view(shape)
 
 
-def _lightop_rmsnorm(input, weight, eps, out):
-    """Use the public BF16 provider while preserving the caller's output buffer."""
+def _lightop_rmsnorm(input, weight, eps, out, *, optimized=False):
+    """Use a LightOp BF16 provider while preserving the caller's output buffer."""
     import lightop
 
     check_cuda_tensor(input, weight, out)
@@ -206,7 +233,12 @@ def _lightop_rmsnorm(input, weight, eps, out):
         return out
     x = input.contiguous().view(-1, input.shape[-1])
     y = out.contiguous().view_as(x)
-    lightop.rms_norm(x, weight.contiguous(), eps, out=y)
+    if optimized:
+        if x.untyped_storage().data_ptr() == y.untyped_storage().data_ptr():
+            y = torch.empty_like(x)
+        lightop.op.rms_norm_opt(y, x, weight.contiguous(), eps)
+    else:
+        lightop.rms_norm(x, weight.contiguous(), eps, out=y)
     if y.data_ptr() != out.data_ptr():
         out.copy_(y.view_as(out))
     return out
@@ -329,11 +361,11 @@ def _do_rmsnorm(
         impl = "triton"  # vendor backend covers the plain norm only
     if impl == "torch" or not input.is_cuda:
         return _rmsnorm_native(input, weight, eps, gemma, out)
-    if impl == "lightop":
+    if impl in ("lightop", "lightop_opt"):
         # BF16 plain norm is the qualified lightop contract; other dtypes
         # continue down the ladder (aiter -> triton) instead of stopping here.
         if input.dtype == weight.dtype == out.dtype == torch.bfloat16:
-            return _lightop_rmsnorm(input, weight, eps, out)
+            return _lightop_rmsnorm(input, weight, eps, out, optimized=impl == "lightop_opt")
         impl = "aiter" if _aiter_rms_fn() is not None else "triton"
     if impl == "aiter":
         if input.dtype in (torch.bfloat16, torch.float16):
@@ -427,7 +459,9 @@ def _do_fused_add(
     gemma: bool,
 ) -> None:
     impl = _resolve_fused_add_impl()
-    if impl == "lightop" and _try_lightop_fused_add(input, residual, weight, eps, gemma):
+    if impl in ("lightop", "lightop_opt") and _try_lightop_fused_add(
+        input, residual, weight, eps, gemma
+    ):
         return
     use_triton = (
         impl != "torch"

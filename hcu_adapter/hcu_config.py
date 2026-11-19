@@ -343,6 +343,8 @@ BACKEND_CATALOG = {
                         "note": "auto first when lightop imports; Public "
                                 "BF16 plain RMSNorm; other dtypes/Gemma use "
                                 "the lower tiers"},
+            "lightop_opt": {"status": "candidate",
+                            "note": "Explicit BF16 LightOp op.rms_norm_opt; GPU/graph validation pending"},
             "torch": {"status": "production",
                       "note": "reference path"},
         },
@@ -365,6 +367,9 @@ BACKEND_CATALOG = {
                                 "too); perf 0.76x vs triton @4096x7168 bf16 "
                                 "(standby: HCU_FUSED_ADD_RMS_IMPL=triton); "
                                 "one-strike fallback on a raise"},
+            "lightop_opt": {"status": "candidate",
+                            "note": "Explicit LightOp op.fused_add_rms_norm_opt for plain fused add; "
+                                    "GPU/graph validation pending"},
             "torch": {"status": "production",
                       "note": "reference path"},
         },

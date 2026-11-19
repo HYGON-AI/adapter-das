@@ -8,6 +8,10 @@ host latch 的重置测试同时当作原生 owner 的继承测试。
 `test_vllm_builtin_health.py` 用真实 `ProcessLocalActions` 检查全部内置 owner
 和运行事务内外的边界，不用缺少新增方法的 `SimpleNamespace` 模拟该门面。
 独立子进程无法继承 monkeypatch；需按其测试范围显式配置无关能力。
+Adapter-only 的真实 metadata/general-plugin/spawn 发现测试须使用未安装 Plugin
+的独立环境，只额外安装测试 provider。`VLLM_PLUGINS=none` 不会过滤
+`hcu_adapter.extensions` 的分发元数据；不能删除发现断言或用 mocked entry_points
+隐藏真实 provider。含 Plugin 的组合验证另建环境，保留不符合此隔离前提的失败。
 AR 编译哈希回归保留两个真实 hash collector 和真实 AR factor；CPU 夹具
 只替换无关的 Inductor 系统指纹，不查询 GPU。来源断言使用车道显式声明的
 `AR_ADAPTER_ROOT`，解析其精确 bridge 文件并与实际导入文件逐项相等；

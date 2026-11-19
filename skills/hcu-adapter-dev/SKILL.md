@@ -268,6 +268,10 @@ v0.33 V2 FULL Graph replay 不进入平台 `set_additional_forward_context`；
 required-owner 检查还须在已配置的 Adapter Worker `execute_model` 委托前执行，
 同时阻断 PP 等待/传输和 replay。复用同一冻结策略，不复制 runner 或 Graph，
 不在 forward 重读环境；第三方/扩展选择的 Worker 必须另核继承与覆盖范围。
+真实 PP 模型取证须核对 `TP * PP` 个 worker、各自 current device/UUID、
+实际层范围和 `execute_model` 来源，不能把所有 rank 的设备都记成 device0。
+健康模型的生成、Graph 与 HumanEval 验证和失效 owner 的传输前拒绝是两项
+不同证据；替身 PP send 的组件结果不能替代真实拓扑的故障验证。
 
 宿主启动失败须先锁存固定拒绝，再格式化异常；`__str__` 也可能抛
 `BaseException`、重入或 fork。扩展宿主先判原始 fatal 链，再安全生成唯一

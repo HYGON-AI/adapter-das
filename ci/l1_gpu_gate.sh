@@ -208,6 +208,11 @@ PY
     done <<< "$family_nodes"
     echo "L1: kernels transfers $((${#FAMILY_DESELECT[@]} / 2)) cases to blocking matrix"
 fi
+# 900s assumes a SEEDED jit cache (gfx936 seed tar into /root/.cache): cold
+# containers ninja-compile dozens of csrc variants mid-suite and blow any
+# fixed budget -- export /root/.cache/sglang/jit after a warm run instead
+# of raising this (per-token-group-quant/activation have no vendor AOT
+# equivalents yet; R-09 aiter tier covers only part of the shapes).
 run_seg kernels 900  python3 -m pytest tests/kernels tests/adapter -vv --no-header \
     --tb=short -o faulthandler_timeout=120 --durations=60 \
     "${FAMILY_DESELECT[@]}"

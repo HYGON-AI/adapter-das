@@ -20,7 +20,7 @@ import pytest
 import torch
 
 from hcu_adapter.bridges import vllm as bridge
-from hcu_adapter.extensions import (
+from hcu_adapter.infra.extensions import (
     ExtensionReport,
     ExtensionStatus,
     RequiredExtensionError,

@@ -30,8 +30,8 @@ import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from hcu_adapter.dsa_mqa_logits_emu import fp8_paged_mqa_logits as emu  # noqa: E402
-from hcu_adapter.mqa_logits_triton import triton_paged_mqa_logits as tri  # noqa: E402
+from hcu_adapter.features.dsa.dsa_mqa_logits_emu import fp8_paged_mqa_logits as emu  # noqa: E402
+from hcu_adapter.features.dsa.mqa_logits_triton import triton_paged_mqa_logits as tri  # noqa: E402
 
 
 def _upstream_writer(current, legacy):
@@ -128,7 +128,7 @@ def _rel_topk(ref, got, lens):
 
 
 def _run_gate(monkeypatch, timing):
-    import hcu_adapter.dsa_mqa_logits_emu as _dp
+    import hcu_adapter.features.dsa.dsa_mqa_logits_emu as _dp
 
     failures = []
 

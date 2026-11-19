@@ -14,14 +14,14 @@ from pathlib import Path
 
 from packaging.version import InvalidVersion, Version
 
-from hcu_adapter.extensions import (
+from hcu_adapter.infra.extensions import (
     ExtensionContext,
     ExtensionReport,
     ExtensionCommitError,
     RequiredExtensionError,
     activate_extensions,
 )
-from hcu_adapter.runtime_lifecycle import ProcessLocalLifecycle
+from hcu_adapter.infra.runtime_lifecycle import ProcessLocalLifecycle
 
 LOG = logging.getLogger("hcu.adapter")
 
@@ -318,7 +318,7 @@ def _hcu_platform_class() -> type:
             status = state()  # Read-only; fatal state/policy drift must refuse.
             if super().use_custom_allreduce():
                 return True
-            from hcu_adapter import hcu_env
+            from hcu_adapter.infra import hcu_env
             from vllm import envs
 
             if (
@@ -444,7 +444,8 @@ def _log_post_install_bindings() -> None:
     function. They cannot say whether a bridge bound anything; this line and
     the rewritten dump can. It records state, it does not activate or repair.
     """
-    from hcu_adapter import hcu_env, registry
+    from hcu_adapter.infra import hcu_env
+    from hcu_adapter.infra import registry
 
     bound = registry.records()
     for op in ("vllm_flashmla_prefill", "vllm_flashmla_decode"):
@@ -526,7 +527,7 @@ def hcu_runtime_plugin() -> None:
 
 def _required_names(variable: str) -> frozenset[str]:
     """Read a comma-separated list; reject malformed nonempty requirements."""
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
 
     raw, _source = hcu_env.resolve(variable)
     if not raw.strip():

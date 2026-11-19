@@ -10,7 +10,7 @@ the probes are plain callables.
 
 import pytest
 
-from hcu_adapter import tier_policy
+from hcu_adapter.infra import tier_policy
 
 
 @pytest.fixture(autouse=True)

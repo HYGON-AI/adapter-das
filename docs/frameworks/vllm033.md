@@ -17,7 +17,7 @@ HCU 身份清单为 `gfx928`、`gfx92a`、`gfx936`、`gfx938`；设备属性中�
 | --- | --- | --- |
 | OpenDAS/vllm | 官方模型、调度、runner、通信及公共接口；必要的 DTK 构建兼容 | 官方 release 起步，逐文件说明构建差异 |
 | adapter-das | 真实 HCU 探测、版本及 runtime ABI 准入、公共快关、扩展报告与进程健康 | 唯一 `vllm.platform_plugins` / `vllm.general_plugins` owner |
-| vllm-plugin-das | 官方没有的 HCU 格式、算法与可选优化 | `hcu_adapter.extensions`，继而使用官方公开 registry |
+| vllm-plugin-das | 官方没有的 HCU 格式、算法与可选优化 | `hcu_adapter.infra.extensions`，继而使用官方公开 registry |
 
 本仓不得为通过一个 provider 检查而伪造 NVIDIA/CDNA 架构，也不得硬编码
 Plugin 类路径。普通 MHA/GQA 的默认 Triton 选型不覆盖 MLA/Sparse MLA；

@@ -74,7 +74,7 @@ def install():
         )
 
     _hcu_capture_prefill_graph.__dict__[_MARK] = owns_capture
-    import hcu_adapter.registry as _reg
+    import hcu_adapter.infra.registry as _reg
 
     # Validate registration before publishing either namespace. A rejected
     # registration must not leave an active but unreported driver gate.

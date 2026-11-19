@@ -66,7 +66,7 @@ def _resolve_impl():
     if _IMPL_CHOICE is None:
         requested, source = None, "default"
         try:
-            from hcu_adapter import hcu_env
+            from hcu_adapter.infra import hcu_env
 
             requested, source = hcu_env.resolve("HCU_SILU_MUL_IMPL")
         except Exception:
@@ -76,7 +76,7 @@ def _resolve_impl():
 
             traceback.print_exc()
         try:
-            from hcu_adapter import tier_policy
+            from hcu_adapter.infra import tier_policy
 
             tier, _impl = tier_policy.pick(
                 "silu_and_mul",

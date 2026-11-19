@@ -65,8 +65,10 @@ production/model environment.
 
 ## Actual Qwen3-8B pipeline model pair (R258)
 
-Keep this request Draft. This adds healthy **real TP1/PP2 model** coverage;
-refusal of an invalid owner before real PP transport remains unqualified.
+Keep this request Draft. This R258 cohort adds healthy **real TP1/PP2 model**
+coverage without owner-fault injection; its results alone do not qualify
+refusal before real PP transport. The R260 follow-up below covers one specific
+owner-loss scenario.
 The earlier native Worker/FULL Graph cases used runner/send stand-ins and
 retain that separate scope. Normal lifecycle, performance, other required
 hardware and independent approval remain open.
@@ -131,3 +133,60 @@ Audit: `evidence/adapter97-real-pp-audit-r258/audit.json`.
 SHA256: `91a484091c4604b009c45c49c87d0fede9309d68a3ffb0953d7299e8d046d140`.
 The complete347-row migration remains incomplete and last_good=false.
 AI assistance: OpenAI Codex; this review does not supply independent approval.
+
+## Real PP2 registry-owner loss after healthy generation (R260)
+
+The same installed pure-main/candidate pair now exercises loss of the required
+Flash registry owner in both actual PP ranks. Runtime remains main `8490a6b6072b`
+versus candidate `6eeea95420cb`; the later `81fe734` commit changes only the
+R258 documentation/skill. Core, merged033 Plugin, checkpoint, physical GPUs6/7,
+TP1/PP2, BF16 weights, E4M3 KV and default FULL_AND_PIECEWISE Graph/prefix match
+the earlier healthy cohort. No FlashAttention source or binary is modified.
+
+Each fresh owned CLI server first generates the expected answer `42`. A public
+worker-extension RPC then installs `sys.setprofile` observation of selected real
+Worker, PP coordinator, V2 runner, full-Graph and Torch replay call boundaries.
+A second successful generation proves the observer sees each worker's actual
+execution thread, PP send/receive and three Torch Graph replay call events.
+These Python observations are not a new GPU-kernel trace or a performance test.
+
+While idle, another public RPC calls
+`AttentionBackendEnum.FLASH_ATTN.clear_override()` in both ranks. It does not
+call health eagerly, replace any implementation, edit frozen host reports or
+checker bindings, modify model weights, or swap captured graphs. The next
+request is identical to the healthy observed request.
+
+| After public registry-owner loss | Pure main | Candidate |
+| --- | --- | --- |
+| Request result | Completes with `42` | HTTP500; published-owner drift rejected |
+| Official Worker /actual V2 runner entered, each rank | Yes /yes | No /no |
+| PP0 send /PP1 receive call events | 4 /4 | 0 /0 |
+| Torch Graph replay call events, each rank | 3 | 0 |
+| Adapter Worker /forward-health entered, each rank | Guard absent | Yes /yes |
+
+The candidate's two worker logs identify the existing published-Flash owner
+drift error. Observation reaches the real Adapter guard in both ranks and sees
+no subsequent official Worker, PP send/receive, runner or replay call. Healthy
+positive controls in those same processes rule out an inactive observer as the
+explanation for zero post-fault events. Event counts are Python call events,
+not a count of scheduler steps or executed GPU kernels.
+
+All18 owned RECORDs and hashed payloads are verified before/after. Fresh full
+payload comparison permits only hcu-adapter to change, normalizing solely the
+exact interpreter shebang of actual console entry points in the two prefixes.
+Each arm also matches its sealed R258 runtime payloads. Checkpoint double reads,
+commands, environment and request agree. Both frontends exit0 within15s with no
+outer forced cleanup or owned survivors. This deliberate engine-failure test
+does not qualify normal lifecycle; R258's original lifecycle FAIL is retained.
+
+This qualifies the observed both-rank registry-owner-loss boundary after healthy
+generation. Arbitrary single-rank, concurrent/in-flight or other owner failures
+remain outside this experiment. It does not rerun HumanEval, establish token
+parity, qualify performance, or supply independent approval. Keep Draft.
+
+Evidence workspace: `evidence/adapter97-real-pp-fault-r260/`, including the
+public worker observer, evaluator, per-worker journals, original responses,
+logs, source seals, payload/checkpoint checks and `audit.json`.
+Audit SHA256: `02f6802db6a389a74cb8052208312353316060445d2866b5af7ad2f4cd8adec5`.
+The347-row migration remains incomplete and last_good=false.
+AI assistance: OpenAI Codex.

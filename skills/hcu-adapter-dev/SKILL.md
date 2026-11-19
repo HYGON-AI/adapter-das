@@ -272,6 +272,10 @@ required-owner 检查还须在已配置的 Adapter Worker `execute_model` 委托
 实际层范围和 `execute_model` 来源，不能把所有 rank 的设备都记成 device0。
 健康模型的生成、Graph 与 HumanEval 验证和失效 owner 的传输前拒绝是两项
 不同证据；替身 PP send 的组件结果不能替代真实拓扑的故障验证。
+若通过公开 registry 注入 owner 丢失，先用同一观测器证明各 rank 的实际
+执行线程、健康收发与 replay 均可见，再核对故障后的委托边界；不能仅凭
+HTTP 报错或缺失 trace 判定传输前拒绝。只覆盖实际注入的 rank 和时序，
+不得外推单 rank、并发失效、正常退出或性能。
 
 宿主启动失败须先锁存固定拒绝，再格式化异常；`__str__` 也可能抛
 `BaseException`、重入或 fork。扩展宿主先判原始 fatal 链，再安全生成唯一

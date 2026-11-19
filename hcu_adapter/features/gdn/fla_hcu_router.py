@@ -19,8 +19,8 @@ intra kernels apply no sigmoid), so beta passes straight through unless
 the caller explicitly sets beta_is_raw=True.
 
 Env:
-- HCU_KDA_PREFILL_IMPL = fork (hip default since 2026-10-18) | emu | stock
-- HCU_CONV1D_IMPL      = fork (hip default since 2026-10-18) | emu | stock
+- HCU_KDA_PREFILL_IMPL = fork (hip default since 2026-10-18) | stock  (emu retired from runtime, 3b-9)
+- HCU_CONV1D_IMPL      = fork (hip default since 2026-10-18) | stock  (emu retired from runtime, 3b-9)
 
 Serving-gate history: the 2026-10-16 "fork flips Berlin deterministically"
 verdict was RE-ATTRIBUTED 2026-10-18 — the flip carrier was the adapter's
@@ -43,12 +43,20 @@ from hcu_adapter.infra import hcu_env
 logger = logging.getLogger("hcu.adapter")
 
 
+def _refuse_emu(var: str) -> None:
+    # governance 3b-9 (2026-11-19): emu exits runtime routing. The emu
+    # implementations remain in-tree as development-time parity tools
+    # (run them from the emu_parity-marked tests directly); serving on
+    # them silently was 100x-slow and untraceable.
+    raise RuntimeError(
+        "%s=emu is retired from runtime routing (governance 3b-9); "
+        "runtime tiers are fork|stock. The emu reference lives in "
+        "tests (emu_parity mark) for development-time cross-checks." % var)
+
+
 def _install_kda_prefill(impl: str) -> None:
     if impl == "emu":
-        from hcu_adapter.features.gdn import kda_prefill_emu
-
-        kda_prefill_emu.install_patch()
-        return
+        _refuse_emu("HCU_KDA_PREFILL_IMPL")
     if impl != "fork":
         return  # stock
     from hcu_adapter.fla_hcu.kda import chunk_kda
@@ -96,11 +104,7 @@ def _install_kda_prefill(impl: str) -> None:
 
 def _install_conv1d(impl: str) -> None:
     if impl == "emu":
-        from hcu_adapter.features.gdn import conv1d_fn_emu, conv1d_update_emu
-
-        conv1d_update_emu.install_patch()
-        conv1d_fn_emu.install_patch()
-        return
+        _refuse_emu("HCU_CONV1D_IMPL")
     if impl != "fork":
         return  # stock (red gates kernels/test_conv1d_* on gfx938)
     from sglang.kernels.ops.mamba import causal_conv1d_triton as m

@@ -89,7 +89,19 @@ manifest 保持不变；新增打包验证后，远端隐藏 GPU 的 CPU 回归�
 发现 30 个历史改写文件，因此旧通过记录只证明旧组合，尚不满足新要求；
 详见 [源码完整性门禁](history/l15-readiness-202611-log.md#源码完整性门禁)。
 
-### L1.5b KNOWN_FAILURES 账本（l15_mech 六机制目录，2026-10-19 首跑分诊）
+### L1 日志已知噪音（上游/镜像层，不影响判定）
+
+以下行来自**上游 sglang 的探测性导入**或**镜像内 DTK 运行时**，不是 adapter
+缺陷，gate 判定不受影响（2026-11-19 容器验收轮核实）：
+
+| 日志行 | 来源 | 处置 |
+|---|---|---|
+| `Could not open /var/log/hylog/.` | 镜像 DTK 运行时 banner 探测（容器无该目录） | gate 序言已 `mkdir -p` 消音；根治在镜像侧 |
+| `Ignore import error ... inkling: No module named 'quack'` | 上游模型注册表逐个 try-import 各模型族，inkling 需 quack 轮子（镜像未装、该模型不在验证矩阵） | 上游自捕获自忽略；装 quack 轮子即消，无需求则留 |
+| `Failed to import from custom_ar with ImportError('sgl_kernel.allreduce: HCU custom AR retired ...')` | **我方退役桩按设计发声**（R-01：AR 档=aiter.dist GraphSafe，NCCL 为上游自带路径），被上游 custom AR 探测的 except 臂打印 | 设计行为——退役声明就该被看见；AR 实际走 GraphSafe/NCCL |
+| `Failed to import pynvml` | 上游探测 NVIDIA NVML（HCU 镜像无、也不应有） | 上游自处理；无需安装 |
+
+## L1.5b KNOWN_FAILURES 账本（l15_mech 六机制目录，2026-10-19 首跑分诊）
 
 基线（容器 g53-tp8，新镜像 sf_b075-20261018-0048，/tmp/l1_mech_first.log）：
 `38 failed / 99 passed / 15 skipped / 173 subtests passed in 826.58s`。失败共六族

@@ -172,7 +172,15 @@ run_seg() {  # name timeout_base cmd...
 }
 
 # ---------------------------------------------------------------- segments
-run_seg l0      120  python3 ci/l0_gate.py
+# 300s: l0 is 6-7s warm, but a COLD container's first NFS metadata walk
+# of the tree exceeded the old 120s twice (bw47 2026-11-19) -- budget for
+# the cold walk, not the scan itself.
+# DTK platform runtime wants /var/log/hylog/ for its banner probe;
+# containers lack it -- create to silence the "Could not open" line
+# (harmless either way; image-side fix is the durable one).
+mkdir -p /var/log/hylog 2>/dev/null || true
+
+run_seg l0      300  python3 ci/l0_gate.py
 # CPU oracles import sgl_kernel only -- no sglang host surface, so the
 # interpreter skips the bridge install (~26 s of sglang import per cold
 # start, and with no host loaded the _cpu_process suites also skip their
@@ -213,7 +221,22 @@ fi
 # (cold containers must export /root/.cache/sglang/jit as a new seed rather
 # than raising the budget further); the pre-layout 900s no longer fits the
 # post-layout test volume even with ZERO JIT compiles.
-run_seg kernels 1500  python3 -m pytest tests/kernels tests/adapter -vv --no-header \
+# W4-3: xdist parallelizes the kernels tail (fork workers on Linux: torch
+# imports once per worker, ~1870 small tests spread over 4 lanes). Opt out
+# with L1_KERNELS_XDIST=0; absent pytest-xdist degrades to serial. Worker
+# count 4: the 5 concurrent gates already share one HCU safely, so 4
+# pytest workers on small tensors is the proven concurrency envelope.
+XDIST_FLAGS=()
+if [ "${L1_KERNELS_XDIST:-1}" != "0" ] && python3 -c "import xdist" 2>/dev/null; then
+    XDIST_FLAGS=(-n 4 --dist loadfile)
+else
+    # zero-fallback policy applies to our own gate: a missing speed
+    # dependency must be VISIBLE, not a silent serial degrade (2026-11-19:
+    # the acceptance round ran serial for 15 min before anyone noticed
+    # pytest-xdist was absent from the image).
+    echo "L1: WARN pytest-xdist absent -- kernels tail runs SERIAL (~250s slower); pip install pytest-xdist in the image"
+fi
+run_seg kernels 1500  python3 -m pytest tests/kernels tests/adapter -vv --no-header -m "not emu_parity and not fresh_process" "${XDIST_FLAGS[@]}" \
     --tb=short -o faulthandler_timeout=120 --durations=60 \
     "${FAMILY_DESELECT[@]}"
 
@@ -398,7 +421,8 @@ gates_fail=0
 # (~100 s) instead of the sum (~330 s; 2026-11-17 nmz16 cold-start timing).
 # Per-gate log files are merged into GATES_LOG in fixed name order afterwards.
 gate_names=(_test_hcu_config _test_fa3_emu_cp _test_rope_fallback_vs_fused \
-           _test_aiter_moe_gate _test_contig_triton)
+           _test_aiter_moe_gate _test_contig_triton _test_fresh_process_class \
+           _test_zero_degradation)
 declare -A gate_pid gate_out
 echo "L1: gates start (5 concurrent)"
 for g in "${gate_names[@]}"; do
@@ -407,9 +431,14 @@ for g in "${gate_names[@]}"; do
     # The config gate only exercises config resolution + kernel tiers;
     # skipping the host-bridge install halves its interpreter startup
     # (52s -> 26s on the 2026-11-16 image) and it has no bridge surface.
-    case "$g" in _test_hcu_config) gate_env=(env HCU_ADAPTER_HOST=none) ;; *) gate_env=() ;; esac
+    case "$g" in _test_hcu_config) gate_env=(env HCU_ADAPTER_HOST=none) ;;
+        _test_fresh_process_class) gate_env=() ;;
+        *) gate_env=() ;; esac
+    # W4-2: the fresh-process lane pays ~26s interpreter+torch per spawn
+    # (~370s across 9 tests) -- it needs a wider budget than the fixed 300s.
+    case "$g" in _test_fresh_process_class) gate_tmo=900 ;; *) gate_tmo=300 ;; esac
     gate_out[$g]="/tmp/l1_gate_$g.log"
-    timeout 300 "${gate_env[@]}" python3 "$f" > "${gate_out[$g]}" 2>&1 &
+    timeout "$gate_tmo" "${gate_env[@]}" python3 "$f" > "${gate_out[$g]}" 2>&1 &
     gate_pid[$g]=$!
 done
 for g in "${gate_names[@]}"; do

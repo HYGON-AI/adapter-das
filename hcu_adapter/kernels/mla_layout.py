@@ -1,7 +1,15 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Byte-preserving FlashMLA projection permutations, pinned to vendor 2e5429f."""
+"""Byte-preserving FlashMLA projection permutations, pinned to vendor 2e5429f.
+
+Layout MECHANISM, not a tier (W3-2, 2026-11-19): these are one-shot
+weight-load-time strided permutations of fp8 bytes + packed scales --
+torch ops run at HBM bandwidth, there is no emulation semantics and no
+fallback ladder (sourcing: upstream 0522 and aiter ship no equivalent;
+a triton port would match bandwidth, not beat it). The old _emu suffix
+was a naming misfit, not a runtime tier."""
+
 
 import torch
 

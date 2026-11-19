@@ -494,7 +494,18 @@ def check_registry_ops_in_catalog(r):
 # governance §3b: operator implementations, actual dispatch facades and mechanisms.
 _KERNEL_TIERS = {"emu", "triton", "cpp", "fork", "ref", "aiter", "lightop", "boltops", "dtk", "rccl"}
 _KERNEL_FACADES = {"gemm", "gather", "norm", "index_ops", "fused_transform"}
-_KERNEL_MECHANISMS = {"runtime_config", "lightop_usage"}
+_KERNEL_MECHANISMS = {"runtime_config", "lightop_usage",
+                   # W3-2: byte-preserving weight permutations --
+                   # layout mechanism, no tier semantics (no fallback
+                   # ladder exists; torch strided copies at HBM bw)
+                   "mla_layout",
+                   # W3-3: same mechanism class -- load-time ABI layouts and
+                   # device-side metadata/state plumbing (graph-capture-safe,
+                   # no numeric emulation semantics, no fallback ladder)
+                   "weight_scale",
+                   # W3-5: load-time engram norm-weight fusion (one-shot
+                   # init math, same class as weight_scale)
+                   "engram_init"}
 
 
 def check_impl_naming(r):

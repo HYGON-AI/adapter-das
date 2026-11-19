@@ -202,6 +202,23 @@ sglang 符号面，shim 妥协不进契约。
 7. **实现文件档位与配置值分开管理**：`_emu` 是 Torch/仿真实现的文件后缀；
    已发布的后端选择值 `torch` 仍是合法配置值，不是文件命名档位。
    结构整理不修改 catalog 算子键、配置默认或已接受的配置值；此类接口迁移须单独评审。
+8. **运行时零降级（2026-11-19 定，lizhg 拍板）**：运行路径禁止一切
+   try-catch 式降档——native→triton→torch 梯子、vendor one-strike
+   （失败置 None 落下一档）、"无调优配置→stock triton (log-once)"、
+   桥安装失败静默走上游，均属违规。合法形态：**启动期一次性解析**到
+   唯一实现档（按静态平台事实的 auto 规则属选择、非降级），解析结果
+   集中打印（P7：serve 启动一次、一行一算子 op→档→依据→安装状态；
+   安装链碎行降 INFO 默认静默，仅 WARNING+ 出声，`HCU_ADAPTER_LOG`
+   显式放开），该档运行期故障带算子名硬报错。性能问题的第一排查步
+   是对比 tier 解析表——静默降级让"实际跑的什么档"不可考，此为
+   本条立法动机。serve 地板：native 必需（`HCU_REQUIRE_NATIVE` 硬门）
+   且最低 triton；一切运行（L1 测试与推理）均在 HCU 上，无 CPU 本地面。
+9. **emu = 开发期数值对拍工具（2026-11-19 定）**：emu 档退出运行时
+   路由（auto 规则不得落 emu；配置 emu = 解析期报错）。保留两个合法
+   场景：算子开发期 emu×triton 手工对拍（用例保留 `emu_parity` mark，
+   CI deselect，nightly/手工单算子可跑）；CI 数值对拍只跑 triton×vendor
+   双档互证，triton-only 算子 CI 跳过对拍。triton-only 算子的清零
+   （补 triton 或寻源 vendor）见 `docs/tier-disposition.md` 处置表。
 
 ## 4. 运行时注册表与 dump（"现在谁在跑"必须一行可答）
 

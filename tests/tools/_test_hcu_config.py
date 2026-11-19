@@ -141,14 +141,24 @@ r = subprocess.run(
 )
 ok("wizard-list", "silu_and_mul" in r.stdout and "planned" in r.stdout,
    r.stdout[-200:] + r.stderr[-200:])
-good = write_cfg("version: 1\nops:\n  silu_and_mul: torch\n")
+good = write_cfg("version: 1\nops:\n  silu_and_mul: aiter\n")
 r2 = subprocess.run(
     [sys.executable, os.path.join(root, "tools", "hcu_config_wizard.py"),
      "--check", good],
     capture_output=True, text=True, timeout=120,
 )
-ok("wizard-check", "OK" in r2.stdout and "HCU_SILU_MUL_IMPL = torch" in r2.stdout,
+ok("wizard-check", "OK" in r2.stdout and "HCU_SILU_MUL_IMPL = aiter" in r2.stdout,
    r2.stdout[-200:] + r2.stderr[-200:])
+# governance 3b-9: retired tiers (emu/torch) are refused at config load
+bad = write_cfg("version: 1\nops:\n  silu_and_mul: torch\n")
+r3 = subprocess.run(
+    [sys.executable, os.path.join(root, "tools", "hcu_config_wizard.py"),
+     "--check", bad],
+    capture_output=True, text=True, timeout=120,
+)
+ok("wizard-retired-refused",
+   "retired" in (r3.stdout + r3.stderr) and "OK" not in r3.stdout,
+   (r3.stdout + r3.stderr)[-200:])
 
 # 11. GPU parity in fresh processes (backend caches resolve once/process)
 if torch.cuda.is_available():
@@ -183,6 +193,14 @@ if torch.cuda.is_available():
         env = dict(os.environ, HCU_CONFIG=pcfg, HCU_ADAPTER_HOST="none",
                    HIP_VISIBLE_DEVICES=os.environ.get(
                        "HIP_VISIBLE_DEVICES", "6"))
+        # 3b-9 hardening: earlier in-process steps may leave explicit impl
+        # vars in os.environ (with_cfg's env_extra is caller-cleaned); the
+        # parity child must resolve from ITS config file only -- a leaked
+        # HCU_*_IMPL=torch now raises at resolution (strict pick) instead
+        # of silently serving torch math.
+        for _k in ("HCU_SILU_MUL_IMPL", "HCU_RMS_NORM_IMPL",
+                   "HCU_FUSED_ADD_RMS_IMPL"):
+            env.pop(_k, None)
         return subprocess.Popen([sys.executable, "-c", code],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 text=True, env=env)

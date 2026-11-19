@@ -212,6 +212,7 @@ def _child(sources, queue):
         queue.put(repr(exc))
 
 
+@pytest.mark.fresh_process
 def test_spawn_original_cache_protocol(sources):
     context = multiprocessing.get_context("spawn")
     queue = context.Queue()

@@ -28,8 +28,9 @@ def test_gate_transfers_only_selected_blocking_cases(mode, tree, families, trans
     result = _run_block(mode, tree, families)
     assert result.returncode == 0, result.stderr
     args = result.stdout.split("CAPTURE\n", 1)[1].splitlines()
-    assert args[:7] == ["kernels", "900", "python3", "-m", "pytest",
-                       "tests/kernels", "tests/adapter"]
+    assert args[:10] == ["kernels", "1500", "python3", "-m", "pytest",
+                         "tests/kernels", "tests/adapter",
+                         "-m", "not emu_parity and not fresh_process"]
     actual = [args[i + 1] for i, value in enumerate(args) if value == "--deselect"]
     manifest = json.loads((ROOT / "tests/manifests/l15_family_matrix_v1.json").read_text())
     expected = [case["nodeid"] for family in manifest["families"]

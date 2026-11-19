@@ -239,6 +239,7 @@ def _spawn_state_copy(queue):
         raise
 
 
+@pytest.mark.fresh_process
 def test_spawn_process_installs_route_and_preserves_source_rows(monkeypatch):
     import multiprocessing
     import torch

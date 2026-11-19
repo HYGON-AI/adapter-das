@@ -140,6 +140,7 @@ def test_bridge_scheduled():
     not (torch.cuda.is_available() and torch_version_hip is not None),
     reason="needs HIP GPU (aiter tier)")
 @pytest.mark.skipif(_visible_gpus() < 2, reason="needs >=2 visible GPUs")
+@pytest.mark.fresh_process
 def test_fused_parity_and_graph_replay():
     import socket
 

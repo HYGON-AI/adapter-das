@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
-"""gfx936 MQA-logits fp8 emu (paged/ragged torch fallback auto-rule)
+"""gfx936 MQA-logits triton bridge (explicit-enable; torch emu retired from runtime)
 
 Extracted verbatim from bridges/sglang.py install() under layout
 governance 2026-11-18; zero logic change. Section notes below as #
@@ -14,10 +14,11 @@ from hcu_adapter.infra import hcu_env
 
 def install(_he=None) -> None:
     # gfx936-class HCUs have no fp8 matrix unit and the DTK aiter MQA-logits
-    # kernels hard-gate on gfx942/950: emulate paged/ragged fp8 MQA logits in
-    # torch (dequant -> bf16 GEMM, fp32 scales). Legacy page_size=1 only.
-    # hcu_env auto-rule: emulation ON only where the arch lacks fp8;
-    # explicit HCU_MQA_EMU=0/1 wins (debug).
+    # kernels hard-gate on gfx942/950: this bridge swaps in the triton
+    # paged/ragged arms (strict dispatch, governance 3b-8). 2026-11-19: the
+    # auto rule no longer enables the bridge (3b-9) -- explicit
+    # HCU_MQA_EMU=1 required; default/auto leaves stock aiter whose arch
+    # gate then errors loudly (zero fallback).
     if hcu_env.enabled("HCU_MQA_EMU"):
         try:
             import hcu_adapter.features.dsa.mqa_logits_emu as _mqa_emu

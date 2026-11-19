@@ -94,18 +94,65 @@ def _copy_repo(tmp_path):
     return source
 
 
-@pytest.fixture(scope="module")
-def kernel_wheel(tmp_path_factory):
-    return _build_wheel(_copy_repo(tmp_path_factory.mktemp("src-kernel")),
+# W4-3 (2026-11-19): the whole-repo copytree ran once PER TEST (~5s each,
+# 4-5x per session) and the default wheels rebuilt per module. One
+# session-scoped copy keyed by a (path,size,mtime) fingerprint of the
+# tree, shared by every build; setuptools may litter build/egg-info into
+# it after the first wheel -- harmless, wheels are what get asserted on.
+def _repo_fingerprint():
+    import hashlib
+
+    items = []
+    for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in (".git", ".pytest_cache", "__pycache__",
+                         "build", "dist") and not d.endswith(".egg-info")
+        ]
+        for fn in filenames:
+            fp = os.path.join(dirpath, fn)
+            st = os.stat(fp)
+            items.append(
+                (os.path.relpath(fp, REPO_ROOT), st.st_size, st.st_mtime_ns)
+            )
+    items.sort()
+    h = hashlib.sha1()
+    for it in items:
+        h.update(repr(it).encode())
+    return h.hexdigest()[:16]
+
+
+@pytest.fixture(scope="session")
+def repo_copy(tmp_path_factory):
+    base = tmp_path_factory.getbasetemp()
+    target = base / ("repocache-" + _repo_fingerprint())
+    if not target.exists():
+        tmp = target.with_suffix(".tmp")
+        if tmp.exists():
+            shutil.rmtree(tmp)
+        shutil.copytree(
+            REPO_ROOT,
+            tmp,
+            ignore=shutil.ignore_patterns(
+                ".git", ".pytest_cache", "__pycache__", "build", "dist",
+                "*.egg-info",
+            ),
+        )
+        tmp.rename(target)
+    return target
+
+
+@pytest.fixture(scope="session")
+def kernel_wheel(tmp_path_factory, repo_copy):
+    return _build_wheel(repo_copy,
                         tmp_path_factory.getbasetemp(), "kernel")
 
 
-@pytest.fixture(scope="module")
-def adapter_wheel(tmp_path_factory):
+@pytest.fixture(scope="session")
+def adapter_wheel(tmp_path_factory, repo_copy):
     # the adapter dist builds from packaging/hcu-adapter with sources left
     # at the repo root (src-layout mapping, nothing copied)
-    source = _copy_repo(tmp_path_factory.mktemp("src-adapter"))
-    return _build_wheel(source / "packaging" / "hcu-adapter",
+    return _build_wheel(repo_copy / "packaging" / "hcu-adapter",
                         tmp_path_factory.getbasetemp(), "adapter")
 
 
@@ -157,8 +204,8 @@ def test_kernel_wheel_is_pure_shadow_kernel(kernel_wheel):
     archive.close()
 
 
-def test_stamped_wheel_pair_pins_exact_matching_build(tmp_path):
-    source = _copy_repo(tmp_path)
+def test_stamped_wheel_pair_pins_exact_matching_build(tmp_path, repo_copy):
+    source = repo_copy
     stamp = "20261111.g123abc"
     kernel = _build_wheel(source, tmp_path, "stamped-kernel", stamp=stamp)
     adapter = _build_wheel(source / "packaging/hcu-adapter", tmp_path,

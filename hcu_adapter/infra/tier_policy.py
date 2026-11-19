@@ -90,20 +90,20 @@ def pick(
                     )
                 _log(op, requested, "explicit")
                 return requested, impl
-            LOG.warning(
-                "[HCU tier] %s: explicit tier %r unavailable; falling "
-                "through to %s",
-                op,
-                requested,
-                " > ".join(order),
+            # governance 3b-8 (2026-11-19): an EXPLICIT tier that cannot
+            # be honored is a hard error -- silently falling through the
+            # auto ladder made "what actually ran" unknowable and hid
+            # broken wheels from performance triage.
+            raise LookupError(
+                f"{op}: explicit tier {requested!r} unavailable (probe "
+                f"failed); runtime fallback is forbidden (governance "
+                f"3b-8) -- fix the wheel/env or request another tier"
             )
-        else:
-            LOG.warning(
-                "[HCU tier] %s: unknown tier %r; falling through to %s",
-                op,
-                requested,
-                " > ".join(order),
-            )
+        raise ValueError(
+            f"{op}: unknown tier {requested!r} (candidates: "
+            f"{sorted(candidates)}); runtime fallback is forbidden "
+            f"(governance 3b-8)"
+        )
 
     for tier in order:
         probe = candidates.get(tier)

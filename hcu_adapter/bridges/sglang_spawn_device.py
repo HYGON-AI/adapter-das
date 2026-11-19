@@ -114,4 +114,4 @@ def install():
         mechanism=registry.MECH_REBIND,
         detail="parent-scoped spawn hint; logical GPU selected before bootstrap",
     )
-    LOG.warning("HCU adapter: scheduler GPU selection before bootstrap installed")
+    LOG.info("HCU adapter: scheduler GPU selection before bootstrap installed")

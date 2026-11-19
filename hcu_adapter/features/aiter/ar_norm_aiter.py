@@ -222,7 +222,7 @@ def _install_dispatch():
                 + ("legacy candidate arm retained" if arm_fn else "v0.5.22 dispatch-only seam")
             ),
         )
-        LOG.warning("[HCU ar+norm] aiter fused AR+RMSNorm tier installed "
+        LOG.info("[HCU ar+norm] aiter fused AR+RMSNorm tier installed "
                     "(HCU_AR_NORM_IMPL=%s)", impl)
         return
 
@@ -279,5 +279,5 @@ def _install_dispatch():
                "GraphSafe fused kernels; full-TP-group-only gate, "
                "per-call decline to stock (R-09(1))" % impl,
     )
-    LOG.warning("[HCU ar+norm] aiter fused AR+RMSNorm tier installed "
+    LOG.info("[HCU ar+norm] aiter fused AR+RMSNorm tier installed "
                 "(HCU_AR_NORM_IMPL=%s)", impl)

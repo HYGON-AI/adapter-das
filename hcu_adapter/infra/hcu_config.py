@@ -41,6 +41,9 @@ UI both render from it. status:
     broken      once shipped, now convicted of corruption -- selecting
                 raises at config load (env override still possible for
                 A/B triage)
+    retired     exited runtime routing (governance 3b-9, e.g. emu/torch
+                tiers) -- selecting raises at config load; the emu files
+                remain as development-time parity tools only
     planned     catalogued for the future UI, NOT wired -- selecting
                 raises at config load
 """
@@ -307,8 +310,11 @@ BACKEND_CATALOG = {
                       "note": "real wheel aiter.silu_and_mul(out, input, "
                               "limit=0.0) only — the adapter's aiter stub "
                               "delegates back here and is skipped"},
-            "torch": {"status": "production",
-                      "note": "reference path, eager debug"},
+            "torch": {"status": "retired",
+                      "note": "governance 3b-9 (2026-11-19): emu/torch "
+                              "exit runtime routing; explicit request is "
+                              "a resolution error; CPU-tensor contract "
+                              "tests still compute torch math directly"},
         },
     },
     "rms_norm": {
@@ -327,7 +333,7 @@ BACKEND_CATALOG = {
                         "note": "auto first when lightop imports; Public "
                                 "BF16 plain RMSNorm; other dtypes/Gemma use "
                                 "the lower tiers"},
-            "torch": {"status": "production",
+            "torch": {"status": "retired",
                       "note": "reference path"},
         },
     },
@@ -349,7 +355,7 @@ BACKEND_CATALOG = {
                                 "too); perf 0.76x vs triton @4096x7168 bf16 "
                                 "(standby: HCU_FUSED_ADD_RMS_IMPL=triton); "
                                 "one-strike fallback on a raise"},
-            "torch": {"status": "production",
+            "torch": {"status": "retired",
                       "note": "reference path"},
         },
     },
@@ -1078,7 +1084,21 @@ def _validate(doc, path):
                 + ", ".join(
                     sorted(
                         b for b, s in spec["backends"].items()
-                        if s["status"] not in ("planned", "broken")
+                        if s["status"] not in ("planned", "broken", "retired")
+                    )
+                )
+            )
+        if status == "retired":
+            note = spec["backends"][backend].get("note", "")
+            raise HcuConfigError(
+                f"{path}: ops.{op}: backend {backend!r} is retired from "
+                f"runtime routing (governance 3b-9) and refused: {note} "
+                "Selectable backends: "
+                + ", ".join(
+                    sorted(
+                        b for b, st in spec["backends"].items()
+                        if st["status"] not in
+                        ("planned", "broken", "retired")
                     )
                 )
             )
@@ -1090,7 +1110,7 @@ def _validate(doc, path):
                 + ", ".join(
                     sorted(
                         b for b, s in spec["backends"].items()
-                        if s["status"] not in ("planned", "broken")
+                        if s["status"] not in ("planned", "broken", "retired")
                     )
                 )
             )

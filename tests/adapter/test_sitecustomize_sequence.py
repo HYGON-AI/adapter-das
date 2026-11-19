@@ -248,6 +248,7 @@ def _child(script, extra_env=None, timeout=240):
     not SGLANG_REACHABLE,
     reason="sglang not on the child PYTHONPATH (bare shell): subproc arm "
            "cannot import sglang.srt, skip instead of fail (R-13 #6 guard)")
+@pytest.mark.fresh_process
 def test_install_smoke_and_dump_wiring():
     """干净子进程 import 全链后：platform 语义翻转（is_cuda()=True on HIP）、
     vllm._custom_ops.rms_norm 重绑到 vllm 宿主桥、VLLM_PLUGINS 被

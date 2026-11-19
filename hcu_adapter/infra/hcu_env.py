@@ -135,11 +135,12 @@ def _auto_ar_norm_impl(*, check_layout=True):
 
 
 def _auto_mqa_emu():
-    # torch emulation is needed wherever the DTK aiter MQA-logits kernels
-    # are unusable: they hard-gate on gfx942/950 (gfx936 lacks fp8 AND
-    # gfx938 has fp8 but is still gated by the current wheels). Flip the
-    # gfx938 branch to None when the DTK wheel lifts the gate.
-    return "on" if arch_name().startswith("gfx93") else None
+    # governance 3b-9 (2026-11-19): auto rules never land on emu -- the
+    # MQA bridge must be requested explicitly. The triton arms in
+    # features/dsa/mqa_logits_emu.py are the runtime tier; where they
+    # refuse (fnuz convention), the error now propagates instead of
+    # descending to a torch emulation (3b-8).
+    return None
 
 
 def _auto_hcu_fork_impl():
@@ -243,6 +244,13 @@ REGISTRY = {
         "env": "HCU_ADAPTER_LOG", "default": "",
         "about": "hcu.adapter logger 级别：默认 WARNING（安装链 INFO 静默）；"
                  "=info/=debug 显式放开（排查）；WARNING+ 始终传播",
+    },
+    # R-12 strict bridges (bridges/sglang.py, governance 3b-8)
+    "HCU_STRICT_BRIDGES": {
+        "env": "HCU_STRICT_BRIDGES", "default": "1",
+        "about": "桥安装失败=拒绝起服（零降级，§3b-8）：失败即 "
+                 "RuntimeError 带修复指引；0=降级为审计记录（排障 "
+                 "专用，会打 DEGRADED 汇总）",
     },
     # serve-time AOT requirement (bridges/sglang_native_ops_gate.py)
     "HCU_REQUIRE_NATIVE": {
@@ -498,8 +506,10 @@ REGISTRY = {
     "HCU_MQA_EMU": {
         "env": "HCU_MQA_EMU", "default": "0",
         "auto": _auto_mqa_emu,
-        "about": "MQA logits 桥总开关：gfx93* 自动开（aiter 核门挡 "
-                 "gfx942/950）；=0 回 stock aiter 内核（诊断对照）",
+        "about": "MQA logits 桥总开关（2026-11-19 起 auto 不再自动开，"
+                 "§3b-9）：显式 =1 装桥（实现档走 HCU_MQA_EMU_IMPL，默认 "
+                 "triton 严格分发）；默认/auto=不装（stock aiter 核，"
+                 "gfx93 上其门挡即报错——零降级，修复前响亮失败）",
     },
     "HCU_MQA_EMU_IMPL": {
         "env": "HCU_MQA_EMU_IMPL", "default": "triton",
@@ -510,10 +520,10 @@ REGISTRY = {
                  "静默）；emu=全 torch GEMM 参考（golden/A-B 对照）",
     },
     "HCU_FA3_EMU": {
-        "env": "HCU_FA3_EMU", "default": "1",
-        "about": "fa3 attention backend torch 模拟（sgl_kernel.flash_attn emu）："
-                 "开=设 SGLANG_USE_SGL_FA3_KERNEL=1 并放行 _is_fa3_supported；"
-                 "=0 回上游行为（HIP 上 fa3 必 raise/落 fa2 坏 wheel）",
+        "env": "HCU_FA3_EMU", "default": "0",
+        "about": "fa3 torch 模拟面（§3b-9，2026-11-19 起默认关——emu 退出"
+                 "运行时路由）：默认回上游行为（HIP 上 fa3 即报错，零降级）；"
+                 "=1 仅限算子开发期手工对拍场景显式打开",
     },
     "HCU_FA_IMPL": {
         "env": "HCU_FA_IMPL", "default": "auto",

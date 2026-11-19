@@ -132,6 +132,6 @@ def install():
         LOG.warning("HCU adapter: Mamba state scatter kept upstream after "
                     "contract preflight refusal", exc_info=True)
         return False
-    LOG.warning("HCU adapter: Mamba state scatter flattened-grid route installed; "
+    LOG.info("HCU adapter: Mamba state scatter flattened-grid route installed; "
                 "gfx936/gfx938 FP32 only; no source writes")
     return dispatch

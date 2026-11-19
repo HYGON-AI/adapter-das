@@ -81,19 +81,47 @@ def __getattr__(name):
     raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
 
+_FAILED_BRIDGES = []
+
+
 def _install_bridge(topic, _he=None):
     """Try-isolated install of one hcu_adapter.bridges.sglang_<topic>
-    module (R-12 contract: single-bridge failure never kills the chain)."""
+    module (R-12 contract: single-bridge failure never kills the chain
+    of ATTEMPTS).
+
+    Final tightening (governance 3b-8, 2026-11-19): with
+    HCU_STRICT_BRIDGES=1 (default) a failed bridge ABORTS the install
+    -- serving with the topic's ops silently on the upstream path is a
+    degradation, and "no degradation, ever" means refusing to serve.
+    Stronger and simpler than per-op first-use poison wrappers (those
+    would need a target table per topic): the refusal fires at startup,
+    in the tier table's face. HCU_STRICT_BRIDGES=0 keeps the audit-only
+    behavior (record + ERROR + DEGRADED summary) for triage sessions.
+    """
+    from hcu_adapter.infra import hcu_env
+
+    strict = str(hcu_env.resolve("HCU_STRICT_BRIDGES")[0]).strip().lower() not in (
+        "0", "off", "false", "none", "")
     try:
         import importlib
 
         importlib.import_module(
             "hcu_adapter.bridges.sglang_%s" % topic).install(_he)
-    except Exception:
+    except Exception as exc:
         import logging
 
-        logging.getLogger("hcu.adapter").warning(
-            "HCU adapter: sglang_%s bridge not installed", topic, exc_info=True)
+        _FAILED_BRIDGES.append(topic)
+        logging.getLogger("hcu.adapter").error(
+            "HCU adapter: sglang_%s bridge FAILED -- the ops it serves "
+            "would run on the upstream path (degradation)", topic,
+            exc_info=True)
+        if strict:
+            raise RuntimeError(
+                "sglang_%s bridge failed and HCU_STRICT_BRIDGES=1: "
+                "refusing to serve degraded (governance 3b-8 -- zero "
+                "runtime fallback). Fix the bridge (see the ERROR above) "
+                "or set HCU_STRICT_BRIDGES=0 for a triage session." % topic
+            ) from exc
 
 
 def install() -> None:
@@ -380,4 +408,25 @@ def install() -> None:
         except Exception:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: grouped_topk/sampling bridge not installed", exc_info=True
+            )
+
+        # P7 (governance 3b-8, 2026-11-19): the tier resolution table is
+        # the ONE thing serve startup prints loudly -- one line per op
+        # (op -> impl [role/mechanism] via target) plus the catalog ops
+        # still on the upstream path. Performance triage starts here:
+        # diff this table between the fast day and the slow day.
+        try:
+            from hcu_adapter.infra import registry
+
+            registry.log_summary()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: tier table print failed", exc_info=True
+            )
+        if _FAILED_BRIDGES:
+            logging.getLogger("hcu.adapter").error(
+                "HCU adapter: DEGRADED -- %d bridge(s) failed: %s; the "
+                "ops they serve are on the upstream path (zero-fallback "
+                "audit: this line is a degradation, not a fallback)",
+                len(_FAILED_BRIDGES), ", ".join(_FAILED_BRIDGES),
             )

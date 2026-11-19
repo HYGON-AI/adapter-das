@@ -138,53 +138,24 @@ def _ragged_fp8_mqa_logits(
 
 
 def _triton_or_emu_faces():
-    """(paged_fn, ragged_fn, impl_label) — triton arms first, emu per-call
-    fallback for the faces the triton tier refuses (fnuz convention,
-    non-132B rows, preshuffle pools): each refusal logs once, never silent.
-    HCU_MQA_EMU_IMPL=triton (default) | emu (golden / A-B probe)."""
-    from hcu_adapter.infra import hcu_env
-
+    """(paged_fn, ragged_fn, impl_label) -- STRICT single-tier dispatch
+    (governance 3b-8, 2026-11-19): the triton arms' refusals
+    (NotImplementedError, fnuz convention) propagate as errors; the old
+    per-call descent to the torch emulation made "what actually ran"
+    unknowable. HCU_MQA_EMU_IMPL=emu stays as the explicit
+    development-time A-B probe tier (3b-9); it is not part of runtime
+    routing."""
     impl, src = hcu_env.resolve("HCU_MQA_EMU_IMPL")
     if impl != "triton":
-        return _paged_mqa_logits, _ragged_fp8_mqa_logits, f"emu ({src})"
+        raise RuntimeError(
+            "MQA logits bridge: implementation tier %r is not a runtime "
+            "tier (governance 3b-9) -- triton is the runtime tier; emu is "
+            "a development-time probe only" % impl)
     from .mqa_logits_triton import (
-        triton_paged_ps1_mqa_logits as _tp,
-        triton_ragged_mqa_logits as _tr,
+        triton_paged_ps1_mqa_logits as _paged,
+        triton_ragged_mqa_logits as _ragged,
     )
-
-    warned = {"paged": 0, "ragged": 0}
-
-    def _paged(q, kv, w, lens, bt, msl, *, preshuffle, kv_block_size, **kw):
-        try:
-            return _tp(
-                q, kv, w, lens, bt, msl,
-                preshuffle=preshuffle, kv_block_size=kv_block_size, **kw
-            )
-        except NotImplementedError as e:
-            if warned["paged"] < 1:
-                logger.warning(
-                    "[hcu] MQA paged triton arm refused (%s) -> emu for this"
-                    " face (and subsequent)", e)
-                warned["paged"] += 1
-            return _paged_mqa_logits(
-                q, kv, w, lens, bt, msl,
-                preshuffle=preshuffle, kv_block_size=kv_block_size, **kw
-            )
-
-    def _ragged(q, kv, kv_scales, weights, ks, ke, **kw):
-        try:
-            return _tr(q, kv, kv_scales, weights, ks, ke)
-        except NotImplementedError as e:
-            if warned["ragged"] < 1:
-                logger.warning(
-                    "[hcu] MQA ragged triton arm refused (%s) -> emu for"
-                    " this face (and subsequent)", e)
-                warned["ragged"] += 1
-            return _ragged_fp8_mqa_logits(
-                q, kv, kv_scales, weights, ks, ke, **kw
-            )
-
-    return _paged, _ragged, f"triton, emu fallback ({src})"
+    return _paged, _ragged, f"triton (strict, {src})"
 
 
 def install():

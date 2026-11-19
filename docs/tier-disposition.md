@@ -25,7 +25,7 @@
 | 14 | `hcu_adapter/kernels/gemm_emu.py` | `hcu_adapter/kernels/gemm.py`, `hcu_adapter/kernels/gemm_lightop.py` | A(拆降级) | 待处置 | 待处置 |
 | 15 | `hcu_adapter/kernels/grouped_gemm_emu.py` | `hcu_adapter/kernels/grouped_gemm_triton.py` | A(拆降级) | 待处置 | 待处置 |
 | 16 | `hcu_adapter/kernels/index_ops_emu.py` | `hcu_adapter/kernels/index_ops.py`, `hcu_adapter/kernels/index_ops_triton.py` | A(拆降级) | 待处置 | 待处置 |
-| 17 | `hcu_adapter/kernels/kv_cache_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
+| 17 | `hcu_adapter/kernels/kv_cache_emu.py` | 上游 `kernels/ops/kvcache/` 家族 | B(补triton/寻源vendor) | **接上游 triton 档**（寻源 2026-11-19：aiter 无 paged KV set/get 原语，仅有 rope_cached*/ep_scatter/quant 族；上游树内已有 cache_ops.py、triton_store_cache.py、fused_fp8_qkv_kv_cache.py、kv_read_table.py、copy/zero_pages、hicache/hisparse——覆盖 load_paged/store_paged 的 gather/quant/scatter 语义）| **寻源完成**；接线任务：DeepInfer fused_transform/kv_cache 消费面换上游调用 + GPU 对拍（W3-1） |
 | 18 | `hcu_adapter/kernels/mhc_emu.py` | `hcu_adapter/bridges/vllm_dsv41/mhc.py`, `hcu_adapter/kernels/mhc_aiter.py`, `hcu_adapter/kernels/mhc_lightop.py` | A(拆降级) | 待处置 | 待处置 |
 | 19 | `hcu_adapter/kernels/mla_attention_emu.py` | `hcu_adapter/kernels/mla_attention_dtk.py` | A(拆降级) | 待处置 | 待处置 |
 | 20 | `hcu_adapter/kernels/mla_layout_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |

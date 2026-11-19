@@ -13,26 +13,26 @@ def interpret_gpu_score_on_cpu(monkeypatch):
     import numpy as np
     import triton.language as tl
     from triton.runtime.interpreter import (
-        InterpretedFunction, InterpreterBuilder, TensorHandle)
+        InterpretedFunction, InterpreterBuilder, TensorHandle,
+    )
     from triton.runtime.jit import JITFunction
     from hcu_adapter.kernels import shuffle_mqa_logits_triton as gpu
-    binary_op = InterpreterBuilder.binary_op
+    # Some vendor interpreters coerce comparison output back to the operand
+    # integer dtype. Repair only the CPU interpreter's comparison handles;
+    # the GPU kernel and independent score/mask references stay unchanged.
     comparisons = (np.less, np.less_equal, np.greater, np.greater_equal,
                    np.equal, np.not_equal)
+    integer = TensorHandle(np.array([0, 1], dtype=np.int32), tl.int32)
+    sample = InterpreterBuilder().create_icmpSLT(integer, integer)
+    if sample.data.dtype != np.bool_ or sample.dtype != tl.int1:
+        original = InterpreterBuilder.binary_op
 
-    def typed_comparison(self, lhs, rhs, op):
-        result = binary_op(self, lhs, rhs, op)
-        if op in comparisons:
-            # DTK's interpreter keeps the operand dtype in a comparison handle,
-            # although its data and the public tl.tensor type are boolean.
-            # Broadcast then converts this predicate to int32 and masked load
-            # refuses it. Correct only the interpreter's result metadata; keep
-            # all predicate bytes, kernel code and arithmetic unchanged.
-            assert result.data.dtype == np.bool_
-            return TensorHandle(result.data, tl.int1)
-        return result
+        def binary_op(self, lhs, rhs, op):
+            if op in comparisons:
+                return TensorHandle(op(lhs.data, rhs.data), tl.int1)
+            return original(self, lhs, rhs, op)
 
-    monkeypatch.setattr(InterpreterBuilder, "binary_op", typed_comparison)
+        monkeypatch.setattr(InterpreterBuilder, "binary_op", binary_op)
     # tl.sum and its nested helpers were imported before this fixture.
     monkeypatch.setattr(JITFunction, "__call__",
         lambda self, *args, **kwargs: InterpretedFunction(self.fn)(*args, **kwargs))

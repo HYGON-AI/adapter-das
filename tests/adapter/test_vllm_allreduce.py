@@ -20,6 +20,7 @@ from hcu_adapter import registry as adapter_registry, allreduce_aiter
 from hcu_adapter.allreduce import MIB
 from hcu_adapter.extensions import ExtensionCommitError
 from hcu_adapter.bridges import vllm as bridge, vllm_allreduce as compat
+from test_vllm_bridge import _stub_runtime_owners
 from vllm import envs, _aiter_ops as ops_module
 from vllm.distributed import parallel_state
 from vllm.distributed.device_communicators.aiter_custom_all_reduce import AiterCustomAllreduce
@@ -275,9 +276,8 @@ def test_registration_never_changes_official_global_gate_or_pass_manager(monkeyp
 
 def test_exact_target_and_declared_phase_origins():
     declared = os.environ["AR_ADAPTER_ROOT"]
-    # Wheel CI deliberately replaces the checkout package with an installed
-    # package symlink. Resolve the declared module, not just its checkout root;
-    # require the exact file so a foreign module cannot borrow a root prefix.
+    # Installed-wheel lanes expose packages through the checkout phase root.
+    # Resolve the exact declared file, preserving rejection of a foreign owner.
     expected = Path(declared) / "hcu_adapter/bridges/vllm_allreduce.py"
     assert Path(compat.__file__).resolve() == expected.resolve()
     target = Path(os.environ["VLLM_TARGET_ROOT"])
@@ -304,28 +304,21 @@ def isolated(monkeypatch):
     for name, value in (("_installed", None), ("_bindings", None), ("_attempted", False),
                         ("_commit_failure", None), ("_fork_error", False), ("_installing", False)):
         monkeypatch.setattr(compat, name, value)
-    monkeypatch.setattr(bridge, "detect_hcu", lambda: SimpleNamespace(detected=True))
+    monkeypatch.setattr(bridge, "detect_hcu", lambda: bridge.HcuDetection(
+        True, "gfx936", "CPU AR admission double"))
     # These tests exercise official AR Python/dispatcher behavior, not the
     # independently admitted HIP loader or FP8 registration. The production
     # admission order is covered with the real loader seam in runtime_abi.
     from hcu_adapter.bridges import vllm_fp8
     monkeypatch.setattr(bridge, "_require_vllm_hip_runtime_abi", lambda: None)
     monkeypatch.setattr(vllm_fp8, "install", lambda: False)
-    # New main owners have independent CPU admission/publication suites. Keep
-    # their device providers and health state outside this AR-only fixture;
-    # the real AR preparation, host latch and both hash collectors stay live.
-    import importlib
-    for name in ("vllm_scaled_mm", "vllm_mhc", "vllm_sparse_indexer",
-                 "vllm_flashmla", "vllm_flashmla_decode", "vllm_pcp"):
-        owner = importlib.import_module("hcu_adapter.bridges." + name)
-        monkeypatch.setattr(owner, "install", lambda: False)
-        if hasattr(owner, "require_healthy"):
-            monkeypatch.setattr(owner, "require_healthy", lambda: None)
+    # AR preparation, host lifecycle and hash collectors stay real. Other
+    # built-in providers have their own admission/health contracts.
+    _stub_runtime_owners(monkeypatch, preserve=("vllm_allreduce",))
     for name in ("_lazy_init", "init", "current_device", "get_device_properties"):
         monkeypatch.setattr(torch.cuda, name, lambda *a, **k: pytest.fail("CPU contract queried GPU"))
-    # The real AOT collector also hashes hardware when mega artifacts are ON.
-    # Double only this independent hardware descriptor; retain both actual
-    # hash collectors, their environment factors and the no-GPU assertions.
+    # The real AOT collector also hashes independent device-system metadata.
+    # Keep both hash collectors and their policy factors live, without a GPU.
     from torch._inductor.codecache import CacheBase
     monkeypatch.setattr(CacheBase, "get_system", staticmethod(
         lambda: {"device": "cpu-contract"}))
@@ -388,9 +381,8 @@ def enable(monkeypatch):
 
 def _cpu_hcu_platform(monkeypatch, architecture="gfx936"):
     """Explicit import/identity metadata double, never a hardware execution claim."""
-    # Core reads architecture metadata at module import even for CPU-only
-    # selector contracts. Supply only that descriptor, then restore the GPU
-    # query refusal before exercising the real platform/communicator chain.
+    # Only the import-time architecture descriptor is synthetic. Restore the
+    # rejecting GPU guard before executing the real platform/communicator API.
     with monkeypatch.context() as metadata:
         metadata.setattr(torch.cuda, "get_device_properties", lambda *a, **k:
                          SimpleNamespace(gcnArchName=architecture))

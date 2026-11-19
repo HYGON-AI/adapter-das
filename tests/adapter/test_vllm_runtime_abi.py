@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from hcu_adapter.bridges import vllm as bridge
+from test_vllm_bridge import _stub_runtime_owners
 
 
 @pytest.fixture
@@ -42,11 +43,7 @@ def startup(monkeypatch, cpu_builtin_owner_health):
     monkeypatch.setattr(bridge, "_RUNTIME_ACTIONS", bridge.ProcessLocalActions())
     # Native admission remains real or explicitly injected below; optional FP8
     # and other built-in operator registrations are outside this loader contract.
-    for name in ("vllm_scaled_mm", "vllm_mhc", "vllm_sparse_indexer",
-                 "vllm_flashmla", "vllm_flashmla_decode", "vllm_pcp",
-                 "vllm_minimax_abi"):
-        owner = importlib.import_module("hcu_adapter.bridges." + name)
-        monkeypatch.setattr(owner, "install", lambda: False)
+    _stub_runtime_owners(monkeypatch, preserve=("vllm_fp8", "vllm_allreduce"))
 
     def activate(context, *, health_check_sink):
         assert callable(health_check_sink)

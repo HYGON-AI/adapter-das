@@ -15,6 +15,7 @@ from vllm.v1.worker import gpu_model_runner as v1, worker_base
 from vllm.v1.worker.gpu import model_runner as v2
 import vllm.plugins
 import test_vllm_post_model_load as helpers
+from test_vllm_bridge import _stub_runtime_owners
 
 
 pytestmark = pytest.mark.usefixtures("cpu_builtin_owner_health")
@@ -22,6 +23,7 @@ pytestmark = pytest.mark.usefixtures("cpu_builtin_owner_health")
 
 @pytest.fixture(autouse=True)
 def isolated(monkeypatch):
+    _stub_runtime_owners(monkeypatch)
     import torch
     assert not torch.cuda.is_initialized()
     envs.disable_envs_cache()

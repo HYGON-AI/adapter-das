@@ -106,3 +106,21 @@ memory fraction. This is not a Core-change A/B or a performance qualification.
 Both API processes returned zero, but framework worker-grace/EngineCore
 force-kill warnings remained; clean shutdown is not accepted. Project GPU CI
 and the repository's review requirements remain separate merge gates.
+
+
+### Current-main integration (2026-11-19)
+
+The integration retains main `9e2340aaa8358de6c064fc8dd7d54d4488971c5d`
+owner fixtures and host-lane provenance. The shared lifecycle and thin Worker
+execution guard remain the only production changes from main; no numerical
+kernel, native/build source or official runner body is changed. Built-in health
+regressions keep main's real lifecycle, activation deferral and failure-rendering
+reentry coverage, and additionally check forward ordering before requested owners.
+The Worker replay fixture restores device queries after its explicit import-only
+architecture metadata double and refuses GPU queries during execution.
+
+This integration requires its own complete host/native and model acceptance.
+Earlier loaded-model/HumanEval results above retain their original combinations;
+they do not qualify this merge. Device-hidden source/installed CPU results are
+reported separately from the full host lane, real model accuracy, performance
+and normal shutdown. Keep the request Draft while these gates remain open.

@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 
 import pytest
-from torch import nn
+import torch
 
 from hcu_adapter import model_load as api
 from hcu_adapter.bridges import vllm_model_load as host
@@ -22,6 +22,7 @@ from vllm.v1.worker import gpu_model_runner as v1
 from vllm.v1.worker.gpu import model_runner as v2
 from hcu_adapter.bridges.vllm_worker import Worker
 from test_vllm_post_model_load import config
+from test_vllm_bridge import _stub_runtime_owners
 
 
 pytestmark = pytest.mark.usefixtures("cpu_builtin_owner_health")
@@ -29,6 +30,7 @@ pytestmark = pytest.mark.usefixtures("cpu_builtin_owner_health")
 
 @pytest.fixture(autouse=True)
 def isolation(monkeypatch):
+    _stub_runtime_owners(monkeypatch)
     envs.disable_envs_cache()
     monkeypatch.setattr(api, "_mutation_guards", api._Callbacks())
     monkeypatch.delenv("VLLM_ELASTIC_EP_SCALE_UP_LAUNCH", raising=False)
@@ -43,8 +45,8 @@ def worker(monkeypatch, version, events):
     runner_type = v1 if version == 1 else v2
     runner = object.__new__(runner_type.GPUModelRunner)
     runner.vllm_config = cfg
-    runner.model = nn.Module()
-    runner.speculator = None
+    runner.model = torch.nn.Module()
+    runner.speculator = None  # No draft checkpoint in this mutation-only fixture.
     runner.reset_lora_state = lambda: events.append("reset-lora")
     runner.reset_encoder_cache = lambda: events.append("reset-encoder")
     runner.reset_mm_cache = lambda: events.append("reset-mm")

@@ -18,6 +18,7 @@ import torch
 
 from hcu_adapter import extensions as ext
 from hcu_adapter.bridges import vllm as bridge
+from test_vllm_bridge import _stub_runtime_owners
 
 
 class BaselineCommitSignal(RuntimeError):
@@ -51,18 +52,7 @@ def startup(monkeypatch):
     monkeypatch.setattr(bridge, "_require_vllm_hip_runtime_abi", lambda: None)
     from hcu_adapter.bridges import vllm_fp8
     monkeypatch.setattr(vllm_fp8, "install", lambda: None)
-    # Isolate optional-extension failure from independent built-in providers.
-    # Their actual health/publication contracts run in their own CPU suites.
-    import importlib
-    for name, action in (("vllm_allreduce", "prepare_runtime"),
-                         ("vllm_scaled_mm", "install"), ("vllm_mhc", "install"),
-                         ("vllm_sparse_indexer", "install"),
-                         ("vllm_flashmla", "install"),
-                         ("vllm_flashmla_decode", "install"), ("vllm_pcp", "install")):
-        owner = importlib.import_module("hcu_adapter.bridges." + name)
-        monkeypatch.setattr(owner, action, lambda: None)
-        if hasattr(owner, "require_healthy"):
-            monkeypatch.setattr(owner, "require_healthy", lambda: None)
+    _stub_runtime_owners(monkeypatch)
     monkeypatch.setattr(bridge, "_installed_adapter_version", lambda: "cpu")
     points = []
     monkeypatch.setattr(ext, "_entry_points", lambda: points)
@@ -73,9 +63,8 @@ def startup(monkeypatch):
 def platform(monkeypatch):
     # Lazy __getattr__ caches the generated class. Ensure monkeypatch records
     # a real prior value, so the CPU-double class cannot leak to later suites.
-    # Materializing the lazy real class imports Core's ROCm architecture
-    # descriptor. Limit the metadata double to that import; later operations
-    # retain the original device-query functions and explicit platform double.
+    # Materializing the lazy class needs only Core's import-time descriptor.
+    # Keep that metadata double out of the subsequent selector contracts.
     with monkeypatch.context() as metadata:
         metadata.setattr(torch.cuda, "get_device_properties", lambda *a, **k:
                          NS(gcnArchName="gfx936"))
@@ -422,6 +411,15 @@ def test_fresh_interpreter_does_not_inherit_failed_runtime(startup):
     startup.append(Point("dirty", 0, lambda _: (_ for _ in ()).throw(fatal())))
     with pytest.raises(bridge.LatchedVllmRuntimeError):
         bridge.hcu_runtime_plugin()
+    # This child checks a new process's lifecycle, without requesting unrelated
+    # built-in providers that have not been activated there. Keep the real
+    # host query and original timeout; the parent's requested modes stay intact.
+    child_env = dict(os.environ, HCU_ADAPTER_HOST="none",
+                     HIP_VISIBLE_DEVICES="", CUDA_VISIBLE_DEVICES="",
+                     ROCR_VISIBLE_DEVICES="", HCU_VLLM_MHC_IMPL="stock",
+                     HCU_VLLM_SPARSE_INDEXER_IMPL="stock",
+                     HCU_VLLM_FLASHMLA_PREFILL="stock",
+                     HCU_VLLM_FLASHMLA_DECODE="stock", HCU_VLLM_PCP_IMPL="stock")
     result = subprocess.run(
         [sys.executable, "-B", "-c",
          "import sys; "
@@ -431,12 +429,7 @@ def test_fresh_interpreter_does_not_inherit_failed_runtime(startup):
          "assert b.extension_reports() == (); "
          "b._RUNTIME_ACTIONS.run_once('vllm-runtime', lambda: None); "
          "b.require_runtime_healthy()"],
-        capture_output=True, text=True, timeout=10,
-        # This child checks process-local lifecycle state, not host startup.
-        # A device suite may have propagated sglang/vLLM into its environment;
-        # importing those bridges before -c would precede this CPU contract.
-        env=dict(os.environ, HCU_ADAPTER_HOST="none", HIP_VISIBLE_DEVICES="",
-                 CUDA_VISIBLE_DEVICES="", ROCR_VISIBLE_DEVICES=""),
+        capture_output=True, text=True, timeout=10, env=child_env,
     )
     assert result.returncode == 0, result.stderr
     with pytest.raises(bridge.LatchedVllmRuntimeError):

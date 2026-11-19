@@ -9,14 +9,19 @@ graph and communicator are doubles; no checkpoint or device acceptance implied.
 from contextlib import nullcontext
 import inspect
 from types import SimpleNamespace as NS
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+
+import torch
 
 import pytest
 
 pytest.importorskip("vllm")
-from vllm.config.compilation import CUDAGraphMode
-from vllm.v1.worker import gpu_worker
-from vllm.v1.worker.gpu import cudagraph_utils as cg
+# Only the official ROCm import-time architecture descriptor is synthetic.
+# Restore device queries before exercising the real Worker/Graph APIs.
+with patch.object(torch.cuda, "get_device_properties", return_value=NS(gcnArchName="gfx936")):
+    from vllm.config.compilation import CUDAGraphMode
+    from vllm.v1.worker import gpu_worker
+    from vllm.v1.worker.gpu import cudagraph_utils as cg
 
 from hcu_adapter import extensions as ext
 from hcu_adapter.bridges import vllm as bridge
@@ -24,12 +29,12 @@ from hcu_adapter.bridges.vllm_worker import Worker
 
 
 @pytest.fixture
-def execution(monkeypatch):
+def execution(monkeypatch, cpu_builtin_owner_health):
     actions = bridge.ProcessLocalActions()
     monkeypatch.setattr(bridge, "_RUNTIME_ACTIONS", actions)
-    from hcu_adapter.bridges import vllm_mhc, vllm_sparse_indexer
-    monkeypatch.setattr(vllm_mhc, "require_healthy", lambda: None)
-    monkeypatch.setattr(vllm_sparse_indexer, "require_healthy", lambda: None)
+    for name in ("_lazy_init", "init", "current_device", "get_device_properties"):
+        monkeypatch.setattr(torch.cuda, name,
+                            lambda *a, **k: pytest.fail("CPU contract queried GPU"))
     monkeypatch.setattr(gpu_worker, "get_pp_group", lambda: NS(is_first_rank=True))
     offload = Mock()
     monkeypatch.setattr(cg, "get_offloader", lambda: offload)

@@ -50,7 +50,7 @@
 |---|---|---|---|
 | shadow 三层梯子 try-descent | `sgl_kernel/elementwise.py` 等 | 解析期定档，缺实现=启动报错 | 待处置 |
 | aiter one-strike（失败置 None 落 triton） | `sgl_kernel/elementwise.py` | 移除，vendor 错误直曝 | 待处置 |
-| aiter_moe 无调优配置→stock triton (log-once) | fused_moe 桥 | 硬报错或显式配置 | 待处置 |
+| aiter_moe 无调优配置→stock triton (log-once) | fused_moe 桥 | 硬报错或显式配置 | **完成**（显式 aiter 拒绝/无配置=RuntimeError；auto=确定性选择保留+log-once；包裹层 except→orig 全量吞错拆除；W2-3） |
 | mqa triton 臂 torch-emu fallback | `bridges/sglang_mqa_emu.py` | 拆（emu 退运行时） | **完成**（per-call emu 回落拆除，严格分发；W2-2） |
 | HCU_FA3_EMU=1 默认 | env 注册表 | 默认翻转+报错 | **完成**（default=0，docs 同步；W2-2） |
 | _auto_mqa_emu auto 落 emu | `infra/hcu_env.py` | auto 不落 emu | **完成**（return None；W2-2） |

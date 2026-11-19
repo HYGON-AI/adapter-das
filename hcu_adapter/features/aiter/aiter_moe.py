@@ -112,8 +112,22 @@ def try_aiter_fused_moe(
     """Run the DTK aiter fused-MoE for this call, or return None to fall
     back to the stock triton kernel."""
     mode = _mode()
+    explicit_aiter = mode in _MODE_AITER_ONLY
     if mode in _MODE_TRITON:
         _dbg(f"mode={mode}")
+        return None
+
+    def _refuse(reason):
+        # governance 3b-8 (2026-11-19): in AUTO, shape/coverage guards are
+        # deterministic selection (config-table facts) and may pass through
+        # to the stock path; an EXPLICIT aiter request that cannot be
+        # honored for this call is a hard error -- no descent.
+        if explicit_aiter:
+            raise RuntimeError(
+                "fused_moe: explicit tier 'aiter' refused this call (%s); "
+                "runtime fallback is forbidden (governance 3b-8) -- fix "
+                "the config/wheel or select another tier" % reason)
+        _dbg(reason)
         return None
 
     if (
@@ -124,21 +138,19 @@ def try_aiter_fused_moe(
         or w1.dim() != 3
         or getattr(moe_runner_config, "no_combine", False)
     ):
-        _dbg(f"guard dtype={hidden_states.dtype} fp8={use_fp8_w8a8} "
-             f"i8={use_int8_w8a8} b1={b1 is not None} b2={b2 is not None} "
-             f"dim={w1.dim()} no_combine="
-             f"{getattr(moe_runner_config, 'no_combine', False)}")
-        return None
+        return _refuse(
+            f"guard dtype={hidden_states.dtype} fp8={use_fp8_w8a8} "
+            f"i8={use_int8_w8a8} b1={b1 is not None} b2={b2 is not None} "
+            f"dim={w1.dim()} no_combine="
+            f"{getattr(moe_runner_config, 'no_combine', False)}")
     # v1 contract (validated): kernel quantizes activations itself
     if a1_scale is not None:
-        _dbg("a1_scale set (pre-quant path) -> triton")
-        return None
+        return _refuse("a1_scale set (pre-quant path unsupported)")
 
     try:
         from aiter.moe import MoeQuantType, aiter_moe, get_aiter_moe_config
     except ImportError:
-        _dbg("aiter not importable")
-        return None
+        return _refuse("aiter not importable")
 
     if use_fp8_w8a8:
         quant_type = getattr(MoeQuantType, "FP8_W8A8", None)
@@ -156,15 +168,13 @@ def try_aiter_fused_moe(
     block_size = 0 if not block_shape else int(block_shape[1])
     activation = _activation_str(getattr(moe_runner_config, "activation", "silu"))
 
-    try:
-        status, cfg = get_aiter_moe_config(
-            M=M, E=E, N1=N1, N2=N2, K=K, top_k=top_k,
-            block_size=block_size, dtype=hidden_states.dtype,
-            quant_type=quant_type, activation=activation,
-        )
-    except Exception:
-        LOG.warning("HCU aiter moe: config lookup raised", exc_info=True)
-        return None
+    # governance 3b-8: a config-lookup exception is a bug, not a
+    # selection outcome -- it propagates in every mode.
+    status, cfg = get_aiter_moe_config(
+        M=M, E=E, N1=N1, N2=N2, K=K, top_k=top_k,
+        block_size=block_size, dtype=hidden_states.dtype,
+        quant_type=quant_type, activation=activation,
+    )
     # DTK can report success for its untuned Triton fallback. Keep the
     # bridge's validated ASM/moe_c contract; all other solutions stay on
     # the original SGLang path, including in explicit aiter mode.
@@ -178,10 +188,12 @@ def try_aiter_fused_moe(
                 "E=%d N1=%d N2=%d K=%d topk=%d block=%d sol=%s "
                 "-> stock triton kernel (log-once)", *key, solution
             )
-        if mode in _MODE_AITER_ONLY:
-            LOG.warning(
-                "HCU_FUSED_MOE_IMPL=aiter but shape %s has no validated aiter config; "
-                "falling back to triton for this call", key
+        if explicit_aiter:
+            raise RuntimeError(
+                "fused_moe: explicit tier 'aiter' has no validated config "
+                "for E=%d N1=%d N2=%d K=%d topk=%d block=%d (solution=%s); "
+                "runtime fallback is forbidden (governance 3b-8) -- tune "
+                "the config or select another tier" % (*key, solution)
             )
         return None
 
@@ -249,27 +261,29 @@ def install():
     def fused_experts_hcu(
         hidden_states, w1, w2, topk_output, moe_runner_config, **kwargs
     ):
-        try:
-            out = try_aiter_fused_moe(
-                hidden_states=hidden_states,
-                w1=w1,
-                w2=w2,
-                topk_output=topk_output,
-                moe_runner_config=moe_runner_config,
-                use_fp8_w8a8=kwargs.get("use_fp8_w8a8", False),
-                use_int8_w8a8=kwargs.get("use_int8_w8a8", False),
-                w1_scale=kwargs.get("w1_scale"),
-                w2_scale=kwargs.get("w2_scale"),
-                a1_scale=kwargs.get("a1_scale"),
-                block_shape=kwargs.get("block_shape"),
-                b1=kwargs.get("b1"),
-                b2=kwargs.get("b2"),
-            )
-            if out is not None:
-                return out
-        except Exception:
-            # never take the server down for a vendor-kernel experiment
-            LOG.warning("HCU aiter moe: call failed -> triton", exc_info=True)
+        # governance 3b-8 (2026-11-19): NO blanket exception descent. A
+        # None return is the auto mode's deterministic per-shape selection
+        # (config-table facts) and passes to the stock path; an exception
+        # from a tier that was selected for this call propagates as-is --
+        # "never take the server down for a vendor-kernel experiment" was
+        # exactly how perf regressions became untraceable.
+        out = try_aiter_fused_moe(
+            hidden_states=hidden_states,
+            w1=w1,
+            w2=w2,
+            topk_output=topk_output,
+            moe_runner_config=moe_runner_config,
+            use_fp8_w8a8=kwargs.get("use_fp8_w8a8", False),
+            use_int8_w8a8=kwargs.get("use_int8_w8a8", False),
+            w1_scale=kwargs.get("w1_scale"),
+            w2_scale=kwargs.get("w2_scale"),
+            a1_scale=kwargs.get("a1_scale"),
+            block_shape=kwargs.get("block_shape"),
+            b1=kwargs.get("b1"),
+            b2=kwargs.get("b2"),
+        )
+        if out is not None:
+            return out
         return orig(hidden_states, w1, w2, topk_output, moe_runner_config, **kwargs)
 
     fused_experts_hcu._hcu_aiter_moe = True

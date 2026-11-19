@@ -302,7 +302,7 @@ gated activation out = silu(x[:,:d]) * x[:,d:]
 | triton | production auto ladder fallback (lightop > aite |
 | aiter | candidate real wheel aiter.silu_and_mul(out, i |
 | lightop | validated auto first when lightop imports; lig |
-| torch | production reference path, eager debug |
+| torch | retired governance 3b-9 (2026-11-19): emu/to |
 
 路由变量：`HCU_SILU_MUL_IMPL`
 

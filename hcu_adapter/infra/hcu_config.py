@@ -307,8 +307,11 @@ BACKEND_CATALOG = {
                       "note": "real wheel aiter.silu_and_mul(out, input, "
                               "limit=0.0) only — the adapter's aiter stub "
                               "delegates back here and is skipped"},
-            "torch": {"status": "production",
-                      "note": "reference path, eager debug"},
+            "torch": {"status": "retired",
+                      "note": "governance 3b-9 (2026-11-19): emu/torch "
+                              "exit runtime routing; explicit request is "
+                              "a resolution error; CPU-tensor contract "
+                              "tests still compute torch math directly"},
         },
     },
     "rms_norm": {

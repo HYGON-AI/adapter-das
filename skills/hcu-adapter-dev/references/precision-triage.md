@@ -288,3 +288,6 @@ Q/K、V、累计 gate 一致，首次可比数值分歧出现在激活后的 bet
 indices 和 cache locations。HCU FastJIT 的 tuple 参数缓存可能使
 small_copy 在 batch 改变后漏写；首条正常不能证明其他行有效。
 修复与真实 GPU 变输入 graph 回归见 [small-copy 手册](../../../docs/small-copy-jit.md)。
+安装时先准备标准 JIT 与 run，完成 registry 登记后再发布绑定和幂等标志。
+登记失败（含部分写入后抛错）须保留原绑定、回滚登记且允许重试；缓存别名、
+构造失败和登记期间 owner 改变也须覆盖。这些 CPU 故障回归不替代设备精度验证。

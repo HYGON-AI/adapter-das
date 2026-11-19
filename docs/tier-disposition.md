@@ -57,6 +57,7 @@
 | R-12 桥隔离静默走上游 | bridges try-isolation | 配置档失败=首用报错 | **部分完成**（W2-5：失败升 ERROR + 启动降级汇总行，gate 可断言；per-op 首用报错待 enforcement 引擎批） |
 | 安装链碎行降噪 | bridges/features 12 处成功行 | warning→info（P7 默认静默） | **完成**（W2-5） |
 | emu_parity mark + gate 过滤 | pyproject markers / 三 KDA 巨头 / l1_gpu_gate `-m "not emu_parity"` / ci/emu_parity_nightly.sh | CI 250s→0，手工/nightly 通道保留（W4-1） | **完成** |
+| gate 零降级断言 | tests/tools/_test_zero_degradation.py（第 7 并发 lane）：桥装完后 _FAILED_BRIDGES 空 + registry 无 emu 落点 | W5-1 落地 | **完成** |
 | fresh_process 搬运 | 9 个 spawn/distributed 测试打标→kernels 段 deselect→gates 第 6 并发 lane（900s 预算，语义不变） | 实测 380s 串行→并发吸收（W4-2） | **完成** |
 | packaging 构建复用 | session 级 repocache（树指纹）+ 默认 wheel session 化 | 5 次整仓 copy→1 次（本地实测单副本生效；容器收益随 pip 更大）（W4-3） | **完成** |
 | kernels 段 xdist | `-n 4 --dist loadfile`（L1_KERNELS_XDIST=0 可退避；无 xdist 自动串行） | 尾巴 ~250s→~90s 预期，容器验收轮实测（W4-3） | **完成**（待容器实测数字回填） |

@@ -407,7 +407,8 @@ gates_fail=0
 # (~100 s) instead of the sum (~330 s; 2026-11-17 nmz16 cold-start timing).
 # Per-gate log files are merged into GATES_LOG in fixed name order afterwards.
 gate_names=(_test_hcu_config _test_fa3_emu_cp _test_rope_fallback_vs_fused \
-           _test_aiter_moe_gate _test_contig_triton _test_fresh_process_class)
+           _test_aiter_moe_gate _test_contig_triton _test_fresh_process_class \
+           _test_zero_degradation)
 declare -A gate_pid gate_out
 echo "L1: gates start (5 concurrent)"
 for g in "${gate_names[@]}"; do

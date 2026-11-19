@@ -21,7 +21,7 @@ HIP driver guard for breakable prefill graph capture
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| prefill-bcg-driver-truth | candidate Breakable prefill uses the upstream  |
+| prefill-bcg-driver-truth | candidate Preserves prefill graphs and queries |
 
 路由变量：（auto）
 

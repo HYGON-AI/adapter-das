@@ -125,6 +125,10 @@ def install(_he=None) -> None:
                     return _ll_dispatch_upstream(self, x, topk_idx, *args, **kwargs)
 
                 _ll_dispatch_v0521._hcu_accepts_quant_type = True
+                # HY3 INT8 dispatch (#149): the compat wrapper also keeps the
+                # vendor quant_type entry so Plugin INT8 dispatch retains its
+                # dtype and per-token scales.
+                _ll_dispatch_v0521._hcu_quant_type_dispatch = _ll_orig
                 _dep.Buffer.low_latency_dispatch = _ll_dispatch_v0521
                 logging.getLogger("hcu.adapter").info(
                     "HCU deep_ep bridge: v0.5.21 low_latency_dispatch call "

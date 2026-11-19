@@ -13,6 +13,22 @@ import torch
 from hcu_adapter.infra import hcu_env
 
 
+def _install_idle_verify_metadata(verify_type):
+    from hcu_adapter.infra import registry
+    from hcu_adapter.infra.kill_switch import op_disabled
+
+    if op_disabled("nextn_idle_metadata") or hasattr(verify_type, "kv_indptr"):
+        return False
+    registry.register(
+        "platform_detect", "spec-idle-kv-metadata",
+        target="sglang.srt.speculative.eagle_info.EagleVerifyInput.kv_indptr",
+        mechanism=registry.MECH_REBIND,
+        detail="missing optional decode metadata defaults to None",
+    )
+    verify_type.kv_indptr = None
+    return True
+
+
 def install(_he=None) -> None:
     # 14. Spec-decode KV-loc safety (2026-10-17): stock v0.5.21's
     #     get_last_loc dispatcher routes is_cuda-semantics stacks to
@@ -95,4 +111,20 @@ def install(_he=None) -> None:
     except Exception:
         logging.getLogger("hcu.adapter").warning(
             "HCU adapter: native HCU MTP sampling policy not installed", exc_info=True,
+        )
+
+    # Idle verify objects carry no kv_indptr on this stack; default it to
+    # None so the attention backend builds the ordinary KV index instead
+    # of raising AttributeError (#149 nextn fix, 2026-11-19).
+    try:
+        if torch.version.hip is not None:
+            from sglang.srt.speculative.eagle_info import EagleVerifyInput
+
+            if _install_idle_verify_metadata(EagleVerifyInput):
+                logging.getLogger("hcu.adapter").warning(
+                    "HCU adapter: absent idle verify KV metadata defaults to None"
+                )
+    except Exception:
+        logging.getLogger("hcu.adapter").warning(
+            "HCU adapter: idle verify metadata not installed", exc_info=True,
         )

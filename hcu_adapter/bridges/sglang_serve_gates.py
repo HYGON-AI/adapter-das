@@ -29,9 +29,10 @@ def install(_he=None) -> None:
         )
     # Breakable prefill CUDA graph (sglang main): its runtime probes
     # stream-capture status through cuda-python, which needs a CUDA
-    # driver HCU does not have (error 35 mid capture, bw47 graph/mla
-    # 2026-11-05). Driver-layer HIP truth: route breakable prefill to
-    # the eager runner; decode FULL graphs stay on.
+    # driver HCU does not have. #149 (2026-11-19): prefill_bcg_gate now
+    # rebinds the probe to the HIP runtime stream query, so breakable
+    # prefill graphs are PRESERVED instead of routed to the eager
+    # runner; decode FULL graphs were never affected.
     try:
         from hcu_adapter import prefill_bcg_gate
 

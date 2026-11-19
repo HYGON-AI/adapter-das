@@ -502,7 +502,10 @@ _KERNEL_MECHANISMS = {"runtime_config", "lightop_usage",
                    # W3-3: same mechanism class -- load-time ABI layouts and
                    # device-side metadata/state plumbing (graph-capture-safe,
                    # no numeric emulation semantics, no fallback ladder)
-                   "weight_scale"}
+                   "weight_scale",
+                   # W3-5: load-time engram norm-weight fusion (one-shot
+                   # init math, same class as weight_scale)
+                   "engram_init"}
 
 
 def check_impl_naming(r):

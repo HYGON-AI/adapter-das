@@ -77,7 +77,7 @@ def install():
             parent, _, child = name.rpartition(".")
             setattr(sys.modules[parent], child, module)
     sys.modules["tile_kernels.config"].is_ascend = _is_ascend
-    from hcu_adapter.kernels.engram_init_emu import fused_weight, make_offsets
+    from hcu_adapter.kernels.engram_init import fused_weight, make_offsets
     from hcu_adapter.kernels.engram_runtime_emu import engram_gate_fwd, engram_hash
     from hcu_adapter.kernels import mhc_emu as mhc_providers
     from hcu_adapter.kernels.quant_emu import per_token_cast
@@ -91,7 +91,7 @@ def install():
     ):
         op = "tile_kernels." + suffix + "." + symbol
         setattr(sys.modules["tile_kernels." + suffix], symbol, provider)
-        registry.register(op, "hcu_adapter.kernels.engram_init_emu." + symbol, op, "seam")
+        registry.register(op, "hcu_adapter.kernels.engram_init." + symbol, op, "seam")
     for symbol, provider in (("engram_gate_fwd", engram_gate_fwd), ("engram_hash", engram_hash)):
         op = "tile_kernels.engram." + symbol
         setattr(sys.modules["tile_kernels.engram"], symbol, provider)

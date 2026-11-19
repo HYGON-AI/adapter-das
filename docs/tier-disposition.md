@@ -13,14 +13,14 @@
 | 2 | `hcu_adapter/features/dsa/dsa_mqa_logits_emu.py` | `mqa_logits_triton.py`（根名不同未被台账兄弟列匹配）+ lightop `gemmopt.paged_mqa_logits` | B(补triton/寻源vendor) | **vendor 寻源（lightop paged 臂已在文件内，:191）+ triton 修复**：triton 档存在但被 DTK div-4 int64 load bug 打错（`mqa_logits_triton.py` 文档自证 deterministically wrong），本件是带修复的生产正确路径（lightop 臂+torch 兜底，多 except 梯子=§3b-8 违规点，随档位落地一并严格化） | **任务开立**（W3-4：lightop paged 数值对拍 → 接 vendor 档；或 triton 绕过 div-4；落地前本件维持生产正确性不判死） |
 | 3 | `hcu_adapter/features/dsa/kpool_write_emu.py` | 上游 kpool writer（SetKAndS 族） | B(补triton/寻源vendor) | **开发 triton（div-4 绕过）**：DTK triton 对 int64 标量 load 的 div-4 编错（g53-tp8 GPU4 2026-10-15 实证：scales 落点全偏 4 倍→index-K cache 全零→GLM-5.3 首 token 平线）；本件=torch 正确性规避，deep_gemm 桥 :162 在产 | **任务开立**（W3-4：triton 修复版（参照 causal_conv1d 的同类 read-dead 修复模式）+ 本件手工对拍；落地前维持生产） |
 | 4 | `hcu_adapter/features/dsa/mqa_logits_emu.py` | `hcu_adapter/features/dsa/mqa_logits_triton.py`, `hcu_adapter/kernels/mqa_logits_lightop.py` | A(拆降级) | 待处置 | 待处置 |
-| 5 | `hcu_adapter/features/gdn/conv1d_fn_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
+| 5 | `hcu_adapter/features/gdn/conv1d_fn_emu.py` | fla fork（`fla_hcu/conv1d_triton.py`，根名差异未被兄弟列匹配） | B(补triton/寻源vendor) | **triton 修复任务**：DTK 对 `_causal_conv1d_fwd_kernel` 的 `has_initial_state` 分支编错（gfx938，docstring 自证 stopgap）；conv1d 运行时=fork 档（W2-5 已拒 emu 路由），本件仅剩 varlen+初始态预填充臂在生产兜底 | **任务开立**（W3-5：修复后此臂切回 fork，emu 转纯开发参考） |
 | 6 | `hcu_adapter/features/gdn/conv1d_update_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
 | 7 | `hcu_adapter/features/gdn/kda_prefill_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
 | 8 | `hcu_adapter/features/hadamard/hadamard_emu.py` | `hcu_adapter/features/hadamard/hadamard.py`, `hcu_adapter/features/hadamard/hadamard_triton.py` | A(拆降级) | 待处置 | 待处置 |
 | 9 | `hcu_adapter/kernels/compress_emu.py` | — | B(补triton/寻源vendor) | **开发 triton**（真数值热路径：窗口 FP32 softmax + 加权 latent 求和 + 环形写回，每步执行；deepinfer 的 tilelang CUDA 核在 HCU 不存在——tilelang_ops 的 backend 即本仓提供者清单，当前 launch 体直跑 emu） | **任务开立**（W3-3；triton 实现 + emu 手工对拍后切档） |
 | 10 | `hcu_adapter/kernels/deepselect_emu.py` | `hcu_adapter/bridges/_deepinfer/deepselect.py`, `hcu_adapter/kernels/deepselect_lightop.py` | A(拆降级) | 待处置 | 待处置 |
-| 11 | `hcu_adapter/kernels/engram_init_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
-| 12 | `hcu_adapter/kernels/engram_runtime_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
+| 11 | `hcu_adapter/kernels/engram_init.py`（原 _emu） | — | B(补triton/寻源vendor) | **机制化改名**（装载期一次性 norm 权重 FP32 融合 + offsets 构造；同 weight_scale 类，无每步数值语义） | **完成**（W3-5） |
+| 12 | `hcu_adapter/kernels/engram_runtime_emu.py` | — | B(补triton/寻源vendor) | **开发 triton**（每步数值面：engram_gate_fwd 的 FP32 norm/dot/signed-sqrt 门控 + 整数 hash 表映射；tile_kernels :81 在挂） | **任务开立**（W3-5；低频面可先确认使用率再排优先级） |
 | 13 | `hcu_adapter/kernels/gather_emu.py` | `hcu_adapter/kernels/gather.py`, `hcu_adapter/kernels/gather_triton.py` | A(拆降级) | 待处置 | 待处置 |
 | 14 | `hcu_adapter/kernels/gemm_emu.py` | `hcu_adapter/kernels/gemm.py`, `hcu_adapter/kernels/gemm_lightop.py` | A(拆降级) | 待处置 | 待处置 |
 | 15 | `hcu_adapter/kernels/grouped_gemm_emu.py` | `hcu_adapter/kernels/grouped_gemm_triton.py` | A(拆降级) | 待处置 | 待处置 |
@@ -35,7 +35,7 @@
 | 24 | `hcu_adapter/kernels/quant_emu.py` | `hcu_adapter/features/aiter/quant_aiter.py`, `hcu_adapter/kernels/quant_lightop.py` | A(拆降级) | 待处置 | 待处置 |
 | 25 | `hcu_adapter/kernels/request_indices_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
 | 26 | `hcu_adapter/kernels/rope_emu.py` | `hcu_adapter/kernels/rope_lightop.py`, `hcu_adapter/kernels/rope_triton.py` | A(拆降级) | 待处置 | 待处置 |
-| 27 | `hcu_adapter/kernels/sampling_emu.py` | `hcu_adapter/bridges/_sglang/sampling.py` | A(拆降级) | 待处置 | 待处置 |
+| 27 | `hcu_adapter/kernels/sampling_emu.py` | `bridges/_sglang/sampling.py`（top_k/top_p renorm 面，**非同面**——ZOS fused_sample/random_sampling 无覆盖） | 改判 B | **开发 triton**（ZOS 采样数值面：fused_sample/random_sampling，deepinfer 774ce24 锚，device-only；上游参考与 tilelang 核允许数值差——属性测试非位级） | **任务开立**（W3-5） |
 | 28 | `hcu_adapter/kernels/sglang_mhc_prenorm_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
 | 29 | `hcu_adapter/kernels/state_and_constraints_emu.py` | `hcu_adapter/kernels/state_and_constraints_triton.py` | A(拆降级) | triton 档已在运行时接线（tilelang_ops:632 mask_logits）；emu=开发参考（§3b-9） | **完成**（W3-3 核实，无需改动） |
 | 30 | `hcu_adapter/kernels/verification_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |

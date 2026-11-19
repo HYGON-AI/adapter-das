@@ -60,6 +60,7 @@
 | fresh_process 搬运 | 9 个 spawn/distributed 测试打标→kernels 段 deselect→gates 第 6 并发 lane（900s 预算，语义不变） | 实测 380s 串行→并发吸收（W4-2） | **完成** |
 | packaging 构建复用 | session 级 repocache（树指纹）+ 默认 wheel session 化 | 5 次整仓 copy→1 次（本地实测单副本生效；容器收益随 pip 更大）（W4-3） | **完成** |
 | kernels 段 xdist | `-n 4 --dist loadfile`（L1_KERNELS_XDIST=0 可退避；无 xdist 自动串行） | 尾巴 ~250s→~90s 预期，容器验收轮实测（W4-3） | **完成**（待容器实测数字回填） |
+| GPU compare 助手 | tests/kernels/_gpu_compare.py（GPU 归约+单次同步+失败才拉邻域；bf16-ulp 尺度感知+cosine 模式） | 新标准落地+示范迁移（conv1d_update_emu）；~170 存量点增量迁移（W4-4） | **完成**（标准+示范；存量增量迁移） |
 | KDA/conv1d emu 兜底 | gdn 族路由 | 无可用档=报错（gfx938 接受断供） | **完成**（=emu 路由即 RuntimeError，运行时值 fork\|stock；W2-5） |
 | P7 启动 tier 表 | `bridges/sglang.py` install 尾部 + `registry.log_summary` | 完成（桥装完后集中打表，一行一算子） | **完成**（W2-4） |
 | wizard/validator 拒退役档 | `hcu_config._validate` + wizard | status=retired 选择即报错（3b-9） | **完成**（W2-4） |

@@ -10,8 +10,8 @@
 | # | emu 实现 | 兄弟档 | 分类 | 处置 | 状态 |
 |---|---|---|---|---|---|
 | 1 | `hcu_adapter/bridges/sglang_mqa_emu.py` | — | B(补triton/寻源vendor) | 改判：桥本体是 triton 面装载器（HCU_MQA_EMU_IMPL=triton 默认），运行时 fallback 已拆 | **完成**（W2-2） |
-| 2 | `hcu_adapter/features/dsa/dsa_mqa_logits_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
-| 3 | `hcu_adapter/features/dsa/kpool_write_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
+| 2 | `hcu_adapter/features/dsa/dsa_mqa_logits_emu.py` | `mqa_logits_triton.py`（根名不同未被台账兄弟列匹配）+ lightop `gemmopt.paged_mqa_logits` | B(补triton/寻源vendor) | **vendor 寻源（lightop paged 臂已在文件内，:191）+ triton 修复**：triton 档存在但被 DTK div-4 int64 load bug 打错（`mqa_logits_triton.py` 文档自证 deterministically wrong），本件是带修复的生产正确路径（lightop 臂+torch 兜底，多 except 梯子=§3b-8 违规点，随档位落地一并严格化） | **任务开立**（W3-4：lightop paged 数值对拍 → 接 vendor 档；或 triton 绕过 div-4；落地前本件维持生产正确性不判死） |
+| 3 | `hcu_adapter/features/dsa/kpool_write_emu.py` | 上游 kpool writer（SetKAndS 族） | B(补triton/寻源vendor) | **开发 triton（div-4 绕过）**：DTK triton 对 int64 标量 load 的 div-4 编错（g53-tp8 GPU4 2026-10-15 实证：scales 落点全偏 4 倍→index-K cache 全零→GLM-5.3 首 token 平线）；本件=torch 正确性规避，deep_gemm 桥 :162 在产 | **任务开立**（W3-4：triton 修复版（参照 causal_conv1d 的同类 read-dead 修复模式）+ 本件手工对拍；落地前维持生产） |
 | 4 | `hcu_adapter/features/dsa/mqa_logits_emu.py` | `hcu_adapter/features/dsa/mqa_logits_triton.py`, `hcu_adapter/kernels/mqa_logits_lightop.py` | A(拆降级) | 待处置 | 待处置 |
 | 5 | `hcu_adapter/features/gdn/conv1d_fn_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
 | 6 | `hcu_adapter/features/gdn/conv1d_update_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |

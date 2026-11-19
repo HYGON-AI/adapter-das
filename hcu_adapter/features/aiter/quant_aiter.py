@@ -320,6 +320,6 @@ def install():
                "group plain arm + scaled_fp8_quant natives + whole-row "
                "fused silu+quant (R-09 2/3)" % impl,
     )
-    LOG.warning("[HCU quant] aiter fp8-quant tier installed "
+    LOG.info("[HCU quant] aiter fp8-quant tier installed "
                 "(HCU_QUANT_IMPL=%s): rowwise/group/scaled-natives rebind "
                 "+ whole-row fused silu+quant arm", impl)

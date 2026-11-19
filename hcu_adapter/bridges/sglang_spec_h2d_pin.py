@@ -113,7 +113,7 @@ def install():
         mechanism=_reg.MECH_REBIND,
         detail="private Torch metadata allocator; aliases retained; no source writes or ring reuse",
     )
-    logger.warning("HCU adapter: speculative KV-length pinned allocation installed at runtime")
+    logger.info("HCU adapter: speculative KV-length pinned allocation installed at runtime")
 
 
 def pinned_h2d(cpu_t, device, key="d"):

@@ -54,7 +54,8 @@
 | mqa triton 臂 torch-emu fallback | `bridges/sglang_mqa_emu.py` | 拆（emu 退运行时） | **完成**（per-call emu 回落拆除，严格分发；W2-2） |
 | HCU_FA3_EMU=1 默认 | env 注册表 | 默认翻转+报错 | **完成**（default=0，docs 同步；W2-2） |
 | _auto_mqa_emu auto 落 emu | `infra/hcu_env.py` | auto 不落 emu | **完成**（return None；W2-2） |
-| R-12 桥隔离静默走上游 | bridges try-isolation | 配置档失败=首用报错 | 待处置 |
-| KDA/conv1d emu 兜底 | gdn 族路由 | 无可用档=报错（gfx938 接受断供） | 待处置 |
+| R-12 桥隔离静默走上游 | bridges try-isolation | 配置档失败=首用报错 | **部分完成**（W2-5：失败升 ERROR + 启动降级汇总行，gate 可断言；per-op 首用报错待 enforcement 引擎批） |
+| 安装链碎行降噪 | bridges/features 12 处成功行 | warning→info（P7 默认静默） | **完成**（W2-5） |
+| KDA/conv1d emu 兜底 | gdn 族路由 | 无可用档=报错（gfx938 接受断供） | **完成**（=emu 路由即 RuntimeError，运行时值 fork\|stock；W2-5） |
 | P7 启动 tier 表 | `bridges/sglang.py` install 尾部 + `registry.log_summary` | 完成（桥装完后集中打表，一行一算子） | **完成**（W2-4） |
 | wizard/validator 拒退役档 | `hcu_config._validate` + wizard | status=retired 选择即报错（3b-9） | **完成**（W2-4） |

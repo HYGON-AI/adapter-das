@@ -304,5 +304,5 @@ def install():
             mechanism=registry.MECH_REBIND,
             detail=f"compiler inputs {bundle}; community csrc/include untouched",
         )
-        LOG.warning("HCU adapter: immutable JIT compiler inputs installed: %s", bundle)
+        LOG.info("HCU adapter: immutable JIT compiler inputs installed: %s", bundle)
         return bundle

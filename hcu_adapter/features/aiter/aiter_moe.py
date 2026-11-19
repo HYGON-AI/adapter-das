@@ -298,4 +298,4 @@ def install():
             pkg.fused_experts = fused_experts_hcu
     except Exception:
         pass
-    LOG.warning("HCU aiter moe bridge: fused_experts wrapped (mode=%s)", _mode())
+    LOG.info("HCU aiter moe bridge: fused_experts wrapped (mode=%s)", _mode())

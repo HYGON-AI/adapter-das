@@ -483,7 +483,7 @@ def _install_target_verify_aiter():
                "auto admits qualified gfx936/gfx938, TP2 H8/HV24 draft4; no fixed batch ceiling; "
                "cached aliases retained; other contracts keep upstream",
     )
-    LOG.warning("HCU adapter: GDN verify AITER route installed "
+    LOG.info("HCU adapter: GDN verify AITER route installed "
                 "(HCU_LINEAR_ATTN_GDN_VERIFY=%s, source=%s)", mode, source)
 
 

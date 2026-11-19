@@ -280,4 +280,4 @@ def install():
     DeepEPMoE.run_moe_core = core
     loader.__code__ = loader_code
     _installed = True
-    LOG.warning("HCU adapter: explicit CT token-INT8 DeepEP LL candidate installed")
+    LOG.info("HCU adapter: explicit CT token-INT8 DeepEP LL candidate installed")

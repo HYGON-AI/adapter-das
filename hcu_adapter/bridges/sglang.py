@@ -395,3 +395,10 @@ def install() -> None:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: tier table print failed", exc_info=True
             )
+        if _FAILED_BRIDGES:
+            logging.getLogger("hcu.adapter").error(
+                "HCU adapter: DEGRADED -- %d bridge(s) failed: %s; the "
+                "ops they serve are on the upstream path (zero-fallback "
+                "audit: this line is a degradation, not a fallback)",
+                len(_FAILED_BRIDGES), ", ".join(_FAILED_BRIDGES),
+            )

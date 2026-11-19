@@ -92,3 +92,16 @@ def test_aiter_moe_config_lookup_exception_propagates(monkeypatch):
             aiter_moe.try_aiter_fused_moe(**args)
     finally:
         del real
+
+
+def test_gdn_router_refuses_emu_runtime_request():
+    """3b-9: HCU_KDA_PREFILL_IMPL / HCU_CONV1D_IMPL = emu raises at
+    routing time; fork|stock are the runtime values."""
+    from hcu_adapter.features.gdn import fla_hcu_router
+
+    for var, fn in (
+        ("HCU_KDA_PREFILL_IMPL", fla_hcu_router._install_kda_prefill),
+        ("HCU_CONV1D_IMPL", fla_hcu_router._install_conv1d),
+    ):
+        with pytest.raises(RuntimeError, match="%s=emu is retired" % var):
+            fn("emu")

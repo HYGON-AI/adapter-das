@@ -291,3 +291,9 @@ small_copy 在 batch 改变后漏写；首条正常不能证明其他行有效�
 安装时先准备标准 JIT 与 run，完成 registry 登记后再发布绑定和幂等标志。
 登记失败（含部分写入后抛错）须保留原绑定、回滚登记且允许重试；缓存别名、
 构造失败和登记期间 owner 改变也须覆盖。这些 CPU 故障回归不替代设备精度验证。
+DTK FastJIT 的 `_init_kwargs` 不是稳定能力；缺失时从原对象完整保留标准 JIT
+构造字段，尤其两个 specialization 选项、repr/launch 回调及显式 False。
+字段不完整须在登记前拒绝，不得静默使用默认值。设备回归显式设置
+`TRITON_FAST_JIT=1` 并确认真实 FastJIT 对象的 `run` 已换绑；默认标准 JIT
+通过不能证明 FastJIT 路径通过。安装态缺依赖、启动失败及未执行用例均保留，
+不以源码 doubles 或替换后端覆盖失败。

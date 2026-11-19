@@ -137,3 +137,44 @@ def test_changed_owner_during_registration_is_not_overwritten(installation, monk
     assert not hasattr(installation.kernel, "_hcu_small_copy_standard_jit")
     assert registry._RECORDS == {"prior": {"op": "prior"}}
     assert registry._BOUND == {"prior.target": "prior"}
+
+
+@pytest.mark.parametrize("debug", [False, True])
+def test_vendor_without_init_kwargs_preserves_jit_options(installation, debug):
+    kernel = installation.kernel
+    del kernel._init_kwargs
+    representation = lambda signature: "copy:" + str(signature)
+    metadata = lambda *args: {"name": "copy"}
+    options = dict(version=0, do_not_specialize=["sizes", 2],
+                   do_not_specialize_on_alignment=["cols"], debug=debug,
+                   noinline=False, repr=representation, launch_metadata=metadata)
+    for name, value in options.items():
+        setattr(kernel, "_repr" if name == "repr" else name, value)
+
+    small_copy_jit.install()
+
+    assert installation.constructed == [(kernel.fn, options)]
+    assert kernel.run.__self__ is kernel._hcu_small_copy_standard_jit
+    assert registry.get("small_copy")["implementation"] == "standard-jit"
+    small_copy_jit.install()
+    assert len(installation.constructed) == 1
+
+
+@pytest.mark.parametrize("missing", ["version", "do_not_specialize_on_alignment", "_repr", "launch_metadata"])
+def test_incomplete_vendor_options_refuse_before_registration(installation, missing):
+    kernel = installation.kernel
+    del kernel._init_kwargs
+    for name, value in dict(version=None, do_not_specialize=[],
+                            do_not_specialize_on_alignment=[], debug=False,
+                            noinline=None, _repr=None, launch_metadata=None).items():
+        setattr(kernel, name, value)
+    delattr(kernel, missing)
+
+    with pytest.raises(TypeError, match="cannot preserve Triton JIT options"):
+        small_copy_jit.install()
+
+    assert installation.constructed == []
+    assert kernel.run is installation.original
+    assert not hasattr(kernel, "_hcu_small_copy_standard_jit")
+    assert registry._RECORDS == {"prior": {"op": "prior"}}
+    assert registry._BOUND == {"prior.target": "prior"}

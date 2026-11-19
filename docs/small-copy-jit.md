@@ -28,13 +28,24 @@ FastJIT 关闭、无 CPU 同步、无模型采样流程改写。
 
 - `HCU_ADAPTER_HOST=none python -m pytest tests/adapter/test_small_copy_jit.py -q`
   验证对象别名、原参数、幂等及非 HCU FastJIT 不受影响。
-- `python -m pytest tests/kernels/test_small_copy_jit.py -q`
+- `TRITON_FAST_JIT=1 HCU_ADAPTER_HOST=sglang python -m pytest tests/kernels/test_small_copy_jit.py -q`
   在真实 HCU bootstrap 下验证变 batch、变地址、空输入、INT32/INT64
   转换、二维非连续源/目标、目标哨兵与变输入 graph replay，逐元素零容差。
+  先核对实际对象仍为 HCU `FastJITFunction`、其 `run` 已绑定标准 JIT，
+  且 registry 登记可见。标准 JIT 默认路径通过不能作为 FastJIT 修复通过。
 - 真实 HYV4 原配置 graph 生成、并发与 GSM8K 结果另行记录；组件通过
   不等于整模型精度通过。
 
 当前 catalog 为 candidate。临时诊断注入不属于生产实现。
+
+## DTK JIT 构造选项兼容
+
+不同 DTK 构建不一定提供 `_init_kwargs`。存在时保留其完整选项；不存在时，
+从原 JIT 对象读取 `version`、两类 `do_not_specialize`、`debug`、
+`noinline`、`_repr` 与 `launch_metadata`，传给官方标准 `JITFunction`。
+不能遗漏 alignment 选项或用默认值覆盖显式 False/回调；字段缺失时在登记和
+绑定发布之前拒绝。保留原函数、kernel 对象和已有别名，不改官方数学实现。
+CPU 故障回归与真实安装态 FastJIT/Graph 验证分别记录，原模型结果不转授新构建。
 
 
 ### 2026-11-19 原配置整机复验结果

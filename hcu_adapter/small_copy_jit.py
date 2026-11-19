@@ -9,6 +9,29 @@ _MISSING = object()
 _MARKER = "_hcu_small_copy_standard_jit"
 
 
+def _jit_options(kernel):
+    options = getattr(kernel, "_init_kwargs", _MISSING)
+    if options is not _MISSING:
+        if not isinstance(options, dict):
+            raise TypeError("cannot preserve Triton JIT options: invalid _init_kwargs")
+        return dict(options)
+    # DTK builds without _init_kwargs retain these constructor options on
+    # the actual upstream JIT object. Do not silently substitute defaults.
+    attributes = {
+        "version": "version",
+        "do_not_specialize": "do_not_specialize",
+        "do_not_specialize_on_alignment": "do_not_specialize_on_alignment",
+        "debug": "debug",
+        "noinline": "noinline",
+        "repr": "_repr",
+        "launch_metadata": "launch_metadata",
+    }
+    try:
+        return {option: getattr(kernel, name) for option, name in attributes.items()}
+    except AttributeError as error:
+        raise TypeError("cannot preserve Triton JIT options: incomplete vendor ABI") from error
+
+
 def adapt_kernel(kernel, jit_type, *, register=None):
     if getattr(kernel, _MARKER, None) is not None:
         return False
@@ -20,7 +43,7 @@ def adapt_kernel(kernel, jit_type, *, register=None):
     if type(namespace) is not dict:
         raise TypeError("small_copy requires a writable kernel namespace")
     previous = {name: namespace.get(name, _MISSING) for name in ("run", _MARKER)}
-    standard = jit_type(kernel.fn, **kernel._init_kwargs)
+    standard = jit_type(kernel.fn, **_jit_options(kernel))
     replacements = {"run": standard.run, _MARKER: standard}
 
     def check_owner():

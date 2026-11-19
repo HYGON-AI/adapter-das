@@ -7,7 +7,14 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="GPU requi
 def _operator():
     from hcu_adapter.small_copy_jit import install
     install()
-    from sglang.kernels.ops.memory.small_copy import try_small_copy
+    from sglang.kernels.ops.memory.small_copy import try_small_copy, _small_copy_kernel
+    if (type(_small_copy_kernel).__module__, type(_small_copy_kernel).__name__) == (
+        "triton.backends.hcu.jit", "FastJITFunction"
+    ):
+        from triton.runtime.jit import JITFunction
+        standard = getattr(_small_copy_kernel, "_hcu_small_copy_standard_jit", None)
+        assert isinstance(standard, JITFunction)
+        assert _small_copy_kernel.run.__self__ is standard
     return try_small_copy
 
 

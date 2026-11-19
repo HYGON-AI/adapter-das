@@ -494,7 +494,7 @@ def check_registry_ops_in_catalog(r):
 # governance §3b: operator implementations, actual dispatch facades and mechanisms.
 _KERNEL_TIERS = {"emu", "triton", "cpp", "fork", "ref", "aiter", "lightop", "boltops", "dtk", "rccl"}
 _KERNEL_FACADES = {"gemm", "gather", "norm", "index_ops", "fused_transform"}
-_KERNEL_MECHANISMS = {"runtime_config", "lightop_usage",
+_KERNEL_MECHANISMS = {"runtime_config", "lightop_usage", "pcp_dspark",
                    # W3-2: byte-preserving weight permutations --
                    # layout mechanism, no tier semantics (no fallback
                    # ladder exists; torch strided copies at HBM bw)

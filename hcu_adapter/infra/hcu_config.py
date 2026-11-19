@@ -65,6 +65,14 @@ class HcuConfigError(RuntimeError):
 # backends   selectable backend -> {status, note}
 
 BACKEND_CATALOG = {
+    "vllm_inverse_rope": {
+        "var": None,
+        "summary": "Plugin HCU inverse GPT-J RoPE on V41 PCP BF16 attention output",
+        "backends": {
+            "stock": {"status": "candidate", "note": "Default: original Core inverse RoPE"},
+            "hcu": {"status": "candidate", "note": "Packaged native kernel compiled before model construction; 64-dimension tail; device/Graph/model gates pending"},
+        },
+    },
     "cuda_graph": {
         "var": None,
         "summary": "HIP driver guard for breakable prefill graph capture",
@@ -100,7 +108,7 @@ BACKEND_CATALOG = {
         "summary": "V41 LightOp FP4 indexer with variable allocator pages",
         "backends": {
             "stock": {"status": "candidate", "note": "Explicit stock fallback: existing FP8 behavior"},
-            "lightop": {"status": "candidate", "note": "Default for FP4 cache only; PCP1 eager/PIECEWISE and constrained eager PCP8 TP1/DP1/EP/HT without speculation; bounded query scores and transient profile budget with ratio-specific decode staging; rebased model validation pending"},
+            "lightop": {"status": "candidate", "note": "Eligible V4.1 auto defaults to MXFP4 when the indexer and packer Plugin owners are healthy. Explicit FP8 and stock remain selectable. PCP1 eager/PIECEWISE and constrained eager PCP8 TP1/DP1/EP/HT without speculation; bounded query scores and transient profile budget with ratio-specific decode staging; rebased model validation pending"},
         },
     },
     "vllm_fp4_packer": {
@@ -133,6 +141,14 @@ BACKEND_CATALOG = {
         "backends": {
             "stock": {"status": "candidate", "note": "Default: adapter builds no PCP classes; the plugin keeps its native path"},
             "native": {"status": "candidate", "note": "Adapter-owned V41 PCP backends/indexer/attention; plugin injects the FP8 reference scorer and publishes the model; eager PCP2+ only, real-device gates pending"},
+        },
+    },
+    "vllm_pcp_q_rope": {
+        "var": None,
+        "summary": "vLLM V4.1 PCP prefill Q-only RoPE",
+        "backends": {
+            "stock": {"status": "candidate", "note": "Default: upstream fused query preparation"},
+            "hcu": {"status": "candidate", "note": "Opt-in eager gfx938 PCP prefill, in-place GPT-J RoPE; GPU validation pending"},
         },
     },
     "vllm_dsv41_pcp_compat": {

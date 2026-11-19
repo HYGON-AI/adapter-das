@@ -4,6 +4,17 @@
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
+## vllm_inverse_rope
+
+Plugin HCU inverse GPT-J RoPE on V41 PCP BF16 attention output
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| hcu | candidate Packaged native kernel compiled befo |
+| stock | candidate Default: original Core inverse RoPE |
+
+路由变量：（auto）
+
 ## cuda_graph
 
 HIP driver guard for breakable prefill graph capture
@@ -42,7 +53,7 @@ V41 LightOp FP4 indexer with variable allocator pages
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| lightop | candidate Default for FP4 cache only; PCP1 eag |
+| lightop | candidate Eligible V4.1 auto defaults to MXFP4 |
 | stock | candidate Explicit stock fallback: existing FP |
 
 路由变量：`HCU_VLLM_FP4_INDEXER_IMPL`
@@ -90,6 +101,17 @@ vLLM 0.33 V4.1 PCP attention owned by the adapter kernel module
 | stock | candidate Default: adapter builds no PCP class |
 
 路由变量：`HCU_VLLM_PCP_IMPL`
+
+## vllm_pcp_q_rope
+
+vLLM V4.1 PCP prefill Q-only RoPE
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| hcu | candidate Opt-in eager gfx938 PCP prefill, in- |
+| stock | candidate Default: upstream fused query prepar |
+
+路由变量：（auto）
 
 ## vllm_dsv41_pcp_compat
 

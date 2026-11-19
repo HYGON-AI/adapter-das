@@ -11,6 +11,7 @@ rms_norm + torch silu tiers.
 Run: HIP_VISIBLE_DEVICES=6 HCU_CONFIG=<file> python tests/tools/_test_hcu_config.py
 """
 
+import math
 import os
 import subprocess
 import sys
@@ -170,7 +171,8 @@ if torch.cuda.is_available():
             "(torch.nn.functional.silu(xf[:, :512]) * xf[:, 512:]"
             ").to(torch.bfloat16).float();"
             "md = (got.float() - ref).abs().max().item();"
-            "print('MAXDIFF', md)"
+            "mref = ref.abs().max().item();"
+            "print('MAXDIFF', md, 'MAXREF', mref)"
         )
         # Fresh-process tier parity only: skip the host-bridge install
         # (HCU_ADAPTER_HOST=none). The bridges double subprocess startup
@@ -187,11 +189,23 @@ if torch.cuda.is_available():
 
     def parity_check(tag, r):
         out, err = r.communicate(timeout=300)
-        md = None
+        md = mref = None
         for line in out.splitlines():
             if line.startswith("MAXDIFF"):
-                md = float(line.split()[1])
-        ok(tag, md is not None and md < 0.05, f"md={md} {err[-200:]}")
+                parts = line.split()
+                md = float(parts[1])
+                mref = float(parts[3]) if len(parts) > 3 else 0.0
+        # scale-aware bound: the fallback tiers may legitimately differ
+        # from the fp32 reference by one bf16 ulp of the largest output
+        # (the vendored native activation.cu rounds silu to bf16 BEFORE
+        # the product -- faithful to upstream, double rounding). 0.05
+        # was tighter than 1 ulp once outputs reach |x| ~ 8 (ulp 0.0625,
+        # observed 2026-11-19 gate B).
+        allowed = 0.05
+        if mref and mref > 0:
+            allowed = max(allowed, 2.0 ** (math.floor(math.log2(mref)) - 7))
+        ok(tag, md is not None and md <= allowed,
+           f"md={md} mref={mref} allowed={allowed} {err[-200:]}")
 
     # One fresh-process parity per op, on its production tier (aiter rms,
     # lightop silu). The torch tiers are pure-Python fallbacks already

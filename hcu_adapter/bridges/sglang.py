@@ -3392,7 +3392,20 @@ def install() -> None:
                 "HCU adapter: QSA pool not installed", exc_info=True
             )
 
-        from hcu_adapter.bridges._sglang import grouped_topk, sampling
+        try:
+            from hcu_adapter.bridges._sglang import grouped_topk
 
-        grouped_topk.install()
-        sampling.install()
+            grouped_topk.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: grouped top-k not installed", exc_info=True,
+            )
+
+        try:
+            from hcu_adapter.bridges._sglang import sampling
+
+            sampling.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: sampling not installed", exc_info=True,
+            )

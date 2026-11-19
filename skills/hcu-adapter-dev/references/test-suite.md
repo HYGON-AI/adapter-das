@@ -1,5 +1,13 @@
 # 自动化测试套件要求
 
+SGLang grouped-topk / sampling 的串行启动发布见
+`tests/adapter/test_sglang_leaf_publication.py`。先解析 provider 和已缓存别名，
+登记全部成功后再发布；`registry.registration_transaction` 只保护登记记录，
+不能单独回滚宿主函数。回归须在各登记点注入失败，检查原符号/记录不变、
+干净重试成功、外部 owner 变更不被覆盖，以及发布中断时恢复原属性和删除
+新增属性。单桥隔离仍由原宿主顺序结构断言检查；这些 CPU double 结果不代表
+真实 SGLang 启动、数值或设备 Graph 已通过，也不是并发 import 事务保证。
+
 DSA writer 回归见 `tests/kernels/test_mqa_triton_gfx938.py`：在调用时解析
 新 kvcache/旧 attention 路径，区分页跨度 ABI；依赖导入错误不能当作接口迁移
 而隐藏。pytest 必须实际执行两种池布局、融合写入和派发的数值/top-k 断言，

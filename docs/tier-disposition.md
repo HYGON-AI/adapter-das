@@ -28,7 +28,7 @@
 | 17 | `hcu_adapter/kernels/kv_cache_emu.py` | 上游 `kernels/ops/kvcache/` 家族 | B(补triton/寻源vendor) | **接上游 triton 档**（寻源 2026-11-19：aiter 无 paged KV set/get 原语，仅有 rope_cached*/ep_scatter/quant 族；上游树内已有 cache_ops.py、triton_store_cache.py、fused_fp8_qkv_kv_cache.py、kv_read_table.py、copy/zero_pages、hicache/hisparse——覆盖 load_paged/store_paged 的 gather/quant/scatter 语义）| **寻源完成**；接线任务：DeepInfer fused_transform/kv_cache 消费面换上游调用 + GPU 对拍（W3-1） |
 | 18 | `hcu_adapter/kernels/mhc_emu.py` | `hcu_adapter/bridges/vllm_dsv41/mhc.py`, `hcu_adapter/kernels/mhc_aiter.py`, `hcu_adapter/kernels/mhc_lightop.py` | A(拆降级) | 待处置 | 待处置 |
 | 19 | `hcu_adapter/kernels/mla_attention_emu.py` | `hcu_adapter/kernels/mla_attention_dtk.py` | A(拆降级) | 待处置 | 待处置 |
-| 20 | `hcu_adapter/kernels/mla_layout_emu.py` | — | B(补triton/寻源vendor) | 待处置 | 待处置 |
+| 20 | `hcu_adapter/kernels/mla_layout.py`（原 mla_layout_emu） | — | B(补triton/寻源vendor) | **机制化改名**（寻源 2026-11-19：上游 0522 与 aiter 均无等价算子；本件是权重装载期一次性字节保持排列——torch 跨步拷贝即 HBM 带宽级，triton 无收益，无仿真语义无降级梯——`_emu` 后缀属命名错位） | **完成**（W3-2：改名+豁免清单+消费点重接；无运行时行为变化） |
 | 21 | `hcu_adapter/kernels/moe_gate_emu.py` | `hcu_adapter/kernels/moe_gate_lightop.py` | A(拆降级) | 待处置 | 待处置 |
 | 22 | `hcu_adapter/kernels/mtp_emu.py` | `hcu_adapter/kernels/mtp_triton.py` | A(拆降级) | 待处置 | 待处置 |
 | 23 | `hcu_adapter/kernels/norm_emu.py` | `hcu_adapter/kernels/norm.py`, `hcu_adapter/kernels/norm_lightop.py`, `hcu_adapter/kernels/norm_triton.py` | A(拆降级) | 待处置 | 待处置 |

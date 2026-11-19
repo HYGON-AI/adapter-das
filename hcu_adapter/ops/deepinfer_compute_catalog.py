@@ -645,7 +645,7 @@ BACKEND_CATALOG = {'deep_gemm.cublaslt_gemm_nt': {'native': {'status': 'candidat
                                                                                         'or performance '
                                                                                         'qualification'}},
  'flash_mla.fused_norm_rope_attn_rope_cast.permute_q_b_proj': {'torch': {'status': 'candidate',
-                                                                         'implementation': 'hcu_adapter.kernels.mla_layout_emu.permute_q_b_proj',
+                                                                         'implementation': 'hcu_adapter.kernels.mla_layout.permute_q_b_proj',
                                                                          'limitations': 'Byte-preserving '
                                                                                         'initialization '
                                                                                         'permutation only; '
@@ -653,7 +653,7 @@ BACKEND_CATALOG = {'deep_gemm.cublaslt_gemm_nt': {'native': {'status': 'candidat
                                                                                         'or model '
                                                                                         'qualification'}},
  'flash_mla.fused_norm_rope_attn_rope_cast.permute_wv_proj': {'torch': {'status': 'candidate',
-                                                                        'implementation': 'hcu_adapter.kernels.mla_layout_emu.permute_wv_proj',
+                                                                        'implementation': 'hcu_adapter.kernels.mla_layout.permute_wv_proj',
                                                                         'limitations': 'Byte-preserving '
                                                                                        'initialization '
                                                                                        'permutation only; no '

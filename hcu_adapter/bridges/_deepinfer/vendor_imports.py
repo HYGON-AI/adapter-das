@@ -107,7 +107,7 @@ def install(grouped_gemm_backend="torch"):
             name: _missing("flash_mla.fused_norm_rope_attn_rope_cast." + name)
             for name in ("prefill", "decode", "permute_q_b_proj", "permute_wv_proj")
         })
-    from hcu_adapter.kernels.mla_layout_emu import permute_q_b_proj, permute_wv_proj
+    from hcu_adapter.kernels.mla_layout import permute_q_b_proj, permute_wv_proj
 
     for name, provider in (("permute_q_b_proj", permute_q_b_proj),
                            ("permute_wv_proj", permute_wv_proj)):
@@ -116,7 +116,7 @@ def install(grouped_gemm_backend="torch"):
         if current is not None and current is not provider and not getattr(current, "_hcu_unimplemented", False):
             raise RuntimeError("An existing FlashMLA projection provider is already installed: " + name)
         setattr(flash_mla.fused_norm_rope_attn_rope_cast, name, provider)
-        registry.register(op, "hcu_adapter.kernels.mla_layout_emu." + name, op, "seam")
+        registry.register(op, "hcu_adapter.kernels.mla_layout." + name, op, "seam")
     try:
         importlib.import_module("flash_attn.cute.interface")
     except ModuleNotFoundError as error:

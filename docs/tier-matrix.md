@@ -327,7 +327,7 @@ residual += input; input = rmsnorm(residual)*w, in-place
 |---|---|
 | triton | production auto ladder fallback (lightop > trit |
 | lightop | validated auto first (2026-11 tier order) for  |
-| torch | production reference path |
+| torch | retired reference path |
 
 路由变量：`HCU_FUSED_ADD_RMS_IMPL`
 

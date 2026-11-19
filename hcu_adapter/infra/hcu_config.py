@@ -355,7 +355,7 @@ BACKEND_CATALOG = {
                                 "too); perf 0.76x vs triton @4096x7168 bf16 "
                                 "(standby: HCU_FUSED_ADD_RMS_IMPL=triton); "
                                 "one-strike fallback on a raise"},
-            "torch": {"status": "production",
+            "torch": {"status": "retired",
                       "note": "reference path"},
         },
     },

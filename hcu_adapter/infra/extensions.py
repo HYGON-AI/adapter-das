@@ -20,7 +20,10 @@ from typing import Protocol, runtime_checkable
 
 
 EXTENSION_API_VERSION = 1
-EXTENSION_ENTRY_POINT_GROUP = "hcu_adapter.infra.extensions"
+# Published protocol name in Plugin distribution metadata (v0.33.0
+# ships [project.entry-points."hcu_adapter.extensions"]); it is NOT an
+# import path and must not follow module moves (PR #142 review P1).
+EXTENSION_ENTRY_POINT_GROUP = "hcu_adapter.extensions"
 
 
 @dataclass(frozen=True)

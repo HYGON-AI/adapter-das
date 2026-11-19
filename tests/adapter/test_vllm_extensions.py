@@ -290,7 +290,7 @@ def test_default_discovery_uses_only_adapter_extension_group(monkeypatch):
     monkeypatch.setattr(api.metadata, "entry_points", discover)
 
     assert api.activate_extensions(_context()) == ()
-    assert calls == ["hcu_adapter.infra.extensions"]
+    assert calls == ["hcu_adapter.extensions"]
 
 
 def test_importing_protocol_does_not_import_runtime_or_provider_packages():

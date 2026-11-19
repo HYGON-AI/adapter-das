@@ -206,6 +206,10 @@ def install() -> None:
         _install_bridge("serve_gates", _he)
 
 
+        # serve-time AOT requirement: launch aborts without native sgl_kernel ops (ninja-JIT fallback not tolerated; HCU_REQUIRE_NATIVE=0 downgrades) -> hcu_adapter/bridges/sglang_native_ops_gate.py
+        _install_bridge("native_ops_gate", _he)
+
+
         # vendor/triton routes (libdevice redirect, PDL strip, KDA router, fa3 vendor, GDN aiter, layernorm face) -> hcu_adapter/bridges/sglang_vendor_routes.py
         _install_bridge("vendor_routes", _he)
 

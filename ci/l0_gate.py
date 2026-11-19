@@ -600,7 +600,7 @@ def check_layout_ownership(r):
     FAMILY_PREFIXES = {
         "dsv4": ("dsv4",), "dsv41": ("dsv41", "v41"),
         "ct_w4a8": ("ct_w4a8",), "deep_gemm": ("deep_gemm", "deepgemm"),
-        "hadamard": ("hadamard",), "gdn": ("gdn", "conv1d", "kda"),
+        "hadamard": ("hadamard",), "gdn": ("gdn", "conv1d", "kda", "mamba"),
         "dsa": ("dsa",), "slimquant": ("slimquant",), "mqa_logits": ("mqa",),
         "allreduce": ("allreduce", "ar_norm"), "aiter": ("aiter",),
     }

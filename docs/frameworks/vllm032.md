@@ -22,9 +22,9 @@ adapter-das
   ├─ HcuPlatform
   ├─ vLLM 版本、HCU 硬件和 DTK runtime 门禁
   ├─ 官方已有行为的 HCU 兼容
-  └─ hcu_adapter.infra.extensions API v1
+  └─ hcu_adapter.extensions API v1（实现: infra/extensions.py）
         │
-        │ hcu_adapter.infra.extensions
+        │ hcu_adapter.extensions
         ▼
 optional vllm-plugin-das
   └─ DAS 可选优化实现
@@ -64,7 +64,7 @@ Adapter 负责：
 独立 `vllm-plugin-das` 只声明 Adapter Extension：
 
 ```toml
-[project.entry-points."hcu_adapter.infra.extensions"]
+[project.entry-points."hcu_adapter.extensions"]
 das_hcu = "hcu_vllm_das.extension:create_extension"
 ```
 

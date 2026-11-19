@@ -54,12 +54,22 @@ PY
 )" || { echo "VLLM-LANE: vllm not importable on this stack"; exit 1; }
 fi
 export VLLM_TARGET_ROOT
-echo "VLLM-LANE: host=vllm gpu=$GPU target_root=$VLLM_TARGET_ROOT"
+# The phase root can expose the installed wheel through package symlinks.
+# Preserve explicit phase overrides; the provenance test resolves the exact file.
+export AR_ADAPTER_ROOT="${AR_ADAPTER_ROOT:-$ROOT}"
+echo "VLLM-LANE: host=vllm gpu=$GPU target_root=$VLLM_TARGET_ROOT adapter_root=$AR_ADAPTER_ROOT"
+
+# Git metadata belongs to this test phase, before source packages are resolved.
+# Installed-wheel CI preserves the checkout and merge parents alongside symlinks.
+if [ -e "$ROOT/.git" ]; then
+    git -C "$ROOT" log -1 --format='VLLM-LANE: source_head=%H source_parents=%P' \
+        || { echo "VLLM-LANE: unable to record checkout provenance"; exit 1; }
+fi
 
 # Record the installed release/owner paths without importing GPU frameworks.
 # The shared Adapter lane also supports other admitted vLLM release lines;
 # version strings here are evidence, not a new exact-wheel acceptance gate.
-env -u PYTHONPATH HCU_ADAPTER_HOST=none python3 - <<'PY'
+if ! env -u PYTHONPATH HCU_ADAPTER_HOST=none python3 - <<'PY'
 import importlib.metadata as metadata
 import importlib.util
 import json
@@ -83,6 +93,10 @@ for distribution, module in (
                      module_origin=str(Path(spec.origin).resolve()) if spec and spec.origin else None))
 print("VLLM-LANE: inventory " + json.dumps(dict(python=sys.executable, packages=rows)))
 PY
+then
+    echo "VLLM-LANE: unable to record component inventory"
+    exit 1
+fi
 
 # Mirror of tests/adapter/conftest.py _is_vllm_host_file. conftest remains
 # the source of truth for the host-domain scoping; the per-file counts below

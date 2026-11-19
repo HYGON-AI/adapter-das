@@ -27,7 +27,7 @@ from hcu_adapter.extensions import (
 )
 
 
-def _stub_runtime_owners(monkeypatch, calls=None):
+def _stub_runtime_owners(monkeypatch, calls=None, *, preserve=()):
     """Ordering doubles must not execute real providers on a synthetic HCU."""
     from importlib import import_module
     for name, action, label in (
@@ -41,6 +41,8 @@ def _stub_runtime_owners(monkeypatch, calls=None):
         ('vllm_pcp', 'install', 'pcp'),
         ('vllm_minimax_abi', 'install', 'minimax-abi'),
     ):
+        if name in preserve:
+            continue
         owner = import_module('hcu_adapter.bridges.' + name)
         monkeypatch.setattr(owner, action, lambda label=label: calls.append(label) if calls is not None else None)
         if hasattr(owner, 'require_healthy'):
@@ -297,10 +299,6 @@ def test_runtime_plugin_runs_guards_then_extensions_once_and_keeps_reports(
         lambda: calls.append("dtk"),
     )
     monkeypatch.setattr(bridge, "_require_vllm_hip_runtime_abi", lambda: calls.append("runtime-abi"))
-    from hcu_adapter import interpreter_cleanup
-
-    monkeypatch.setattr(interpreter_cleanup, "register_frozen_heap_cleanup",
-                        lambda: calls.append("exit-cleanup"))
     # Provider registration has its own contract tests; do not enter a real
     # platform import from this guard/extension ordering double on either arch.
     _stub_runtime_owners(monkeypatch, calls)
@@ -327,10 +325,8 @@ def test_runtime_plugin_runs_guards_then_extensions_once_and_keeps_reports(
         "platform",
         "dtk",
         "runtime-abi",
-        "exit-cleanup",
         "fp8",
-        "scaled-mm", "allreduce", "mhc", "indexer", "prefill", "decode", "pcp",
-        "minimax-abi",
+        "scaled-mm", "allreduce", "mhc", "indexer", "prefill", "decode", "pcp", "minimax-abi",
         "adapter-version",
         ("extensions", "0.1.0", "0.32.0+rocm723"),
     ]

@@ -11,6 +11,7 @@ import pytest
 
 from hcu_adapter.bridges import vllm as bridge
 from hcu_adapter.extensions import ExtensionReport, ExtensionStatus
+from test_vllm_bridge import _stub_runtime_owners
 
 
 CAP = "hcu-flash-attention"
@@ -23,6 +24,7 @@ def report(name="flash", status=ExtensionStatus.ACTIVE, capabilities=(CAP,)):
 @pytest.fixture
 def platform(monkeypatch):
     """CPU platform/config doubles; real Adapter selector/report storage."""
+    _stub_runtime_owners(monkeypatch)
     class RocmPlatform:
         @classmethod
         def get_device_capability(cls):
@@ -41,10 +43,6 @@ def platform(monkeypatch):
     monkeypatch.delitem(bridge.__dict__, "HcuPlatform", raising=False)
     monkeypatch.setattr(bridge, "_RUNTIME_ACTIONS", bridge.ProcessLocalActions())
     imports, validations = [], []
-    # This CPU contract exercises a different owner; mHC health/admission
-    # is covered by test_vllm_mhc_bridge and combined-owner health tests.
-    from hcu_adapter.bridges import vllm_mhc
-    monkeypatch.setattr(vllm_mhc, "require_healthy", lambda: None)
 
     class Backend:
         @classmethod

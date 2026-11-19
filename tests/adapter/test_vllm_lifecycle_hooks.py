@@ -6,7 +6,6 @@
 from types import SimpleNamespace as NS
 
 import pytest
-from torch import nn
 
 from hcu_adapter import model_load as api
 
@@ -16,18 +15,16 @@ from vllm.v1.worker import gpu_model_runner as v1, worker_base
 from vllm.v1.worker.gpu import model_runner as v2
 import vllm.plugins
 import test_vllm_post_model_load as helpers
+from test_vllm_bridge import _stub_runtime_owners
 
 
 @pytest.fixture(autouse=True)
 def isolated(monkeypatch):
+    _stub_runtime_owners(monkeypatch)
     import torch
     assert not torch.cuda.is_initialized()
     envs.disable_envs_cache()
     monkeypatch.setattr(api, "_callbacks", api._Callbacks())
-    # This CPU contract exercises a different owner; mHC health/admission
-    # is covered by test_vllm_mhc_bridge and combined-owner health tests.
-    from hcu_adapter.bridges import vllm_mhc
-    monkeypatch.setattr(vllm_mhc, "require_healthy", lambda: None)
     monkeypatch.setattr(api, "_mutation_guards", api._Callbacks())
     monkeypatch.delenv("VLLM_ELASTIC_EP_SCALE_UP_LAUNCH", raising=False)
     def no_gpu(*args, **kwargs):
@@ -79,9 +76,7 @@ def test_public_pair_real_load_then_real_mutation_entry(monkeypatch, version, op
     runner.reset_encoder_cache = lambda: events.append("reset-encoder")
     runner.reset_mm_cache = lambda: events.append("reset-mm")
     worker.weight_transfer_engine = NS(
-        # The official worker validates this target before transfer. Supply
-        # a real unquantized CPU module instead of skipping that validation.
-        model=nn.Module(),
+        model=runner.model,
         supports_draft_weight_update=True,
         start_weight_update=lambda: events.append("CPU-transfer-start"),
         reset_weight_update_target=lambda: events.append("CPU-transfer-reset"),

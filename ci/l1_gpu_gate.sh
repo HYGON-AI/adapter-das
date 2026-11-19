@@ -213,7 +213,16 @@ fi
 # (cold containers must export /root/.cache/sglang/jit as a new seed rather
 # than raising the budget further); the pre-layout 900s no longer fits the
 # post-layout test volume even with ZERO JIT compiles.
-run_seg kernels 1500  python3 -m pytest tests/kernels tests/adapter -vv --no-header -m "not emu_parity and not fresh_process" \
+# W4-3: xdist parallelizes the kernels tail (fork workers on Linux: torch
+# imports once per worker, ~1870 small tests spread over 4 lanes). Opt out
+# with L1_KERNELS_XDIST=0; absent pytest-xdist degrades to serial. Worker
+# count 4: the 5 concurrent gates already share one HCU safely, so 4
+# pytest workers on small tensors is the proven concurrency envelope.
+XDIST_FLAGS=()
+if [ "${L1_KERNELS_XDIST:-1}" != "0" ] && python3 -c "import xdist" 2>/dev/null; then
+    XDIST_FLAGS=(-n 4 --dist loadfile)
+fi
+run_seg kernels 1500  python3 -m pytest tests/kernels tests/adapter -vv --no-header -m "not emu_parity and not fresh_process" "${XDIST_FLAGS[@]}" \
     --tb=short -o faulthandler_timeout=120 --durations=60 \
     "${FAMILY_DESELECT[@]}"
 

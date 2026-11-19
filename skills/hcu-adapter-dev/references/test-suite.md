@@ -1170,6 +1170,13 @@ stride；Graph 同时改变输入值与映射元数据。桥接测试保留已�
 HOSTnone 单独通过误作完整 suite 兼容证据。
 
 
+CPU runtime-loader contracts keep the actual official constructor, library
+discovery and ctypes error paths. If the ROCm platform import queries GPU
+architecture in a device-hidden process, scope its metadata double to that
+import, restore the original query, and reject GPU queries during the loader
+assertions. Retain missing-library, invalid-ELF, wrong-library and loaded-library
+precedence cases. This import boundary does not qualify device/runtime ABI.
+
 Mamba scatter routing CPU regressions exercise exact gfx936/gfx938 architecture names
 and feature suffixes, per-input-device probe caching, retained aliases and source-row
 arguments, plus rejection of other architectures and dtype/device/size contracts.

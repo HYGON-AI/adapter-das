@@ -14,6 +14,7 @@ Two wheels, independent version lines, one interlock:
 """
 
 # [L1 cold-curation 2026-11-17] 7 -> 3: keeps the stamped-pair interlock, the pure-shadow kernel wheel and the half-install sentinel; dropped faces stay in git history.
+import json
 import os
 from email.parser import Parser
 from pathlib import Path
@@ -295,3 +296,74 @@ def test_sgl_kernel_half_install_raises_sentinel():
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "SENTINEL-RAISED-OK" in result.stdout
+
+
+@pytest.mark.parametrize("layout", ["source", "wheel"])
+@pytest.mark.parametrize("host", ["sglang", "vllm"])
+@pytest.mark.parametrize("location", ["root", "cwd", "explicit", "invalid-root"])
+def test_config_discovery_survives_infra_migration(
+    tmp_path, request, layout, host, location,
+):
+    """Resolve real deployment policy from outside the source/install root.
+
+    A fresh interpreter also catches config reads during package bootstrap;
+    no global state, module path or config parser is replaced by a double.
+    """
+    root = tmp_path / layout
+    root.mkdir()
+    if layout == "source":
+        shutil.copytree(REPO_ROOT / "hcu_adapter", root / "hcu_adapter",
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copyfile(REPO_ROOT / "sitecustomize.py", root / "sitecustomize.py")
+    else:
+        with zipfile.ZipFile(request.getfixturevalue("adapter_wheel")) as archive:
+            archive.extractall(root)
+    cwd = tmp_path / "launch"
+    cwd.mkdir()
+    root_config = root / "hcu_adapter.json"
+    root_config.write_text(json.dumps({
+        "version": 1, "ops": {"vllm_mhc": "stock", "silu_and_mul": "triton"},
+    }))
+    chosen = root_config
+    if location in ("cwd", "explicit"):
+        chosen = cwd / "hcu_adapter.json"
+        chosen.write_text(json.dumps({
+            "version": 1, "ops": {"vllm_mhc": "aiter", "silu_and_mul": "lightop"},
+        }))
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith(("HCU_", "_HCU_", "PYTHON"))}
+    env.update(HCU_ADAPTER_HOST="none", HIP_VISIBLE_DEVICES="",
+               CUDA_VISIBLE_DEVICES="", ROCR_VISIBLE_DEVICES="")
+    if location == "explicit":
+        chosen = tmp_path / "explicit.json"
+        chosen.write_text(root_config.read_text())
+        env["HCU_CONFIG"] = str(chosen)
+    if location == "invalid-root":
+        root_config.write_text('{"version": 999, "ops": {}}')
+    code = r'''
+import json, pathlib, sys
+root, host, chosen, location = sys.argv[1:]
+sys.path.insert(0, root)
+try:
+    from hcu_adapter.infra import hcu_config, hcu_env
+    variable = "HCU_VLLM_MHC_IMPL" if host == "vllm" else "HCU_SILU_MUL_IMPL"
+    expected = ("aiter" if host == "vllm" else "lightop") if location == "cwd" else (
+        "stock" if host == "vllm" else "triton")
+    assert hcu_env.resolve(variable, host=host) == (expected, "config")
+    assert hcu_config.path() == chosen
+    assert pathlib.Path(hcu_config.__file__).is_relative_to(root)
+except RuntimeError as error:
+    if location != "invalid-root" or "unsupported version" not in str(error):
+        raise
+else:
+    assert location != "invalid-root", "Invalid root config was silently ignored"
+assert not any(name in sys.modules for name in ("torch", "vllm", "sglang"))
+print("CONFIG-DISCOVERY-OK")
+'''
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", "-B", "-c", code,
+         str(root), host, str(chosen), location],
+        cwd=cwd, env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "CONFIG-DISCOVERY-OK" in result.stdout

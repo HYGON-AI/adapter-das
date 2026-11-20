@@ -53,6 +53,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
 
 
 class HcuConfigError(RuntimeError):
@@ -1025,8 +1026,9 @@ def _candidate_paths():
     env, _ = hcu_env.resolve("HCU_CONFIG")
     if env:
         out.append(env)
-    for base in (os.getcwd(), os.path.dirname(
-            os.path.dirname(os.path.abspath(__file__)))):
+    # infra/ is an implementation detail; deployment files remain beside
+    # sitecustomize.py, both in a checkout and in an installed wheel.
+    for base in (os.getcwd(), Path(__file__).absolute().parents[2]):
         for ext in ("yaml", "yml", "json"):
             out.append(os.path.join(base, f"{CONFIG_NAME}.{ext}"))
     return out

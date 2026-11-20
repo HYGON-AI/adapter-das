@@ -24,6 +24,12 @@ Plugin 类路径。普通 MHA/GQA 的默认 Triton 选型不覆盖 MLA/Sparse ML
 后两者仍由官方 ROCm priority 决定。显式 Flash 后端依赖当前 PID 的唯一
 `hcu-flash-attention` owner 与健康检查，不能用另一个扩展的 ACTIVE 报告替代。
 
+`infra/` 与 `features/` 的布局迁移须同步目标 Plugin 的静态导入、动态
+`_seams` 模块表和 provider 身份检查。Adapter 自身单测不能替代组合验证：
+使用目标 Plugin wheel 的真实 metadata 加载扩展 factory，并检查 RMS 等延迟
+导入；保持 discovery 不导入宿主或 Torch。延后某个模型的 checkpoint 测试，
+不意味着可跳过它的扩展发现契约。目录归属规则不以旧路径转发壳绕过。
+
 ## v0.33 源码审计结论
 
 官方保留 `AttentionBackendEnum` / `register_backend`、`AttentionImpl.forward`

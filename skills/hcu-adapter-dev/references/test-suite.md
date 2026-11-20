@@ -5,7 +5,10 @@
 保留双宿主 import blocker、实际事务执行和模块来源断言，不用旧路径别名绕过。
 
 ROCm CPU 探针导入真实框架时，可在最窄导入窗口提供设备描述 metadata double，
-随后恢复原 GPU 查询守卫。spawn 在字段 `__setstate__` 之前导入配置定义模块；
+随后恢复原 GPU 查询守卫。AR 测试在模块收集时已导入官方 dispatcher/communicator，
+该窗口须放在模块级的这些导入周围；函数级 fixture 尚未生效，不能依赖其他
+文件先行预热 ROCm 模块。保留查询函数身份恢复和 CUDA 未初始化断言，并运行
+`CPU_VLLM_CONTRACTS` 完整六文件段及独立 AR 段。spawn 在字段 `__setstate__` 之前导入配置定义模块；
 需在真实配置反序列化前建立同一边界，不全局安装补丁或替换官方配置/插件加载器。
 夹具自身导入仍须验证无日志/环境要求，且不改变任何原 GPU callable。
 

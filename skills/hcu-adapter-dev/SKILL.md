@@ -255,6 +255,8 @@ vLLM public registry/extension health 修改先读 `docs/vllm-flash-registry.md`
 安装包必须留在源码树内的要求。仍须核对固定 Core 字节与真实 wheel 来源。
 共享 lifecycle 机制放 `runtime_lifecycle.py`，不能长在宿主薄桥内；改动须
 回归双宿主 bootstrap/import 与共享 consumer 契约，并保持真实 vLLM probes。
+CPU AR 的官方模块导入可早于 fixture；架构 metadata double 仅包住实际导入，
+退出后恢复原设备查询并继续拒绝 GPU 初始化，不能靠测试收集顺序预热。
 回归必须覆盖真实官方 selector 在 clear/foreign 后的拒绝、零实参签名预检、
 精确 report/PID 绑定、sink 失败和错误格式化中实际 fork；不得只直接测 owner
 checker。CPU 生命周期通过不代表 HCU 数值或模型通过。

@@ -18,9 +18,10 @@ _MARKER = '_hcu_lightop_scaled_mm'
 
 
 def install() -> bool:
-    from hcu_adapter import hcu_config, registry
+    from hcu_adapter.infra import registry
+    from hcu_adapter.infra import hcu_config
     from hcu_adapter.bridges.vllm import detect_hcu, VllmCompatibilityError
-    from hcu_adapter.kill_switch import op_disabled
+    from hcu_adapter.infra.kill_switch import op_disabled
 
     detection = detect_hcu()
     if not detection.detected or detection.architecture not in ('gfx936', 'gfx938'):
@@ -61,7 +62,7 @@ def install() -> bool:
 
     import torch
     from hcu_adapter.kernels.scaled_mm_lightop import scaled_mm, supported
-    from hcu_adapter.runtime_lifecycle import ProcessLocalLifecycle
+    from hcu_adapter.infra.runtime_lifecycle import ProcessLocalLifecycle
 
     # An ordinary BF16 model never calls this quantized GEMM. Loading LightOp
     # here nevertheless initializes its complete native library surface and

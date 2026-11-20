@@ -33,6 +33,9 @@ DSA writer 回归见 `tests/kernels/test_mqa_triton_gfx938.py`：在调用时解
 LightOp metadata 的 Graph 对拍须传真实设备的计算单元数，不能硬编码为64。
 
 vLLM 自动 scaled-MM 的 provider 可延后至首个元数据匹配的真实调用解析；
+布局重构后的共享 owner 从 `hcu_adapter.infra.runtime_lifecycle` 导入，退出
+回调位于 `hcu_adapter.infra.interpreter_cleanup`。未合入功能与主线同步时还须
+执行真实消费者；Git 无文本冲突不能发现新代码残留的旧包根延迟导入。
 显式 LightOp 仍须启动时校验。修改加载时序时测试未调用/不匹配/fake 路径
 不导入 vendor、缺包回官方、显式缺包拒绝、ABI 失败后拒绝后续 fallback，
 以及并发首次解析和真实 fork 的进行中拒绝。复用共享 process-local lifecycle，
@@ -46,6 +49,11 @@ post-load/guard dispatch；另以真实 vLLM Worker/config 验证桥上的原覆
 空注册表短路和调用顺序。双宿主 bootstrap/import 回归不等于模型或 GPU 验收。
 公开门面迁移须检查 source/wheel/install 来源及实际消费者的 callable ABI，
 不能用安装成功代替宿主语义验证。
+
+目录迁移还须覆盖函数体内的延迟导入。`tests/vendor/test_flash_attn.py -k
+e5m2_guard` 是不需 GPU 的 Adapter 启动契约，须在 HOSTnone、隐藏设备的独立
+进程运行；不能因测试文件位于 vendor/ 而遗漏，也不能用预先注入包根属性掩盖
+旧导入路径。该检查不执行或验证 FlashAttention 设备内核。
 
 guard 的非 None 返回属于契约违规，不能被回调异常包装成主动 refused；分别断言
 诊断分类、owner/operation/role、原异常 cause、后续 guard 不执行和 dispatch 状态

@@ -14,13 +14,17 @@ class Tensor:
 
 
 def load_bridge(native):
-    source = Path(__file__).resolve().parents[2] / "hcu_adapter/bridges/sglang.py"
+    source = Path(__file__).resolve().parents[2] / "hcu_adapter/bridges/sglang_deep_ep.py"
     tree = ast.parse(source.read_text())
     namespace = {"_ll_orig": native, "logging": logging, "_sys": sys,
                  "torch": SimpleNamespace(Tensor=Tensor)}
     for name in ("_ll_dispatch_upstream", "_ll_dispatch_v0521"):
         node = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name)
         exec(compile(ast.Module(body=[node], type_ignores=[]), str(source), "exec"), namespace)
+    binding = next(n for n in ast.walk(tree) if isinstance(n, ast.Assign)
+                   and any(isinstance(t, ast.Attribute)
+                           and t.attr == "_hcu_quant_type_dispatch" for t in n.targets))
+    exec(compile(ast.Module(body=[binding], type_ignores=[]), str(source), "exec"), namespace)
     return namespace["_ll_dispatch_v0521"]
 
 
@@ -31,6 +35,8 @@ class DeepEPDispatchScaleTests(unittest.TestCase):
             calls.append((args, kwargs))
             return kwargs
         bridge = load_bridge(native)
+        self.assertIs(bridge._hcu_quant_type_dispatch, native)
+        self.assertEqual(bridge._hcu_quant_type_dispatch(quant_type=1)["quant_type"], 1)
         for extra, expected in [({}, 128), ({"quant_group_size": 0}, 0), ({"quant_group_size": 128}, 128)]:
             with self.subTest(extra=extra):
                 weights = object()

@@ -13,7 +13,8 @@ from threading import Event
 import pytest
 import torch
 
-from hcu_adapter import hcu_config, registry
+from hcu_adapter.infra import registry
+from hcu_adapter.infra import hcu_config
 from hcu_adapter.bridges import vllm as host, vllm_scaled_mm as bridge
 
 

@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PROGRAM = r'''
 import gc, os, sys
 sys.path.insert(0, ROOT)
-from hcu_adapter.interpreter_cleanup import register_frozen_heap_cleanup
+from hcu_adapter.infra.interpreter_cleanup import register_frozen_heap_cleanup
 
 class Owner:
     def __init__(self):
@@ -79,7 +79,7 @@ class BlockFrameworks(importlib.abc.MetaPathFinder):
             raise AssertionError('unexpected framework import: ' + fullname)
 sys.meta_path.insert(0, BlockFrameworks())
 before = gc.get_freeze_count()
-from hcu_adapter.interpreter_cleanup import register_frozen_heap_cleanup
+from hcu_adapter.infra.interpreter_cleanup import register_frozen_heap_cleanup
 register_frozen_heap_cleanup()
 register_frozen_heap_cleanup()
 assert gc.get_freeze_count() == before
@@ -108,7 +108,7 @@ class Owner:
         write(1, b'CHILD_OWNER_FINALIZED\\n')
 
 def child():
-    from hcu_adapter.interpreter_cleanup import register_frozen_heap_cleanup
+    from hcu_adapter.infra.interpreter_cleanup import register_frozen_heap_cleanup
     register_frozen_heap_cleanup()
     owner = Owner()
     gc.freeze()
@@ -117,7 +117,7 @@ def child():
     os.write(1, b'CHILD_SERVING_FINISHED\\n')
 
 if __name__ == '__main__':
-    from hcu_adapter.interpreter_cleanup import register_frozen_heap_cleanup
+    from hcu_adapter.infra.interpreter_cleanup import register_frozen_heap_cleanup
     register_frozen_heap_cleanup()
     process = multiprocessing.get_context(sys.argv[1]).Process(target=child)
     process.start()

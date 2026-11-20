@@ -64,7 +64,7 @@ def install(_he=None) -> None:
             "HCU adapter: JIT EH norm launch bounds not installed", exc_info=True
         )
     try:
-        from hcu_adapter import small_copy_jit
+        from hcu_adapter.features.jit import small_copy_jit
 
         small_copy_jit.install()
     except ImportError:

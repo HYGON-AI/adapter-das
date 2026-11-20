@@ -5,7 +5,7 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="GPU requi
 
 
 def _operator():
-    from hcu_adapter.small_copy_jit import install
+    from hcu_adapter.features.jit.small_copy_jit import install
     install()
     from sglang.kernels.ops.memory.small_copy import try_small_copy, _small_copy_kernel
     if (type(_small_copy_kernel).__module__, type(_small_copy_kernel).__name__) == (

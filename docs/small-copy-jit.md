@@ -18,7 +18,7 @@ input IDs、positions、request indices 和 cache locations 同时只剩首元�
 
 HCU FastJIT 的 saved-kernel key 在此路径只保留 BIT_WIDTHS/BLOCK，
 不能正确区分这些 tuple 参数的实际 launch ABI/specialization。
-`hcu_adapter.small_copy_jit` 仅给这一上游 kernel 创建标准
+`hcu_adapter.features.jit.small_copy_jit` 仅给这一上游 kernel 创建标准
 `triton.runtime.jit.JITFunction`，保留原始函数与 decorator 参数，
 把原 kernel 对象的 run 绑定到标准 JIT；已有对象别名和公共
 try_small_copy 入口保持有效，其他 JIT 对象不变。无源码写回、无全局

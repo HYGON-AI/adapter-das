@@ -73,7 +73,7 @@ BACKEND_CATALOG = {
             "standard-jit": {
                 "status": "candidate",
                 "note": "HCU FastJIT tuple-cache corruption reproduced across batch sizes; retain upstream kernel with standard Triton JIT",
-                "implementation": "hcu_adapter.small_copy_jit",
+                "implementation": "hcu_adapter.features.jit.small_copy_jit",
             },
         },
     },

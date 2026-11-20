@@ -2,8 +2,9 @@ import types
 
 import pytest
 
-from hcu_adapter import registry, small_copy_jit
-from hcu_adapter.small_copy_jit import adapt_kernel
+from hcu_adapter.features.jit import small_copy_jit
+from hcu_adapter.infra import registry
+from hcu_adapter.features.jit.small_copy_jit import adapt_kernel
 
 
 def test_alias_identity_options_and_idempotence():

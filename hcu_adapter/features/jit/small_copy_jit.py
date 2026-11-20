@@ -76,7 +76,7 @@ def install():
         return
     from sglang.kernels.ops.memory import small_copy
     from triton.runtime.jit import JITFunction
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     kernel = small_copy._small_copy_kernel
 

@@ -63,6 +63,14 @@ def install(_he=None) -> None:
         logging.getLogger("hcu.adapter").warning(
             "HCU adapter: JIT EH norm launch bounds not installed", exc_info=True
         )
+    try:
+        from hcu_adapter import small_copy_jit
+
+        small_copy_jit.install()
+    except ImportError:
+        logging.getLogger("hcu.adapter").info(
+            "HCU adapter: upstream small_copy is unavailable"
+        )
     # DSA top-k v2 fusion (dsv41f decode): stride seam on the upstream JIT
     # topk_v2 kernel + the v41 full-topk fused decode arm. Replaces the
     # torch.topk fallbacks behind 57 mbtopk kernels/step (2026-10-22 trace).

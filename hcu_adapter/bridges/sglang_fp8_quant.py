@@ -110,11 +110,22 @@ def install(_he=None) -> None:
                 use_per_token_if_dynamic=use_per_token_if_dynamic, **kw,
             )
             if pad_rows:
-                if s.shape[0] == input.shape[0] and out.shape[0] != s.shape[0]:
-                    pass  # scale already covers real rows only
                 out = torch.nn.functional.pad(
                     out, (0, 0, 0, pad_rows)
                 ).contiguous()
+                # Keep the upstream fp8_kernel.scaled_fp8_quant contract:
+                # num_token_padding allocates BOTH the output and the
+                # dynamic per-token scale at padded rows. Pad that scale
+                # with neutral 1.0 rows so downstream _scaled_mm sees a
+                # per-row scale matching the padded output (padded output
+                # rows are zeros, so they dequant to zero under any
+                # finite scale). Static / per-tensor scales stay 1-D and
+                # broadcast unchanged. Graph-safe: constant pad, no host
+                # sync.
+                if use_per_token_if_dynamic and scale is None and s.dim() == 2:
+                    s = torch.nn.functional.pad(
+                        s, (0, 0, 0, pad_rows), value=1.0
+                    ).contiguous()
             return out, s
 
         _hcu_scaled_fp8_quant.__wrapped__ = _orig_spq

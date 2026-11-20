@@ -29,7 +29,7 @@ class Binding:
 
 
 def publish(bindings, register):
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     bindings = tuple(bindings)
     keys = [(id(binding.namespace), binding.name) for binding in bindings]

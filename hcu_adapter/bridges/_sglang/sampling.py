@@ -18,7 +18,7 @@ def install():
 
     import flashinfer.sampling as sampling
 
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
     from ._publication import Binding, publish
 
     # Prepare every provider/consumer before touching host symbols or records.
@@ -103,7 +103,7 @@ def _prepare_grammar_bitmask():
 
 
 def _register_grammar_bitmask(run):
-    from hcu_adapter import registry
+    from hcu_adapter.infra import registry
 
     registry.register(
         "sampling", run,

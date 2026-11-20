@@ -7,7 +7,7 @@ import types
 
 import pytest
 
-from hcu_adapter import registry
+from hcu_adapter.infra import registry
 from hcu_adapter.bridges._sglang import grouped_topk, sampling
 from hcu_adapter.bridges._sglang._publication import Binding, publish
 

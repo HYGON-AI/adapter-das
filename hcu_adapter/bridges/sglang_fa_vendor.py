@@ -673,7 +673,7 @@ def _install_triton_decode(_sk_fa, registry):
 def _install_e5m2_backend_guard():
     from functools import wraps
     import sys
-    from hcu_adapter import hcu_env, registry
+    from hcu_adapter.infra import hcu_env, registry
 
     if not torch.version.hip or hcu_env.resolve("HCU_FA_IMPL")[0] != "vendor":
         return

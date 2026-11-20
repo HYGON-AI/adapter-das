@@ -51,6 +51,12 @@ vLLM 自动 scaled-MM 的 provider 可延后至首个元数据匹配的真实调
 其他选中的 provider 也可能导入同一库，须用真实启动导入栈核对总效果，
 不能凭删去一处 import 就称模型退出或性能问题已解决。
 
+安装态 vLLM scaled-MM 设备探针在构造 `VllmConfig` 前先调用官方
+`vllm.plugins.load_general_plugins()`，保留正常 runtime ABI 与内置 owner
+激活。仅手动安装 FP8/MM bridge 会在平台健康查询时因 mHC 尚未激活而
+拒绝；这是探针启动前提失败，不是 GEMM 数值失败。不要用清空健康查询
+或替身 owner 绕过真实安装态门禁。原始失败单独保留。
+
 共享机制的 framework-free 契约覆盖 import 和调用两个阶段。模型 lifecycle
 测试须在新解释器阻断 vLLM、SGLang、Torch 导入后，执行真实注册、原子预检、
 post-load/guard dispatch；另以真实 vLLM Worker/config 验证桥上的原覆盖查询、

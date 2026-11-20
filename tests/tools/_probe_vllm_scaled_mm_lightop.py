@@ -21,6 +21,12 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     import torch
     import vllm
+    from vllm.plugins import load_general_plugins
+
+    # VllmConfig queries platform health. Follow the same public runtime
+    # activation as the CLI before constructing it; installing only the MM
+    # bridge leaves unrelated built-in owners unactivated on current hosts.
+    load_general_plugins()
     from hcu_adapter.bridges.vllm_fp8 import install as install_fp8
     from hcu_adapter.bridges.vllm_scaled_mm import install
     from hcu_adapter.kernels.scaled_mm_lightop import supported

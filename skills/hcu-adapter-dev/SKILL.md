@@ -245,6 +245,10 @@ vLLM worker/executor/env-cache 覆盖查询归 `bridges.vllm_model_load`，薄 W
 下的真实共享 dispatch，而不只检查 import 成功；详见
 `docs/frameworks/vllm032-post-model-load.md`。
 
+迁移配置模块到 `infra/` 时，配置发现仍须锚定 `sitecustomize.py` 旁的部署根，
+不能随模块目录移动。回归从其他工作目录启动，分别用源码与实际构建的 wheel
+验证根配置、cwd/显式路径优先级及坏配置拒绝，并覆盖双宿主策略解析。
+
 vLLM public registry/extension health 修改先读 `docs/vllm-flash-registry.md`。
 安装态 CI 的 checkout package 可能是指向 wheel 的符号链接；来源门禁应比较
 声明的精确模块与实际模块解析后的路径，不能把 checkout 根包含关系作为

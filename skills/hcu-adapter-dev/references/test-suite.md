@@ -1,5 +1,14 @@
 # 自动化测试套件要求
 
+共享模块迁入 `infra/` 后，安装态子进程的包根从真实
+`hcu_adapter.__file__` 推导；同步新增测试和嵌入脚本的 canonical import。
+保留双宿主 import blocker、实际事务执行和模块来源断言，不用旧路径别名绕过。
+
+ROCm CPU 探针导入真实框架时，可在最窄导入窗口提供设备描述 metadata double，
+随后恢复原 GPU 查询守卫。spawn 在字段 `__setstate__` 之前导入配置定义模块；
+需在真实配置反序列化前建立同一边界，不全局安装补丁或替换官方配置/插件加载器。
+夹具自身导入仍须验证无日志/环境要求，且不改变任何原 GPU callable。
+
 要求未初始化 GPU 的 CPU 契约应在独立、隐藏设备且 HOSTnone 的解释器运行。
 已执行 native kernel 的 pytest 进程不能恢复这一前提；不要替换
 `torch.cuda.is_initialized` 或放宽守卫。迁移执行段时用同一清单驱动两段的
@@ -40,6 +49,14 @@ CPU 回放不代替 native、完整 host 车道、已加载模型或 gfx836 验�
 可能在测试代码之前启动宿主。保留原子进程 timeout，以真实继承宿主的
 RED/GREEN 对照验证隔离；启动/metadata/spawn 门禁仍在各自集成测试执行。
 
+SGLang grouped-topk / sampling 的串行启动发布见
+`tests/adapter/test_sglang_leaf_publication.py`。先解析 provider 和已缓存别名，
+登记全部成功后再发布；`registry.registration_transaction` 只保护登记记录，
+不能单独回滚宿主函数。回归须在各登记点注入失败，检查原符号/记录不变、
+干净重试成功、外部 owner 变更不被覆盖，以及发布中断时恢复原属性和删除
+新增属性。单桥隔离仍由原宿主顺序结构断言检查；这些 CPU double 结果不代表
+真实 SGLang 启动、数值或设备 Graph 已通过，也不是并发 import 事务保证。
+
 `cases/vllm_dsv41_indexer_cpu.py` 使用真实 Triton 解释器执行 scorer 的 CPU
 oracle。部分 DTK interpreter 将比较结果转回整数操作数 dtype；夹具先探测
 布尔 handle 能力，仅在需要时修正解释器比较结果，测试结束后恢复绑定。
@@ -60,6 +77,11 @@ post-load/guard dispatch；另以真实 vLLM Worker/config 验证桥上的原覆
 空注册表短路和调用顺序。双宿主 bootstrap/import 回归不等于模型或 GPU 验收。
 公开门面迁移须检查 source/wheel/install 来源及实际消费者的 callable ABI，
 不能用安装成功代替宿主语义验证。
+
+目录迁移还须覆盖函数体内的延迟导入。`tests/vendor/test_flash_attn.py -k
+e5m2_guard` 是不需 GPU 的 Adapter 启动契约，须在 HOSTnone、隐藏设备的独立
+进程运行；不能因测试文件位于 vendor/ 而遗漏，也不能用预先注入包根属性掩盖
+旧导入路径。该检查不执行或验证 FlashAttention 设备内核。
 
 guard 的非 None 返回属于契约违规，不能被回调异常包装成主动 refused；分别断言
 诊断分类、owner/operation/role、原异常 cause、后续 guard 不执行和 dispatch 状态

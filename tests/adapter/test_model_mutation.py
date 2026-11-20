@@ -7,6 +7,7 @@ import inspect
 import os
 from pathlib import Path
 from types import SimpleNamespace as NS
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -16,10 +17,13 @@ from hcu_adapter.bridges import vllm_model_load as host
 
 pytest.importorskip("vllm")
 from vllm import envs
-from vllm.config import get_current_vllm_config
-from vllm.v1.worker import gpu_worker
-from vllm.v1.worker import gpu_model_runner as v1
-from vllm.v1.worker.gpu import model_runner as v2
+# The real ROCm module reads architecture metadata during runner import.
+# Limit the descriptor double to that boundary; no device query is retained.
+with patch.object(torch.cuda, "get_device_properties", return_value=NS(gcnArchName="gfx936")):
+    from vllm.config import get_current_vllm_config
+    from vllm.v1.worker import gpu_worker
+    from vllm.v1.worker import gpu_model_runner as v1
+    from vllm.v1.worker.gpu import model_runner as v2
 from hcu_adapter.bridges.vllm_worker import Worker
 from test_vllm_post_model_load import config
 from test_vllm_bridge import _stub_runtime_owners

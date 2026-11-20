@@ -190,3 +190,64 @@ logs, source seals, payload/checkpoint checks and `audit.json`.
 Audit SHA256: `02f6802db6a389a74cb8052208312353316060445d2866b5af7ad2f4cd8adec5`.
 The347-row migration remains incomplete and last_good=false.
 AI assistance: OpenAI Codex.
+
+
+## Current canonical-layout integration (2026-11-20)
+
+Integrate preceding PR #97 head `37d4e8b18c84` with actual Adapter main
+`af8b0ea8ca38`. The shared lifecycle stays in canonical
+`hcu_adapter.infra.runtime_lifecycle`; its forward-health transaction and the
+thin official Worker delegation retain the preceding PR's function bodies.
+Other built-in owner and model lifecycle code comes from current main. No Core,
+vendor source, numerical algorithm, runner or Graph implementation is copied.
+
+The gate merge preserves main's structural-check budget, manual family policy
+and xdist path, plus the PR's independently mandatory device-hidden CPU segment.
+New consumers and embedded probes use canonical imports and derive the real
+package root from `hcu_adapter.__file__`, preserving both-host import blockers.
+
+Validation binds Core0.33 `98a0985` and independently built Adapter Python
+wheel `0.5.22+hcu.1`; source and installed tests run in separate prefixes with
+`/dev/kfd` and `/dev/dri` absent, HOSTnone, and Torch GPU uninitialized:
+
+- Sixteen focused files: **477 distinct cases per phase**, all pass, zero
+  failures/errors/skips. Case identities match across source and installed
+  phases; reruns are not added to this total.
+- Shared-host bootstrap and the three portable sequence/isolation checks:
+  **58 additional cases per phase**, all pass. Named consumers and CPU
+  doubles do not establish an SGLang engine or HCU model result.
+- The actual metadata fixture includes all17 original modes/spawn/import
+  cases. ROCm's import-time descriptor gets a scoped CPU metadata double,
+  restored before the original refusal guards. A test-only pickle envelope
+  establishes that boundary before unpickling the genuine VllmConfig and
+  quantization payload; official reducers, state handling and plugin loading
+  are unchanged. Fixture imports still leave original GPU callables intact.
+- An independent installed combination with Plugin #465 `1c9222a9507f` uses
+  its correct r2 wheel: **189/189** affected portable cases pass. All108 Plugin
+  production payloads match the reviewed source. Adapter/Core/kernel/Plugin
+  hashed RECORDs and module origins are checked separately.
+- Structural L0 is GREEN (one retained fixture environment-read warning),
+  shell syntax, Python AST, skill schema and whitespace checks pass.
+
+Original failures remain auditable: source root/import errors; initial
+metadata16 failures; intermediate metadata9 failures, including config-module
+imports before a child field's guard; and the combination's mistakenly selected
+older Plugin wheel. The first installed structural run also lacked checkout-relative
+assets; a separate structural phase now points directly to the actual installed
+wheel and source docs/tests, without copying a production package or changing
+the tests. Their corrected runs retain the original assertions and
+per-child timeouts. The full metadata file's outer budget is separate from
+those subprocess limits and from model shutdown acceptance.
+
+**Keep Draft.** The Adapter wheel is a new pure-Python build. Native sgl-kernel
+is reused from the previously verified dependency prefix, without borrowing
+its build stamp; this is not a newly built native-pair qualification. The
+current merged combination has no new HCU model, HE32, normal-shutdown or
+performance result. Earlier PP/model and lifecycle outcomes above retain their
+original status, including FAIL. gfx936/gfx938 do not qualify gfx836.
+
+Reproduction and raw XML/logs: `adapter97-layout-20261120T082400Z/`:
+`run-focused.py`, `source-*/`, `installed-*/`, `pair465-cpu-r2/`,
+`environment.json`, `pair465-environment-r2.json`, and `final-audit.json`.
+The complete migration remains incomplete and last_good=false.
+AI assistance and self-review: OpenAI Codex; no independent approval supplied.

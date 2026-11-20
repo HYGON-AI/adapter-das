@@ -113,7 +113,7 @@ def test_host_failure_is_refused_even_inside_running_callback(monkeypatch):
 
 @pytest.mark.parametrize('failed_owner', [None, 'host', *(name for _, name in OWNERS)])
 def test_forward_checks_builtins_before_requested_owners(monkeypatch, failed_owner):
-    from hcu_adapter.extensions import ExtensionContext
+    from hcu_adapter.infra.extensions import ExtensionContext
 
     calls = []
     actions = host.ProcessLocalActions()

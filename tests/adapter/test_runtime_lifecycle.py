@@ -15,9 +15,10 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from hcu_adapter import extensions as ext
-from hcu_adapter.runtime_lifecycle import ProcessLocalLifecycle
-import hcu_adapter.runtime_lifecycle as lifecycle
+import hcu_adapter
+from hcu_adapter.infra import extensions as ext
+from hcu_adapter.infra.runtime_lifecycle import ProcessLocalLifecycle
+import hcu_adapter.infra.runtime_lifecycle as lifecycle
 
 
 CAP='shared-test-capability'
@@ -158,7 +159,7 @@ def test_actual_shared_and_bridge_imports_for_both_hosts_deny_frameworks_and_tor
     # -S isolates the import contract from system .pth/sitecustomize hooks.
     # Explicit paths include the actual prebound source/installed package and
     # packaging dependency, while a finder refuses every framework/kernel load.
-    root=str(Path(lifecycle.__file__).resolve().parent.parent)
+    root=str(Path(hcu_adapter.__file__).resolve().parent.parent)
     paths=[root]+[p for p in sys.path if p and p!=root]
     code='''
 import importlib.abc, importlib, json, sys
@@ -168,12 +169,12 @@ class Deny(importlib.abc.MetaPathFinder):
         if fullname.split('.')[0] in {'torch','vllm','sglang','sgl_kernel','hcu_vllm_das'}:
             raise AssertionError('forbidden framework import: '+fullname)
 sys.meta_path.insert(0,Deny())
-from hcu_adapter import runtime_lifecycle as shared
+from hcu_adapter.infra import runtime_lifecycle as shared
 sg=importlib.import_module('hcu_adapter.bridges.sglang')
 vl=importlib.import_module('hcu_adapter.bridges.vllm')
 assert issubclass(vl.ProcessLocalActions,shared.ProcessLocalLifecycle)
 assert callable(sg.install)
-from hcu_adapter.extensions import ExtensionContext, ExtensionSpec, activate_extensions
+from hcu_adapter.infra.extensions import ExtensionContext, ExtensionSpec, activate_extensions
 from types import SimpleNamespace as NS
 actions=shared.ProcessLocalLifecycle(runtime_action='isolated')
 events=[]

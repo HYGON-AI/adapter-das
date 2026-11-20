@@ -23,7 +23,7 @@ with patch.object(torch.cuda, "get_device_properties", return_value=NS(gcnArchNa
     from vllm.v1.worker import gpu_worker
     from vllm.v1.worker.gpu import cudagraph_utils as cg
 
-from hcu_adapter import extensions as ext
+from hcu_adapter.infra import extensions as ext
 from hcu_adapter.bridges import vllm as bridge
 from hcu_adapter.bridges.vllm_worker import Worker
 

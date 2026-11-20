@@ -109,8 +109,17 @@ def test_fixture_import_has_no_log_or_runtime_patch_side_effects(installed_probe
 import site
 site.addsitedir({str(installed_probe.site)!r})
 import torch
+from types import SimpleNamespace
+from unittest.mock import patch
 names = ("init", "_lazy_init", "current_device", "get_device_properties")
 before = [getattr(torch.cuda, name) for name in names]
+# Preload the real framework base under the same bounded CPU metadata double.
+# Fixture imports below must still leave every original GPU callable intact.
+with patch.object(torch.cuda, "get_device_properties",
+                  return_value=SimpleNamespace(gcnArchName="gfx936")), \\
+     patch.object(torch.cuda, "_lazy_init",
+                  side_effect=AssertionError("CPU fixture import initialized GPU")):
+    from vllm.model_executor.layers.quantization.base_config import QuantizationConfig
 import hcu_commit_fatal_probe
 import hcu_commit_fatal_payload
 assert before == [getattr(torch.cuda, name) for name in names]

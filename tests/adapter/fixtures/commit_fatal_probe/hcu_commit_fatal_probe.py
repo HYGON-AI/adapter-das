@@ -13,9 +13,10 @@ import json
 import multiprocessing as mp
 import os
 from pathlib import Path
+import pickle
 import sys
 
-from hcu_adapter.extensions import ExtensionCommitError, ExtensionSpec
+from hcu_adapter.infra.extensions import ExtensionCommitError, ExtensionSpec
 
 
 class UnrenderableError(RuntimeError):
@@ -38,7 +39,15 @@ def emit(event):
 
 def _cpu_guard():
     import torch
+    from types import SimpleNamespace
+    from unittest.mock import patch
 
+    assert not torch.cuda.is_initialized()
+    # Real config import can read the ROCm descriptor in both parent and spawn
+    # child. Restore the query before installing the original refusal guards.
+    with patch.object(torch.cuda, "get_device_properties",
+                      return_value=SimpleNamespace(gcnArchName="gfx936")):
+        from vllm.config import VllmConfig  # noqa: F401
     assert not torch.cuda.is_initialized()
 
     def forbidden(*args, **kwargs):
@@ -86,7 +95,7 @@ def exercise(config=None):
     import torch
     from importlib.metadata import entry_points
     from hcu_adapter.bridges import vllm as bridge
-    import hcu_adapter.extensions as public
+    import hcu_adapter.infra.extensions as public
     import vllm.plugins
 
     _cpu_guard()
@@ -178,7 +187,26 @@ def exercise(config=None):
             "scope": "real metadata/general-plugin/spawn; CPU admission doubles; no engine/model"}
 
 
+def _restore_cpu_config(payload):
+    # Spawn imports a config's defining module before its fields' __setstate__.
+    # Install the CPU import boundary first, then unpickle the real config and
+    # quantization payload without changing their reducers or state handling.
+    _cpu_guard()
+    return pickle.loads(payload)
+
+
+class CpuConfigEnvelope:
+    def __init__(self, config):
+        self.payload = pickle.dumps(config)
+
+    def __reduce__(self):
+        return _restore_cpu_config, (self.payload,)
+
+
 def spawn_child(config, writer):
+    from vllm.config import VllmConfig
+
+    assert isinstance(config, VllmConfig)
     writer.send(exercise(config))
     writer.close()
 
@@ -195,7 +223,8 @@ def run(spawn):
         config.quant_config = ProbeQuantizationConfig()
         context = mp.get_context("spawn")
         reader, writer = context.Pipe(duplex=False)
-        child = context.Process(target=spawn_child, args=(config, writer))
+        child = context.Process(target=spawn_child,
+                                args=(CpuConfigEnvelope(config), writer))
         child.start()
         writer.close()
         try:

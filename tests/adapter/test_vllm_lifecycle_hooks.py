@@ -4,15 +4,20 @@
 """New public pair at actual Worker/runner boundaries; CPU provider doubles."""
 
 from types import SimpleNamespace as NS
+from unittest.mock import patch
 
 import pytest
+import torch
 
 from hcu_adapter import model_load as api
 
 pytest.importorskip("vllm")
 from vllm import envs
-from vllm.v1.worker import gpu_model_runner as v1, worker_base
-from vllm.v1.worker.gpu import model_runner as v2
+# Core's ROCm platform reads this descriptor while importing the real runners.
+# Restore the query before the original CPU device guards and methods execute.
+with patch.object(torch.cuda, "get_device_properties", return_value=NS(gcnArchName="gfx936")):
+    from vllm.v1.worker import gpu_model_runner as v1, worker_base
+    from vllm.v1.worker.gpu import model_runner as v2
 import vllm.plugins
 import test_vllm_post_model_load as helpers
 from test_vllm_bridge import _stub_runtime_owners

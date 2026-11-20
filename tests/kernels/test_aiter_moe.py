@@ -43,7 +43,6 @@ def _shape_engages(experts, width, inner, rows, topk):
     return bool(status) and getattr(cfg, "solution_type", None) in ("asm", "moe_c")
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires HCU")
 def _wheel_has_any_gfx_tuned_config():
     """True when the installed aiter/boltops wheel ships ANY tuned MoE
     config for this gfx arch -- distinguishes a wheel-coverage gap
@@ -60,6 +59,10 @@ def _wheel_has_any_gfx_tuned_config():
         return False
 
 
+# review #152 P2: this decorator MUST stay on the test below, not on the
+# helper above it -- a skipif on a non-test function is inert and the test
+# then errors (instead of skipping) on CUDA-less lanes.
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires HCU")
 def test_at_least_one_shape_engages_on_this_stack():
     if not any(_shape_engages(*s) for s in SHAPES):
         if not _wheel_has_any_gfx_tuned_config():

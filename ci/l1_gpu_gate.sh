@@ -243,7 +243,7 @@ fi
 # W4-3: xdist parallelizes the kernels tail (fork workers on Linux: torch
 # imports once per worker, ~1870 small tests spread over 4 lanes). Opt out
 # with L1_KERNELS_XDIST=0; absent pytest-xdist degrades to serial. Worker
-# count 4: the 5 concurrent gates already share one HCU safely, so 4
+# count 4: the concurrent gates phase already shares one HCU safely, so 4
 # pytest workers on small tensors is the proven concurrency envelope.
 XDIST_FLAGS=()
 if [ "${L1_KERNELS_XDIST:-1}" != "0" ] && python3 -c "import xdist" 2>/dev/null; then
@@ -436,7 +436,7 @@ fi
 
 GATES_LOG=/tmp/l1_gates.log; : > "$GATES_LOG"
 gates_fail=0
-# The five gates are independent processes with independent env contracts;
+# The gates are independent processes with independent env contracts;
 # each pays ~26-30 s of interpreter+torch import and a few GB of VRAM on a
 # 96 GB card, so they run concurrently and the phase costs the slowest gate
 # (~100 s) instead of the sum (~330 s; 2026-11-17 nmz16 cold-start timing).
@@ -445,7 +445,8 @@ gate_names=(_test_hcu_config _test_fa3_emu_cp _test_rope_fallback_vs_fused \
            _test_aiter_moe_gate _test_contig_triton _test_fresh_process_class \
            _test_zero_degradation)
 declare -A gate_pid gate_out
-echo "L1: gates start (5 concurrent)"
+# review #152 P3: count derives from the array, never hardcoded again.
+echo "L1: gates start (${#gate_names[@]} concurrent)"
 for g in "${gate_names[@]}"; do
     f="tests/tools/$g.py"
     [ -f "$f" ] || { echo "    SKIP $g (missing)" >> "$GATES_LOG"; continue; }

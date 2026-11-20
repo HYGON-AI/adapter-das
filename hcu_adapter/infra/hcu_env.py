@@ -597,7 +597,8 @@ REGISTRY = {
         "env": "HCU_FUSED_ADD_RMS_IMPL", "default": "auto",
         "about": "fused_add_rmsnorm/gemma 变体后端档位：auto=lightop > "
                  "triton（新优先级；aiter 轮无 fused-add 出口），"
-                 "lightop|triton|torch 可显式指定；lightop=lightop.fused_add_rms_norm/"
+                 "lightop|triton 可显式指定（torch 已按零回退治理退出运行时候选，"
+                 "2026-11-19）；lightop=lightop.fused_add_rms_norm/"
                  "gemma_fused_add_rmsnorm 原地核（fp32 累加、末端舍入，同 "
                  "triton 数值契约；一次异常即降级）。注：catalog 记录 lightop "
                  "0.76x vs triton @4096x7168 bf16（性能取舍由本优先级覆盖）",

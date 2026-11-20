@@ -101,7 +101,9 @@ def _resolve_fused_add_impl():
     variance_epsilon, limit=-1.0) plus the gemma_fused_add_rmsnorm variant.
     The DTK aiter wheel exposes no fused-add export, so aiter is absent from
     the candidate map (the ladder still holds: no implementation to pick).
-    Explicit HCU_FUSED_ADD_RMS_IMPL wins (lightop|triton|torch)."""
+    Explicit HCU_FUSED_ADD_RMS_IMPL wins (lightop|triton); torch left the
+    runtime candidates under zero-fallback governance (2026-11-19) — the
+    eager path it used to shadow is gone, not silently re-routed."""
     global _FUSED_ADD_IMPL
     if _FUSED_ADD_IMPL is None:
         from hcu_adapter.infra import hcu_env

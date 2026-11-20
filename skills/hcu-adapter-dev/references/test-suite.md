@@ -20,6 +20,14 @@ AR 编译哈希回归保留两个真实 hash collector 和真实 AR factor；CPU
 模型 lifecycle 的 transfer engine 替身须提供官方 worker 实际读取的
 `model`；使用真实 CPU `nn.Module` 经过官方更新校验，不能跳过该校验。
 
+SGLang grouped-topk / sampling 的串行启动发布见
+`tests/adapter/test_sglang_leaf_publication.py`。先解析 provider 和已缓存别名，
+登记全部成功后再发布；`registry.registration_transaction` 只保护登记记录，
+不能单独回滚宿主函数。回归须在各登记点注入失败，检查原符号/记录不变、
+干净重试成功、外部 owner 变更不被覆盖，以及发布中断时恢复原属性和删除
+新增属性。单桥隔离仍由原宿主顺序结构断言检查；这些 CPU double 结果不代表
+真实 SGLang 启动、数值或设备 Graph 已通过，也不是并发 import 事务保证。
+
 `cases/vllm_dsv41_indexer_cpu.py` 使用真实 Triton 解释器执行 scorer 的 CPU
 oracle。部分 DTK interpreter 将比较结果转回整数操作数 dtype；夹具先探测
 布尔 handle 能力，仅在需要时修正解释器比较结果，测试结束后恢复绑定。

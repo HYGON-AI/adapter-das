@@ -1,5 +1,25 @@
 # 自动化测试套件要求
 
+vLLM CPU owner 契约须隔离无关的原生 owner：例如 AR、Flash selector、
+runtime ABI 和模型 lifecycle 的替身不应触发 mHC 架构探测或要求其原生注册。
+在合成平台夹具中替换无关 owner 的注册和健康查询，保留宿主失败锁存和
+被测 owner 的真实检查；FlashMLA 的真实 fork 需先在子进程激活，不能将
+host latch 的重置测试同时当作原生 owner 的继承测试。
+`test_vllm_builtin_health.py` 用真实 `ProcessLocalActions` 检查全部内置 owner
+和运行事务内外的边界，不用缺少新增方法的 `SimpleNamespace` 模拟该门面。
+独立子进程无法继承 monkeypatch；需按其测试范围显式配置无关能力。
+Adapter-only 的真实 metadata/general-plugin/spawn 发现测试须使用未安装 Plugin
+的独立环境，只额外安装测试 provider。`VLLM_PLUGINS=none` 不会过滤
+`hcu_adapter.extensions` 的分发元数据；不能删除发现断言或用 mocked entry_points
+隐藏真实 provider。含 Plugin 的组合验证另建环境，保留不符合此隔离前提的失败。
+AR 编译哈希回归保留两个真实 hash collector 和真实 AR factor；CPU 夹具
+只替换无关的 Inductor 系统指纹，不查询 GPU。来源断言使用车道显式声明的
+`AR_ADAPTER_ROOT`，解析其精确 bridge 文件并与实际导入文件逐项相等；
+安装态可经 phase-root symlink 暴露 wheel，仍须核对目标 Core 字节，不能
+以测试文件路径自证来源或只检查宽泛目录包含关系。
+模型 lifecycle 的 transfer engine 替身须提供官方 worker 实际读取的
+`model`；使用真实 CPU `nn.Module` 经过官方更新校验，不能跳过该校验。
+
 SGLang grouped-topk / sampling 的串行启动发布见
 `tests/adapter/test_sglang_leaf_publication.py`。先解析 provider 和已缓存别名，
 登记全部成功后再发布；`registry.registration_transaction` 只保护登记记录，
@@ -19,6 +39,52 @@ DSA writer 回归见 `tests/kernels/test_mqa_triton_gfx938.py`：在调用时解
 而隐藏。pytest 必须实际执行两种池布局、融合写入和派发的数值/top-k 断言，
 并恢复临时环境和 dtype 绑定，不能仅消除收集错误。
 LightOp metadata 的 Graph 对拍须传真实设备的计算单元数，不能硬编码为64。
+
+vLLM 自动 scaled-MM 的 provider 可延后至首个元数据匹配的真实调用解析；
+布局重构后的共享 owner 从 `hcu_adapter.infra.runtime_lifecycle` 导入，退出
+回调位于 `hcu_adapter.infra.interpreter_cleanup`。未合入功能与主线同步时还须
+执行真实消费者；Git 无文本冲突不能发现新代码残留的旧包根延迟导入。
+显式 LightOp 仍须启动时校验。修改加载时序时测试未调用/不匹配/fake 路径
+不导入 vendor、缺包回官方、显式缺包拒绝、ABI 失败后拒绝后续 fallback，
+以及并发首次解析和真实 fork 的进行中拒绝。复用共享 process-local lifecycle，
+保留官方方法与已有别名；另跑实际 FP8/INT8、非单位尺度及变输入 Graph。
+其他选中的 provider 也可能导入同一库，须用真实启动导入栈核对总效果，
+不能凭删去一处 import 就称模型退出或性能问题已解决。
+
+模型退出诊断分别采集 worker 清理、前端等待和 HTTP shutdown 完成后的
+解释器最终回收；`Py_FinalizeEx -> PyGC_Collect` 只能证明采样时所处阶段，
+不能确定慢对象或 native owner。GDB attach 会暂停进程，诊断样本不能用于
+原退出时限验收。按自有 PID/start 身份留存栈、maps 与调试器耗时；缺少 DSO
+符号时保留不完整展开，离线符号化先核对可执行映射，不能把栈/数据地址
+解析出的符号当作真实调用者。保留未插桩失败与原清理期限。
+
+CPython 3.12 的 `gc.callbacks` 不覆盖模块/解释器清理中的
+`_PyGC_CollectNoFail`；首轮最终 GC 已结束，不能据此排除后续回收耗时。
+结合目标解释器源码与完整原生栈核验；独立诊断可用 `gc.DEBUG_STATS`
+观察内部回收，避免 `DEBUG_SAVEALL` 留住本应释放的对象。按阶段区分完整
+GC、设备 `empty_cache`、worker 等待及解释器退出；tracked-object 类型统计
+只描述对象规模，不证明 unreachable 对象或保活根，也不构成清理策略依据。
+
+独立 host-only 开发 wheel 仍须核对实际 `Requires-Dist`：构建 stamp 也会
+进入 native kernel 的精确配对版本；只构建 Python wheel 不会产生该原生产物。
+复用已有 native 的试验可使用仓库原有的无 stamp 开发构建，并分别绑定 Python
+源码/产物与 native 依赖来源；不改依赖元数据或冒用其他构建 stamp，亦不据此
+宣称新的配对 native release 已验证。
+对冻结安装组合复用 Plugin CI 时先核对入口：它可能从 checkout 强制重装
+Plugin wheel。保持既定产物的对照可单独复用同版本选测和公开 selector，
+执行原用例并保留导入模式、安装来源守卫和前后 RECORD；记录未执行的安装
+阶段，不能把这一组合检查称为完整 CI 通过。
+设备回放还须在执行前后校验共享 Torch/Triton/vendor 的完整 RECORD，按实际
+dist-info owner 解析文件；仅校验独立 prefix 内的实体分发不自动覆盖共享依赖。
+计数观察器以公开 callable 的真实 code 身份匹配：重导出函数的定义模块可能
+不同于公开 import 路径。读取已发布绑定，不触发惰性 `__getattr__` 提前加载，
+不替换 callable；分别记录正常返回、异常和 GPU-only Graph replay 的观察边界。
+
+安装态 vLLM scaled-MM 设备探针在构造 `VllmConfig` 前先调用官方
+`vllm.plugins.load_general_plugins()`，保留正常 runtime ABI 与内置 owner
+激活。仅手动安装 FP8/MM bridge 会在平台健康查询时因 mHC 尚未激活而
+拒绝；这是探针启动前提失败，不是 GEMM 数值失败。不要用清空健康查询
+或替身 owner 绕过真实安装态门禁。原始失败单独保留。
 
 共享机制的 framework-free 契约覆盖 import 和调用两个阶段。模型 lifecycle
 测试须在新解释器阻断 vLLM、SGLang、Torch 导入后，执行真实注册、原子预检、

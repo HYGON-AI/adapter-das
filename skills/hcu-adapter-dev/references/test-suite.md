@@ -51,6 +51,13 @@ vLLM 自动 scaled-MM 的 provider 可延后至首个元数据匹配的真实调
 其他选中的 provider 也可能导入同一库，须用真实启动导入栈核对总效果，
 不能凭删去一处 import 就称模型退出或性能问题已解决。
 
+模型退出诊断分别采集 worker 清理、前端等待和 HTTP shutdown 完成后的
+解释器最终回收；`Py_FinalizeEx -> PyGC_Collect` 只能证明采样时所处阶段，
+不能确定慢对象或 native owner。GDB attach 会暂停进程，诊断样本不能用于
+原退出时限验收。按自有 PID/start 身份留存栈、maps 与调试器耗时；缺少 DSO
+符号时保留不完整展开，离线符号化先核对可执行映射，不能把栈/数据地址
+解析出的符号当作真实调用者。保留未插桩失败与原清理期限。
+
 独立 host-only 开发 wheel 仍须核对实际 `Requires-Dist`：构建 stamp 也会
 进入 native kernel 的精确配对版本；只构建 Python wheel 不会产生该原生产物。
 复用已有 native 的试验可使用仓库原有的无 stamp 开发构建，并分别绑定 Python

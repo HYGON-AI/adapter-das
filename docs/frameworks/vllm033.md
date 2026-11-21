@@ -32,6 +32,22 @@ Plugin 类路径。普通 MHA/GQA 的默认 Triton 选型不覆盖 MLA/Sparse ML
 
 ## v0.33 源码审计结论
 
+### DBO 通信 CU 预算
+
+`ops.vllm_dbo_cu` 默认 `auto`，`stock` 保留官方配置。设备绑定后，若
+在无 EP 或 AgRs 场景中，Core 的隐式 `VLLM_DBO_COMM_SMS` 预算达到实际
+设备的全部 CU，则在官方
+控制器创建期间使用其支持的 `0`（不划分 CU）路径。有效默认值不变；
+显式官方变量继续由 Core 解析和校验。ROCm DeepEP HT 的官方强制 0
+分支保留，不提前拒绝其预算。该配置不改变 DBO、通信后端或设备身份。
+其他 EP 后端仍由 Core 的 `max_sms_used()` 等逻辑裁定，不提前覆盖预算。
+
+V1 在 model load 创建 wrapper，V2 在 KV 初始化创建 ubatch runner；
+两者均经过既有薄 Worker 入口，使用已绑定设备的真实 CU
+数，不在 frontend 猜测第 0 卡。临时环境在返回或异常后恢复，避免后续
+模型继承自动值；Core 缓存若仍返回旧预算则拒绝，不清空或替换缓存。
+CPU 配置契约、真实设备控制器和整模型精度/退出必须分别验证。
+
 官方保留 `AttentionBackendEnum` / `register_backend`、`AttentionImpl.forward`
 和 `Platform.get_device_communicator_cls`。官方 Flash 实现没有旧 HCU fork 的
 三个私有 hook：`_get_kv_cache_views`、`_get_kv_cache_write_views`、

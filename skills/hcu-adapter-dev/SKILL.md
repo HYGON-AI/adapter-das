@@ -209,6 +209,12 @@ MoE router 的有限分数并列须遵循社区较小专家 ID 优先规则，�
 
 ## 任务路由（做某类事之前先读对应参考文档）
 
+vLLM DBO 的 CU 默认预算须对照已绑定 worker 的真实设备；不得硬编码
+Core 默认值、在 frontend 猜测第 0 卡或覆盖显式官方变量。V1 模型加载和
+V2 KV 初始化的控制器创建时机不同；临时官方 env 在异常后也要恢复，
+不能清空 Core 缓存来买绿。参见 `docs/frameworks/vllm033.md` 的 DBO 节；
+启动准入通过不替代模型质量和正常退出。
+
 ### vLLM 0.33 Layer Split 配套接口
 
 - 用目标 Core 已公开的 parser、platform KV builder 和 worker 初始化接口。

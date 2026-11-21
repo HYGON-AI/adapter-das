@@ -6,6 +6,7 @@
 from vllm.config import set_current_vllm_config
 from vllm.v1.worker.gpu_worker import Worker as OfficialWorker
 
+from hcu_adapter.bridges.vllm_dbo import worker_communication_cu_config
 from hcu_adapter.bridges.vllm_mhc import check_graph_providers, prepare_weight_mutation
 from hcu_adapter.bridges.vllm_model_load import dispatch_model_mutation, dispatch_post_model_load
 
@@ -41,12 +42,14 @@ class Worker(OfficialWorker):
 
         require_runtime_healthy()
         local_config = localize_kv_cache_config(self.vllm_config, kv_cache_config)
-        return super().initialize_from_config(local_config)
+        with worker_communication_cu_config(self):
+            return super().initialize_from_config(local_config)
 
     def load_model(self, *, load_dummy_weights: bool = False) -> None:
         with set_current_vllm_config(self.vllm_config):
             _check_optimized_owners()
-        super().load_model(load_dummy_weights=load_dummy_weights)
+        with worker_communication_cu_config(self):
+            super().load_model(load_dummy_weights=load_dummy_weights)
         with set_current_vllm_config(self.vllm_config):
             _check_optimized_owners()
             dispatch_post_model_load(self, load_dummy_weights=load_dummy_weights)

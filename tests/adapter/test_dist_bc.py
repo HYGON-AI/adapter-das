@@ -117,8 +117,8 @@ def test_pickle_wire_compatibility_and_size_fallback():
 def test_compression_keeps_cached_alias_and_private_pickle():
     scope = {"np": np, "pickle": pickle}
     exec(
-        "def broadcast_pyobj(data):\\n"
-        "    return np.frombuffer(pickle.dumps(data), dtype=np.uint8)\\n",
+        "def broadcast_pyobj(data):\n"
+        "    return np.frombuffer(pickle.dumps(data), dtype=np.uint8)\n",
         scope,
     )
     alias = scope["broadcast_pyobj"]

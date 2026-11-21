@@ -218,9 +218,10 @@ python -m sglang.launch_server
 adapter-das/
 ├─ sitecustomize.py            # 三行自动加载入口
 ├─ hcu_adapter/                # 唯一适配包：包内三层见下——
-│   ├─ bootstrap.py            #   宿主探测 + common/host 分发
+│   ├─ infra/                  #   宿主探测、配置、注册与公共机制
 │   ├─ bridges/                #   common 守卫 + sglang/vllm/deepinfer 宿主桥
 │   ├─ kernels/                #   无宿主模型依赖的计算实现与后端门面
+│   ├─ features/               #   按模型、量化或特性族组织的专属实现
 │   └─ 其余模块 + aiter/ 等 subpkg   #   历史域桥、机制与 vendor 桩，复用范围逐项声明
 ├─ sgl_kernel/                 # 同名影子包 = sglang 的 AOT 默认内核路径（宿主 import 契约，名字钉死）
 │   ├─ elementwise/layernorm/rope/allreduce/flash_attn.py …   # op 模块（三档路由）
@@ -249,22 +250,22 @@ adapter-das/
 
 ### 文件职责与整理顺序
 
-目录归属与命名规则以 [治理规约](governance.md#算子三居地图与宿主绑定层)为准；本节记录当前实现位置及整理边界，不复制命名规则。以下整理尚未实施，不代表算子或整模型已经验收。
+目录归属与命名规则以 [治理规约](governance.md#算子三居地图与宿主绑定层)为准；本节按仓库根目录列出当前实现位置及后续抽取、退役的边界，不复制命名规则。目录迁移已经落地的部分不代表算子或整模型已经验收。
 
 | 当前位置 | 当前职责 | 整理边界 |
 |---|---|---|
-| `bootstrap.py`、`bridges/common.py` | 宿主选择、公共启动守卫 | 保留导入期顺序；不得迁入加载更晚的 plugin |
-| `bridges/sglang.py` | SGLang 安装顺序及历史域适配 | 逐域提取平台/JIT、attention、quant/MoE、cache、spec 接线；薄入口保持原装配顺序和失败隔离 |
-| `bridges/vllm*`、`bridges/_deepinfer/` | 各宿主绑定、加载与生命周期 | 保留独立宿主合同；不能根据 SGLang 的引用情况删除 |
+| `hcu_adapter/infra/bootstrap.py`、`hcu_adapter/bridges/common.py` | 宿主选择、公共启动守卫 | 保留导入期顺序；不得迁入加载更晚的 plugin |
+| `hcu_adapter/bridges/sglang.py`、`hcu_adapter/bridges/_sglang/` | SGLang 安装顺序及域适配 | 逐域整理平台/JIT、attention、quant/MoE、cache、spec 接线；薄入口保持原装配顺序和失败隔离 |
+| `hcu_adapter/bridges/vllm*.py`、`hcu_adapter/bridges/_deepinfer/` | 各宿主绑定、加载与生命周期 | 保留独立宿主合同；不能根据 SGLang 的引用情况删除 |
 | `sgl_kernel/` | 上游公开 ABI 影子层及 provider 调用 | 保留导出符号；内部计算可共享，但签名、布局、原地输出合同必须一致 |
-| `kernels/` | 计算实现、布局校验和后端选择 | 复用数学实现，不合并语义不同的门面；普通 RMSNorm 不等于带 residual/量化输出的 norm |
-| `fla_hcu/` | KDA/FLA/Conv1d 实现 | 与 plugin 同源副本逐符号对照；候选共享实现归算子层，plugin 保留模型状态和 replay 调度 |
-| `jit_*` | 官方 JIT 编译输入与工具链适配 | 可按域归包；不得改变缓存键、源哈希、include 与 provider 查找 |
-| `hcu_env.py`、`hcu_config.py`、`registry.py`、`ops/` | 环境、配置、有效绑定、算子目录 | 各自保留单一事实源；配置声明不能代替运行时绑定证据 |
+| `hcu_adapter/kernels/` | 计算实现、布局校验和后端选择 | 复用数学实现，不合并语义不同的门面；普通 RMSNorm 不等于带 residual/量化输出的 norm |
+| `hcu_adapter/fla_hcu/` | KDA/FLA/Conv1d 实现 | 与 plugin 同源副本逐符号对照；候选共享实现归算子层，plugin 保留模型状态和 replay 调度 |
+| `hcu_adapter/features/jit/` | 官方 JIT 编译输入与工具链适配 | 共享机制按治理规则归入 `infra/`；不得改变缓存键、源哈希、include 与 provider 查找 |
+| `hcu_adapter/infra/`、`hcu_adapter/ops/` | 环境、配置、有效绑定、算子目录 | `infra/hcu_env.py`、`infra/hcu_config.py`、`infra/registry.py` 各自保留单一事实源；配置声明不能代替运行时绑定证据 |
 
-GLM5.3 W4A8 的 adapter 侧边界：`ct_w4a8_moe.py` 保留 native/旧显式模式的兼容路由；`deepgemm_cov5.py` 只处理固定 vendor ABI；`sgl_kernel/layernorm.py` 提供普通和 residual norm；`eagle_hcu_sampling.py` 保留原生 sampled-target 验证策略。CT 权重解释、DeepEP 量化 producer、专家 runner、KV/P-D/MTP 调度的 plugin 侧位置见姊妹仓 `sglang-plugin-das/docs/architecture.md` 第4节。
+GLM5.3 W4A8 的 adapter 侧边界：`hcu_adapter/features/ct_w4a8/ct_w4a8_moe.py` 保留 native/旧显式模式的兼容路由；`hcu_adapter/features/deep_gemm/deepgemm_cov5.py` 只处理固定 vendor ABI；`sgl_kernel/layernorm.py` 提供普通和 residual norm；`hcu_adapter/eagle_hcu_sampling.py` 保留原生 sampled-target 验证策略。CT 权重解释、DeepEP 量化 producer、专家 runner、KV/P-D/MTP 调度的 plugin 侧位置见姊妹仓 `sglang-plugin-das/docs/architecture.md` 第4节。
 
-`ct_w4a8_int8_moe.py` 是独立的显式候选路径，其 BF16 DeepEP LL 输入合同不能与 plugin 的 native INT8 dispatch 混淆。先核对使用方、权重布局和支持矩阵，再决定是否迁移 scheme/runner；不得仅凭文件名重复退役。
+`hcu_adapter/features/ct_w4a8/ct_w4a8_int8_moe.py` 是独立的显式候选路径，其 BF16 DeepEP LL 输入合同不能与 plugin 的 native INT8 dispatch 混淆。先核对使用方、权重布局和支持矩阵，再决定是否迁移 scheme/runner；不得仅凭文件名重复退役。
 
 整理顺序：先明确每个目标的唯一装配者，再抽取合同相同的 helper/provider，最后迁移目录并退役旧入口。保留 provider 的 dtype、量化格式、normal/masked 和宿主差异；重复许可证、测试参考和生成页面不是运行时副本。
 

@@ -51,6 +51,17 @@ vLLM 自动 scaled-MM 的 provider 可延后至首个元数据匹配的真实调
 其他选中的 provider 也可能导入同一库，须用真实启动导入栈核对总效果，
 不能凭删去一处 import 就称模型退出或性能问题已解决。
 
+独立 host-only 开发 wheel 仍须核对实际 `Requires-Dist`：构建 stamp 也会
+进入 native kernel 的精确配对版本；只构建 Python wheel 不会产生该原生产物。
+复用已有 native 的试验可使用仓库原有的无 stamp 开发构建，并分别绑定 Python
+源码/产物与 native 依赖来源；不改依赖元数据或冒用其他构建 stamp，亦不据此
+宣称新的配对 native release 已验证。
+设备回放还须在执行前后校验共享 Torch/Triton/vendor 的完整 RECORD，按实际
+dist-info owner 解析文件；仅校验独立 prefix 内的实体分发不自动覆盖共享依赖。
+计数观察器以公开 callable 的真实 code 身份匹配：重导出函数的定义模块可能
+不同于公开 import 路径。读取已发布绑定，不触发惰性 `__getattr__` 提前加载，
+不替换 callable；分别记录正常返回、异常和 GPU-only Graph replay 的观察边界。
+
 安装态 vLLM scaled-MM 设备探针在构造 `VllmConfig` 前先调用官方
 `vllm.plugins.load_general_plugins()`，保留正常 runtime ABI 与内置 owner
 激活。仅手动安装 FP8/MM bridge 会在平台健康查询时因 mHC 尚未激活而

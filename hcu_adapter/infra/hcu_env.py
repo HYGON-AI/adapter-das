@@ -449,6 +449,11 @@ REGISTRY = {
         "env": "VLLM_MOE_SKIP_PADDING", "default": "1", "hosts": ("vllm",),
         "about": "Official skip sentinel; HCU unquantized AITER normalizes to 0 before workers spawn",
     },
+    "VLLM_DBO_COMM_SMS": {
+        "env": "VLLM_DBO_COMM_SMS", "default": "", "hosts": ("vllm",),
+        "about": "Official communication CU budget; inherit Core default, or use "
+                 "its unpartitioned path when the default exhausts the bound HCU",
+    },
     "AITER_AR_MAX_SIZE_MB": {
         "env": "AITER_AR_MAX_SIZE_MB", "default": "64", "hosts": ("vllm",),
         "about": "Existing provider ordinary-AR admission MiB; staging >=128 MiB and >=2x admission",

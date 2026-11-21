@@ -389,6 +389,11 @@ def test_xxx(...):
 混合门禁的 SGLang 桥探针使用完整 SGLang 依赖及显式
 `HCU_ADAPTER_HOST=sglang`；vLLM 的真实 general-plugin 回归在独立进程
 选择对应宿主。不得把 SGLang 六参数 RMS 桥装到 vLLM 进程。
+`tests/adapter/` 的 vLLM 宿主回归使用 `test_vllm_*.py` 命名；
+`conftest.py` 依此隔离其他宿主，`ci/vllm_host_lane.sh` 依此在新解释器逐文件执行。
+新增文件须核对两侧实际收集结果。DBO 配置与 Worker 阶段回归分别为
+`test_vllm_dbo_cu_config_cpu.py` 和 `test_vllm_dbo_worker_phase_cpu.py`；
+单独运行通过不能替代进入宿主车道，CPU 阶段回归也不授予设备或模型资格。
 从 `ci/`、`tools/` 或 `tests/tools/` 启动源码检查时，启动前把目标 checkout
 放入 `PYTHONPATH`，并核对 `hcu_adapter.__file__` 与 catalog 来源。
 `HOST=none` 只关闭桥安装，不阻止 sitecustomize 提前导入已安装的 Adapter；

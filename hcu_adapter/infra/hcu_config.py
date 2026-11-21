@@ -66,6 +66,14 @@ class HcuConfigError(RuntimeError):
 # backends   selectable backend -> {status, note}
 
 BACKEND_CATALOG = {
+    "vllm_dbo_cu": {
+        "var": None,
+        "summary": "Bound-device admission for official DBO communication CUs",
+        "backends": {
+            "auto": {"status": "candidate", "note": "Default: use Core's unpartitioned path only when its implicit CU budget exhausts the bound HCU; model validation pending"},
+            "stock": {"status": "candidate", "note": "Preserve official communication CU configuration; explicit official env always wins"},
+        },
+    },
     "vllm_inverse_rope": {
         "var": None,
         "summary": "Plugin HCU inverse GPT-J RoPE on V41 PCP BF16 attention output",

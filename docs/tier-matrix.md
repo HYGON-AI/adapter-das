@@ -4,6 +4,17 @@
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
+## vllm_dbo_cu
+
+Bound-device admission for official DBO communication CUs
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| auto | candidate Default: use Core's unpartitioned pa |
+| stock | candidate Preserve official communication CU c |
+
+路由变量：（auto）
+
 ## vllm_inverse_rope
 
 Plugin HCU inverse GPT-J RoPE on V41 PCP BF16 attention output

@@ -209,6 +209,13 @@ MoE router 的有限分数并列须遵循社区较小专家 ID 优先规则，�
 
 ## 任务路由（做某类事之前先读对应参考文档）
 
+vLLM DBO 的 CU 默认预算须对照已绑定 worker 的真实设备；不得硬编码
+Core 默认值、在 frontend 猜测第 0 卡或覆盖显式官方变量。Core 在模型加载
+后冻结 worker env；V1 KV 初始化不得重复配置。自动策略仅覆盖 V1 模型
+加载，V2 后置控制器仍走官方配置，不能宣称其默认准入通过。临时官方
+env 在异常后也要恢复，不能清空 Core 缓存来买绿。参见 DBO 文档；
+启动准入通过不替代模型质量和正常退出。
+
 ### vLLM 0.33 Layer Split 配套接口
 
 - 用目标 Core 已公开的 parser、platform KV builder 和 worker 初始化接口。
@@ -269,6 +276,9 @@ vLLM public registry/extension health 修改先读 `docs/vllm-flash-registry.md`
 回归必须覆盖真实官方 selector 在 clear/foreign 后的拒绝、零实参签名预检、
 精确 report/PID 绑定、sink 失败和错误格式化中实际 fork；不得只直接测 owner
 checker。CPU 生命周期通过不代表 HCU 数值或模型通过。
+薄 Worker 的 CPU 加载夹具应使用 CPU runner 的真实 device 设置 worker.device，
+保留加载后准入和实际 fork/变更入口；缺失字段导致的失败先补齐夹具，不能跳过
+生产准入、伪造 GPU 属性或删除禁止 GPU 查询/初始化的断言。
 
 宿主启动失败须先锁存固定拒绝，再格式化异常；`__str__` 也可能抛
 `BaseException`、重入或 fork。扩展宿主先判原始 fatal 链，再安全生成唯一

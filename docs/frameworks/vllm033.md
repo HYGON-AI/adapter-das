@@ -126,3 +126,31 @@ HumanEval 对照仍是独立验收，当前候选不声明这些门禁已通过�
 退出条件：若目标 Core 的公开冻结堆入口已负责正常退出时解冻，且覆盖
 EngineCore 的末次 refreeze，应删除 Adapter 的重复注册并复用官方行为，
 重跑相同的循环 owner、子进程和模型退出对照；不以完整 wheel 字符串锁定该能力。
+
+## KV cache placement extension seam
+
+The HCU platform forwards the official `get_kv_cache_config_builder_cls`
+selection through `hcu_adapter.bridges.vllm_kv_cache`. An extension registers
+one named pair of callbacks with `register_kv_cache_layout`. The first
+selects a qualified builder class or returns None for the native builder.
+The second transforms the worker-local KVCacheConfig before the Adapter's
+existing Worker delegates to official `initialize_from_config`.
+
+The registry rejects conflicting owners and malformed callback results. An
+extension checks its registered ownership through `require_kv_cache_layout`
+in its existing health callback. No provider preserves the normal platform
+selection and config object. The registry imports no framework, owns no
+placement algorithm and contains no Plugin class paths. Tests are in
+`tests/adapter/test_vllm_kv_cache.py`, with real platform/worker entry-point
+coverage in Plugin's `tests/vllm033/test_dsa_cache_layout.py`.
+# Layer Split migration (2026-11-17)
+
+The generic KV builder/localizer registry is replayed on official main. The
+current PCP attention remains in `hcu_adapter.kernels.pcp_fork`; Layer Split's
+attention subclass, independent pools, scheduler and transfer protocol remain in
+Plugin. `set_kv_transfer_validator` binds one optional validator for the extension
+contract. Without one, PCP transfer is refused as before; the callback must
+return None or raise, and does not bypass the other native PCP checks.
+The Plugin validates its exact owner-aware connector and rejects unqualified
+FP4/stock/kill-switch combinations. This interface migration is CPU-validated;
+historical GPU results do not qualify the migrated commits.

@@ -42,8 +42,7 @@ class Worker(OfficialWorker):
 
         require_runtime_healthy()
         local_config = localize_kv_cache_config(self.vllm_config, kv_cache_config)
-        with worker_communication_cu_config(self):
-            return super().initialize_from_config(local_config)
+        return super().initialize_from_config(local_config)
 
     def load_model(self, *, load_dummy_weights: bool = False) -> None:
         with set_current_vllm_config(self.vllm_config):

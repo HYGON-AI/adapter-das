@@ -80,6 +80,12 @@ def worker_communication_cu_config(worker):
     if not getattr(parallel_config, "use_ubatching", False):
         yield
         return
+    if worker.use_v2_model_runner:
+        # anchor-baseline(③): OpenDAS v0.33/c440c08 freezes worker envs
+        # after load_model; V2 creates SM control later in KV initialization.
+        # Leave that path official-owned; an explicit input remains supported.
+        yield
+        return
     from vllm.platforms import current_platform
     from vllm.utils.platform_utils import num_compute_units
 

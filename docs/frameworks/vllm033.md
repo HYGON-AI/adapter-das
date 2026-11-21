@@ -42,10 +42,12 @@ Plugin 类路径。普通 MHA/GQA 的默认 Triton 选型不覆盖 MLA/Sparse ML
 分支保留，不提前拒绝其预算。该配置不改变 DBO、通信后端或设备身份。
 其他 EP 后端仍由 Core 的 `max_sms_used()` 等逻辑裁定，不提前覆盖预算。
 
-V1 在 model load 创建 wrapper，V2 在 KV 初始化创建 ubatch runner；
-两者均经过既有薄 Worker 入口，使用已绑定设备的真实 CU
-数，不在 frontend 猜测第 0 卡。临时环境在返回或异常后恢复，避免后续
-模型继承自动值；Core 缓存若仍返回旧预算则拒绝，不清空或替换缓存。
+自动策略仅在 V1 model load 创建 wrapper 时执行，使用已绑定设备的真实
+CU 数。Core 的 WorkerProc 在 model load 返回后缓存环境；V1 KV 初始化
+不能再次应用临时输入。临时环境在返回或异常后恢复，缓存不被清空或替换。
+V2 在 KV 初始化才创建控制器，此时官方环境已经冻结，因此本策略保留
+V2 官方行为，未修复其耗尽 CU 的隐式默认值；需要时在启动前显式设置
+`VLLM_DBO_COMM_SMS=0`，另行验证，不宣称 V2 默认准入通过。
 CPU 配置契约、真实设备控制器和整模型精度/退出必须分别验证。
 
 官方保留 `AttentionBackendEnum` / `register_backend`、`AttentionImpl.forward`

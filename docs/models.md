@@ -3,6 +3,32 @@
 每行 = 一次完整 e2e 验证。判定列的四个位：`启动/生成/精度/长文`。
 新跑一个模型先加行（待验证），测完更新。环境三原则：零显式 env。
 
+## MiniMax-H3-Image（2026-11-15）
+
+gfx936 64 GiB 单卡、BF16 TE/DiT、原生 VAE 精度、2048×2048、6 步的
+文生图与参考图编辑已通过。最终配方、性能对照及画质限制统一见
+[DTK26.10 部署第8节](image-dtk2610.md#8-minimax-h3-image-的原生-diffusion-平台候选)。
+
+## 2026-10-30 SGLang 原生 sparse MLA 候选
+
+`kernels/sglang_flashmla_dtk.py` 对接同名 BF16 sparse attention 接口，通过 `ops.sglang_mla_sparse: dtk` 选择；默认仍为兼容实现。对索引尾部和全空行先保留有效掩码，再给原生内核提供安全占位，返回时恢复空行零输出；只修改索引副本，避免原生排序影响调用方。H64/D512/top-k 2048 的 1/6/12 行（真实 query heads 4/32 补齐）变输入探针 Graph 与 eager 一致，输出相对 RMSE 约 0.2%；正式 adapter 导出入口复验通过；整模型验证待完成。额外的 packed E4M3 LightOp gather 融合留在 plugin；没有复用其他框架的 attention 实现。
+
+## 2026-10-30 SGLang DeepEP 原生 ABI 共存（PD 验证中）
+
+MTP Graph 输出出现杂词和复读，不能作为精度通过。关闭 Decode Graph 的对照在空 attention-DP rank 的 DSA 元数据初始化中触发空序列 max()。该缺口并非 HCU 内核的同接口数值实现问题，空 DP 验证路径的扩展归 plugin；不能由该修正推断 Graph 输出异常已经解决。
+
+MTP draft Graph 发现官方 fused_eh_norm 的 4096 宽度启动 512 线程，而 DTK 无 launch_bounds 的产物默认仅支持 256。SGLang 独立桥 `_sglang/jit_eh_norm.py` 在该模块的 load_jit 调用中补 `--gpu-max-threads-per-block=1024`，覆盖上游最大 8192 宽度的 CTA；不修改官方计算源码，也不改变其他 JIT 模块。数值、Graph 与完整 MTP 结果分别验证。另将 store-index-cache 的已应用补丁改成零编辑不写文件，消除已观察到的共享 NFS 无操作重写冲突。
+
+长输入检查发现既有 MQA 的 torch/Triton 两档都缺少上游 `relu(q·k)`：之前两档相互对照不能证明语义正确。按官方 `sglang/srt/layers/attention/dsa/utils.py::_fp8_mqa_logits_torch`，在各 head 的点积之后、权重求和之前补 ReLU；paged 与 ragged 同步修正，框架边界仍为 SGLang。Triton head 循环改为有界循环，避免 32 heads 静态展开导致分钟级编译。gfx936 的负点积反例、随机 ragged、64/256 page 的真实 preshuffle 布局和两轮变输入 Graph 重放均通过；负点积旧公式最大偏差 4500.31，修复后正确归零。ragged torch 路径另与官方函数有效位置直接对照通过。两档 catalog 暂降为 candidate，原有 production 证据不用于此次修正的验收；完整修正后长输入/MTP 仍在复验，旧长输入运行已停止且不计通过。
+
+每进程单卡配置的实际启动发现：上游缩窄 CUDA_VISIBLE_DEVICES 后，子进程仍继承全卡 HIP_VISIBLE_DEVICES，逻辑 device 0 因而落到同一张卡，PyNcclCommunicator 初始化失败。新增 SGLang 专属 `_sglang/device_visibility.py`，包裹其 CudaDeviceMixin.reindex_device_id，在 spawn 上下文内同步 HIP 掩码并在退出时恢复父进程环境；不调用 DeepInfer/vLLM 的实现，不扩展已有 HIP 分配，ROCR 二次映射暂拒绝。物理卡 3,1 反序分配的双子进程诊断通过：两 rank 各只见一张指定卡，真实 PyNcclCommunicator AllReduce 均返回 3，父环境正确恢复；完整三节点启动继续验证。
+
+Decode Graph 排查新增证据：原 SGLang 专属 mHC prenorm emu 按 64 个 split 逐个提交 matmul/square/reduce，两步解码 trace 含 11,520 次平方与大量小 GEMM。保持 split-K 分块、FP32 计算和输出布局，将等长 split 分为至多两组 batched GEMM；不复用或修改 DeepInfer 实现。gfx936 上六种形状（含不整除 split、空 split、零 token、无 split）各三轮变输入 Graph 重放对照通过，最大绝对差 3.25e-5。实际 decode 形状 M=1/2,K=16384,N=24,split=64 的预热 Graph 单次约 25–26µs，原逐 split 参考约 773–822µs；这是算子结果，完整 PD Graph 性能仍在复验。另将 concat_mla 的已应用补丁路径改为零编辑时不写文件，避免 spawn 子进程重复更新共享头文件；首轮日志曾在此无操作写入处出现 NFS FileExistsError。
+
+同轮修正 SGLang DSA utils 的平台函数早期绑定：CP8 查询已经分片，但旧 is_hip 返回 True 令 DSA 元数据保持全局形状，双请求产生 top-k 25 行超过本地 query 8 行的断言。在 SGLang bridge 的既有 DSA 初始化处将 is_hip/is_cuda 同步到当前平台 seam；进程内 RuntimeContext 复验确认 CP/interleave 开关从 False 恢复为 True。此项不修改 Torch/Triton 的硬件判断，不扩展到 vLLM/DeepInfer。组合 plugin 后，P INT8 CP8/EP8、D INT4 DP16/EP16、E4M3 KV 的 eager PD 已通过三串行（4、Berlin、7319）和两并发（5、Paris），均正常 stop；1,237-token 输入按 512+512+213 分块并定向第二台 Decode 节点 DP8，完整返回 7319。Graph、MTP、更长上下文与性能未验收。
+
+SGLang 专属 DeepEP 包装继续翻译官方 BF16/FP8 参数；显式 quant_type 或携带原生第三位置 top-k 权重的调用透传当前 DTK Buffer，避免 plugin 的 INT8 分发被改写为 BF16。INT4/INT8 权重重排、grouped GEMM、INT8 分发策略归 plugin；vLLM/DeepInfer 不引用这一包装。该 ABI 调整随上述 GLM P INT8 / D INT4 eager 服务验证；其他执行模式不据此宣称通过。
+
 ## 硬件矩阵（2026-10-12 实测盘点，选卡对照）
 
 | 卡型 | 架号 | fp8 计算 | int8 计算 | 所在节点 | 说明 |
@@ -27,6 +53,7 @@
 
 | 日期 | 模型 | 规模/卡 | 节点/栈 | 参数要点 | 启动 | 生成 | 精度 | 长文 | 备注 |
 |---|---|---|---|---|---|---|---|---|---|
+| 2026-11-04 | Qwen3.8-Flash-Next W4A8 / INT8 PLE | TP4 / DP4 / EP4 | gfx936 / DTK2610 / Python3.12，官方 v0.5.22 + plugin | fa3、E5M2 KV、EAGLE3/4、full decode Graph、queue2 | ✅ | ✅ smoke 32/32、扩展 5/5 | ✅ GSM8K 1287/1319 | ✅ 131072/1024，C1 | TTFT 17.835 s / TPOT 11.343 ms；组合边界见下文 |
 | 2026-11-04 | **DeepSeek-V4.1-Flash-Channel-INT4-w4a8 真实 TP4/EP1 启动闭环** | 460GB/4卡 | **validation-host-a `adapter-validation`**，社区 SGLang 0.5.22 `baa9befa` + adapter `d1df244` | `--tp-size 4 --ep-size 1 --moe-a2a-backend none --moe-runner-backend triton --mem-fraction-static 0.90 --max-running-requests 16 --chunked-prefill-size 8192 --cuda-graph-max-bs-decode 16 --language-model-only`；prefill graph 关闭，decode graph bs `[1,2,4,8,12,16]`；`SGLANG_DSV4_FP4_DEQUANT=1 SGLANG_HCU_EP_BF16=1`，TileLang mHC pre/post 关闭 | ✅ 权重加载；decode graph 捕获约67s | ✅ 两次 `/generate` HTTP 200、请求码 0；巴黎/埃菲尔铁塔请求连贯 | ⚠️ 算术请求立即 stop，需补强语义断言 | 已确认 L1.5→真实模型的 TP4/EP1 闭环。最低实测 `mem-fraction-static≈0.8683`；EP4 仍失败于社区 dispatcher 的 deprecated `forward_deepgemm_masked`，不计入通过。证据：`external-evidence:iteration51-dsv41-int4.json`
 | 2026-10-26 | **DeepSeek-V4.1-Flash-Channel-INT4-w4a8（461G DAS 转 compressed-tensors：路由专家 int4 channel+稠密 wq_a/wkv int8 per-channel+双 ~91.5GiB engram FP8 表）validation-host-26 tp4-ep4 精度首达 + overlap 重开**（两 adapter 针+三运行时病灶连修） | 461G/4卡 | **validation-host-26 debug 容器**（validation-host-18 起手遭外来 8 卡任务 ~100GB/卡 挤压 OOM 迁场）v0522 树 + adapter rel | `--tp-size 4 --ep-size 4`（**dp-attention 撤下=dp1**）、page 64、mem 0.86、chunked-prefill 8192、max-running 16、graph-max-bs-decode 16、**`--skip-server-warmup`（病灶①）**、watchdog 1800、dsa-topk torch/prefill fa3/decode flashmla_sparse、engram 宿主表 `SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1`（2×91.5GiB 走 host 内存）、HSA_KERNARG_POOL_SIZE=8388608、MHC_PRE=false、unset NCCL_TOPO_FILE/ROCR；port 30000（scripts/adapter_deepseekv4.1_channel_int4_dp4ep4.sh） | ✅（冷串行 ~92min=网络盘 4×183G；热页缓存+热 JIT **8min**） | ✅ graph ON（r11 起 overlap ON） | ✅ 算术 3/3（391/4005/144）+连贯+/v1/chat/completions+streaming（裸文本不走模板=秒 EOS 属预期，`<｜begin▁of▁sentence｜>…<｜Assistant｜>` 模板串正确） | —（长文门未单列） | **双 adapter 针（本批 feat(w4a8)）**：①ct_w4a8_moe——DAS w4a8 config_groups 全 regex targets → target_scheme_map 无 "Linear" 桶 → 上游 CompressedTensorsW4AFP8MoE 构造期 KeyError('Linear') 模型建不过 → HCU_W4A8_MOE=w4a16（默认）把 int4 组 input_activations 置 None → WNA16TritonMoE ROCm 臂（channel 改写 10.6 收口；激活 int8 忽略=MoE 跑 bf16，上游 nvfp4 w4a4→w4a16 同款降级模式）；heal 档保 stock 语义备将来 W4A8 内核；②dsv4_wqkv_scale_patch——v0522 load_weights 融合分支漏 CT INT8 per-channel `.weight_scale`，wq_a/wkv scale 被 "not found in params_dict" 丢弃 → 注意力投影未初始化 scale 反量化（**boot 正常、数值垃圾=精度役真凶**；关融合非绕法：WeightsMapper 后组 targets 只认融合名 wqkv_a）。**三运行时病灶**：①**mm warmup 自毁**——config `image_token_id=1029428572`（>vocab 129280）+vision_config → sglang 判多模态 → boot warmup 经 OpenAI 端点给自己发 png → 图占位 id 落 text embedding OOB → NCCL 楔死 watchdog 杀树；修=`--skip-server-warmup`；**客户端发图仍会杀服（运营红线）**；②**dp-attention idle/real RCCL 死锁**——--enable-dp-attention 下 1 real+3 idle forward 全 rank 永久阻塞 all_reduce（py-spy：DP0 `_execute_extend→dp_gather_replicate→librccl asyncJobLaunch`，余 `_execute_idle`）→ 撤 dp 落 tp4ep4dp1，根因未修（深水项）；③**overlap 首请求 desync**——event_loop_overlap 令 rank 分叉（TP0 `ingest_requests→broadcast_pyobj` vs TP2 `run_batch→clamp_position_cuda` 圆等）→ r9 关 overlap 保精度；r11 热缓存重开成功，但 **boot 后首请求 ~600s 危险窗**（客户端断开+abort 可恢复）。**/health 语义教训**：health 做**真生成**（HEALTH_CHECK rid），detokenizer 20s 超时→UnHealthy 误判、last_receive_tstamp 只在真实响应推进——非 detokenizer 病；"Device-side assertion tracking was not enabled"=multimem 探针失败消息一部分，非设备故障。**perf**：基线（无 overlap）decode c1 11.2/c4 17.4/c16 91.9 tok/s、prefill 232；overlap 重开 c4 32.1（+84%）、prefill 416（+79%）、c16 88-103（tuner CPU 争用噪声）；首 prefill JIT 编译风暴 465.7s（一次/容器，watchdog 1800 装得下）。**MoE tuner 战役（暂停位，state 可续）**：缺 `E=96,N=1152,device_name=BW1102,dtype=int4_w4a16.json`(+`_down`) 配置；ray 离线不可用→自写无 ray 分片 driver v7（坑：hycu 驱动级静默杀 GPU 坏配置→smem 预算守卫 ≤60000 估值+num_stages≤3；benchmark_config 必须 `torch.cuda.device(0)` 上下文否则 CPU 后端 NotImplementedError 炸；get_config 每 call 重读模型配置 ~15s→memoize）；**N=1152=packed w2.shape[2]（K/2）、tuner 逻辑 N=2304→merge 时手写精确文件名**；decode 3 切片+prefill 1 进程已跑、用户叫停未落地。**运维坑**：debug 容器 容器遭外部 SIGKILL(137) 杀健康服务（docker restart 保 fs=JIT 缓存存活）；SIGKILL 后显存释放 2-3min，等 hy-smi 见空再拉起 |
 | 2026-10-23 | **dsv41f 减核役第三夜：MoE combine emu→triton 直改（5.7×）+ silu 针 v3 挂点修正 + 「拍」根因再定性=GPU 全局时间片切割（环境级，非跨 rank 等待）** | 236GB/8卡 | **validation-host-18 dsv41f-dspark**（adapter 6ef8b3e/6866d2f，validation-host-26 树同步） | B 臂配方同 10-22（四门绿基线 975ms）+ silu v3 正臂 + combine triton 化 | ✅ | ✅ graph ON | ✅ 四门 4/4 | ✅ p50 975→925ms（bench_step，DP0 每 40 步间隔） | **combine 直改**：trace in-graph `reduce_kernel<128,4>` 467µs×40 层/prefill 步+8×116ms 巨怪=自家 emu `sgl_kernel/moe.py` aten 三连(sum→mul→copy)；e2e probe（publish(server_args,role,ranks) 前置+真链 inplace_fused_experts）实证 T>32 全走它；换 `_moe_sum_scale_kernel`（fp32 acc×rsf 单舍入）rsf=0 bitwise/≠0 ≤1ulp，M=1024 422→74µs、M=8192 3257→563µs(895GB/s)。**silu v3**：错挂 filter_expert 臂修正（routed arm 走 act_and_mul_triton else），ENGAGED 日志+四门绿复验。**拍再定性（推翻 10-22"等跨 rank 缓冲"说）**：①B trace 8 rank 全部 119×~116.0ms 停摆、时间戳跨卡对齐 ±2.6ms、每 ~181ms 一次（duty 损失 64%）——但 ②空载 server（零请求）单卡探测器仍见量子化 25.3/45.3ms 停摆（duty 48.6%）——无跨 rank 数据流也停=非缓冲等待；③无 server 驻留时单测时序干净；④CPU 探测器零 gap+cpu.max=-1=非 cgroup/非 CPU 冻结；⑤空载功耗 157W/27-36°C 正常、Perf=auto。结论：**serving 栈驻留即触发的 GPU 全局时间片切割（kernarg 池全局锁/管理面/固件级候选）**，量化时长=调度量子。【10-23 再收窄+修正：同盒 6 外来容器驻留（vllm0.28/0.29+sglang0.5.18）探测器 0 gap=拍非盒级、唯我方栈触发；eager/graph 风暴与 5G 驻留单因素不复现 ⇒ 需完整服务构成；~~健康者全 dtk2604x~~ dsv41f 容器亦 dtk26041/torch2.11 同代（das 亦在 nmz 调试）⇒ 残余差分=env+代码构成；expandable_segments 平台不支持/das PD 配方无抗拍钮 ⇒ 可测残余=HSA_FORCE_FINE_GRAIN_PCIE=1 与 HSA_KERNARG_POOL_SIZE=8M，四臂 /root/launch_ab1023_{A,B,C,D}.sh staged】`HSA_KERNARG_POOL_SIZE=8388608`（10-22 队列项）A/B 待 8 卡空窗（validation-host-18/26 皆客满）；hy-smi=`/opt/hyhal/bin/hy-smi`（rocm-smi 空壳）；主机 hfm/hymgr 常驻但 ptrace 禁。**停摆不除一切 kernel 优化只兑现在 ~36% 占空比内**（干净盒子理论 decode ~350ms/步 vs 现 925ms）。profiler 30s 后 watchdog 300s 超时崩（08:32 复现，prof 后别留长跑） |
@@ -57,8 +84,8 @@
 | 2026-10-17 | **GLM-5.3-Flash 图瘦身第一刀：MQA logits vec 化，decode 提速 52%**（TP4 GPU4-7 port 30187） | 306G/4卡 | **validation-host-26 BW1102 gfx938** dtk26041 py3.10-20261013 + 官方 v0.5.21 + is_cuda | 默认配方不变 + 新默认 `HCU_MQA_LOGITS_IMPL=vec`（dsa_mqa_logits_emu emu 全窗口单遍双 bmm，N≤32 走 vec 大 N 回落 loop） | ✅ | ✅ | ✅ Berlin 基线签名逐字恢复（' Berlin.\n – Origi'）且两次确定性一致；Tokyo 正常形态；对拍探针 rel~2e-3（w 经 bf16 舍入、H 收缩在 GEMM 累加器）topk@8 一致率 98.4-100% | — | **战果：单流 2.22-2.34→3.50 tok/s（+52%，步时 435-450→286ms）、bs8 14.0→18.69 tok/s（+34%）**；decode 图节点 23.9k→3.7k（-84%），hipGraphLaunch API p50 **540ms→21.6ms（-25×）**，图内巨 kernel 清零（V2 trace 最大 8.4ms nccl）。**归因**：72% 图节点来自 MQA emu (64,2048) 双层 tile 循环（32 内层×~12 aten×45 层）。**两个 DTK 图 replay 崖（eager 无恙、standalone 小图无恙，仅服务大图触发）**：①整窗 (N,H,T) fp32 物化 `.float()` → bfloat16_to_float 单核 124ms（~0.8GB/s；loop 按 2048 tile 转换走快路径故无恙）；②(N,T,D) 大操作数 transpose 进 bmm → 转置物化 bfloat16_copy 同崖 124ms——**修法=双 bmm 都把小张量放转置侧**（sT=kg@qᵀ、row=sT@wᵀ）+H 收缩并进第二 bmm（fp32 累加）；期间否决 expandable_segments 假设（A/B 零差异）。过程存证：prof_torch_vec/（V0/V1/V2 三代 TP-0 trace）+ 探针 tests/tools/_probe_mqa_vec_ab.py、tests/tools/_probe_mqa_graph_replay.py。后续刀（图节点余量）：conv1d_update emu、mHC pre/post 链、kpool read |
 | 2026-10-17 | **上游单测驱动调试：registered/attention/unittests 三目录 46+红 → 2 红（62 绿/165 子用例）**（无 serving，pytest 直跑） | — | **validation-host-26 g53-tp8 容器** 官方 v0.5.21 源码树 + adapter（PYTHONPATH 双挂铁律） | 五修：①`jit_warp` shfl `__shfl_*_sync`→非 sync 变体（DTK 头无 *_sync 族；needle 连分号吃+坏形态自愈）+registry allowlist 三条 → `sgl_kernel_jit_dpsk_v4_topk` 从编译失败转 56s 过；②`flash_mla.get_mla_metadata` 升 v0.5.21 新 API（cache_seqlens/num_q_tokens_per_head_k/topk + FlashMLASchedMeta，位置参数兼容旧调用）；③`flash_mla_with_kvcache` 输出秩随输入（4D 进 4D 出——dsa `_forward_flashmla_kv` 头裁剪需要）；④flashinfer `decode._grouped_size_compiled_for_decode_kernels`=allowlist-ABSENT+deny 精确名组合（单用任一半都漏：Missing 句柄泄漏 NotImplementedError / 子模块回落绑成 module）；⑤`attn_backend_gate`（新 adapter）：fa4(cute DSL SM90a CUDA-only)+flashinfer(上游 is_flashinfer_available()=False 但名字未绑仍构造→NameError) 注册表 seam 构造期 ImportError → kit 转 "backend not available" skip | — | — | — | — | **关键判定：MTP/fp8-KV/dsa 内核面全绿**——test_dsa 15/17（speculative_forward_mode ✅、eagle_draft+cuda-graph-runner ✅、fp8 decode+prefill+图捕获 ✅）、kda 6/6、dense 非 fa4 全绿（test_fa3 ✅=fa3 emu 直接验证面）→ **serving 层 MTP/dp-attention 的病不在内核，指向 srt 层状态机（与 P1 das spec 补丁族结论互证）**。唯二红=test_sparse_tilelang_{prefill,decode}：DTK tilelang 0.1.12+dtk2604 warp 划分 bug（threads=384→6 warp，1\*4\*1≠6 编译期 InternalError；手工调度内核改线程数不安全）→ 记平台已知红，L1.5 门 `-k "not tilelang"` 排除。L1.5 精选门已落地 ci/l1_gpu_gate.sh（l15_upstream 段，暖缓存 ~35s） |
 | 2026-10-17 | **MTP 攻坚转折：图诱发定性 + 三臂交叉定位 + 双绿配置（性能待回收）**（TP8 GPU0-7，臂 30189 无图/30190 最小spec/30191 decode-verify） | 306G/8卡 | **validation-host-26 g53-tp8** dtk26041 + 官方 v0.5.21 + is_cuda + adapter | 四 serving 臂 + 2 独立探针（`_probe_spec_kvalloc_triton.py`/`_probe_fa3_emu_graph_verify.py`） | ✅ | ✅ **MTP 首次全绿**：①无图全 spec（30189）：Berlin/Tokyo 对、故事连贯、accept 1.15-1.40；②图+全 spec+`--speculative-attention-mode decode`（30191）：同绿且 verify/draft 图真捕获（log 实证） | — | **判决链**：a) das 五旗标内核族探针全对（assign_extend/alloc_decode/alloc_extend 三 triton 内核对拍 OK，int32 last_loc/bs=48 亦然；CREATE_EXTEND_AFTER_DECODE 为死代码）→ 内核误编译假说否决；b) `--disable-cuda-graph` 全 spec 转绿 → **图诱发**；c) 臂 A（steps1/draft2+prefill verify+图）绿；d) 臂 B（steps5/draft6+decode verify+图）绿 → **病灶=prefill-verify（fa3 emu 路径）在 6-token 树形状的图 replay**，draft 链图与 fa3-emu 本体（独立 replay 探针 2/6 token 逐位零差）均洗罪；e) 逐层定位待"图内侧缓冲拷贝"探针（forward hook 只在 capture 期触发，replay 不可 hook） | — | **性能现状**：decode-verify 配置单流 0.58 tok/s（对无 MTP 基线 3.50 慢 6×——decode 内核逐 token 处理 6 查询+线性注意力按序）；无图更慢。**可用但需优化**。eager 基线：accept ~1.3、输出正确。修复主线=红配置（prefill verify）图 replay 逐层对拍定位发散层（候选：extend 元数据 plumbing/某 emu 调用上下文），侧缓冲拷贝进图即可读 replay 值；dp-attention 独立战场待同法 |
-| 2026-10-18 | **图内侧缓冲探针首役：replay 透视建成 + 两个新发现（prefill 尾段非确定性 / 红病灶探针敏感）+ mla 单测加餐**（TP8 红臂/无图臂交替，锚点 Berlin/Tokyo，旗标窗口采集） | 306G/8卡 | **validation-host-26 g53-tp8** dtk26041 + 官方 v0.5.21 + is_cuda + adapter | 新工具 `hcu_adapter/probe_side.py`（sitecustomize `HCU_SIDE_PROBE=replay|eager` 门控）：捕获期把 emu 每调用的 q/qv/cu_q/cache_seqlens/page_table/o/lse `copy_` 进捕获前预分配侧 slab（拷贝入图、replay 重执行）+ `CUDAGraph.replay` 补丁事后落盘 + 旗标文件窗口（跳过 warmup、限同步开销）；四轮真 bug 迭代（漏传 result/slab 未定义/会话标签误挂 ctx 对象/逐 replay 全量落盘慢 100×）后全通。会话地图：0-6=verify bs8..2、7=verify bs1、15=draft-decode bs1、23=draft-extend bs1（emu 眼里 bs=查询行数，verify bs1=6 行）；verify 每步 11 次 MLA 调用（GLM-5.3-Flash 混合注意力），only_qv 吸收式（q=None） | ✅ | ✅（探针在场红配置输出转对、accept 1.12） | — | — | **三判决**：①**verify 图 replay 前 4 次 attention 调用逐位零差**（qv/o=0.000000，cu_q/cache_seqlens/page_table 全等）——fa3 emu 在 serving 大图内 replay 亦无辜；call 4 起 qv 差 0.23（≈10× bf16 ulp、13.5% 元素）逐层放大至 2.0；②**同臂二跑对照反转归因：无图臂自身 run-to-run 非确定**——双臂 prefill（皆 eager、同提示词、greedy）MLA 调用 9-11 发散（1 ulp→0.5→1.8）、verify qv 差 7-11 → call4+ 的"发散"主要是该噪声放大，**新独立 bug：eager prefill 尾段非确定性内核**（onset 恰在第 10 个 MLA 调用前，候选=原子归约类 GDN/MoE/triton 核）；③**红病灶是探针敏感 heisenbug**：图内加拷贝核即转绿，真腐蚀（词汤级）被探针扰动掩盖。**mla 加餐**：上游 unittests/mla 首跑 8 失败同根（flashmla unified 模式 extend 整体委托 flashinfer 父类）→ 桩内 `_hcu_stub_raise`（unittest 栈→SkipTest、serving 栈保持 NotImplementedError）→ 26 绿全保、mla 入 L1.5 门（四目录 88 绿/208 子用例） | 下役：A) 钉死非确定内核（call9 边界 op 级二分/`torch.use_deterministic_algorithms` 侦察）；B) 最小扰动探针重猎红病灶（单调用拷贝/rocprof 外部追踪）；C) v2 逐层 hook 定位 call3→call4 区间（GDN 状态池首嫌疑：持久缓冲+draft 链每步 5 次 replay+spec 状态存回滚） |
-| 2026-10-18 | **R-01/R-06 载体判决：custom triton AR 跨 block 写序竞态定罪，翻率 60%→2.5%**（TP4 GPU4-7 port 30187 七臂序列，生产配方） | 306G/4卡 | **validation-host-26 g53-tp8** dtk26041 + 官方 v0.5.21 + is_cuda + adapter | 探针 `hcu_adapter/state_snapshot.py`（HCU_STATE_SNAPSHOT/HCU_STATE_ZERO=tail\|mamba\|all\|pages，Glm5NextModel.forward 入口 JSONL 快照+fresh 清零臂）× 7 臂（s1 仪器/s2 基线/s3tail/s4zero/s5pages/s6pages/s7nccl）；统一口径=Berlin×20 马拉松数"跳 think 前缀直接出词" | ✅ | ✅ | ✅ **s7nccl 1/40 + r04c 干净臂 0/20、锚点 4/4** vs custom AR 四臂 48/80（60%） | — | **判决链**：①状态池三载体排除法全过——mamba/KDA ssm（fresh 入口 abs=0，清零链实证）、kpool 尾缓冲（47 次真清零仍 16/20 翻）、index 页（11 层清仍翻）——"泄漏"不在任何 KV/状态池；②`HCU_TRITON_AR=0` 路由翻转塌缩到本底 → **载体=adapter 自家 custom AR（sgl_kernel.allreduce，host-shm 信令）**；③根因（ar_ext.cu 审查）：跨 block 汇合计数器 a1/a2 是 device 域原子，**不传递其他 block 的 host-shm payload 写序**（本栈 plain store 滞后过 __threadfence_system 已有探针记录）→ last block 的 PUB/DONE 发布可先于部分 payload 落 host DRAM → 对端间歇 reduce 旧轮/撕裂行——时序敏感故同 boot 相邻请求常一致、跨历史间歇污染，兼容全部既往观察（含 MTP heisenbug 探针敏感性）；④**缓解固化**：HCU_TRITON_AR 默认 1→0（NCCL）、BACKEND_CATALOG custom 档 broken（选配即拒）、wizard BROKEN 标签、broken-rejected/default-nccl 两测试哨（config 门全绿）。**代价**：小消息 AR（≤512KB）custom 比 NCCL 快 ~2×（29-44 vs 68-75us）——真修复（汇合计数器迁 host-shm system 域原子，每 block 自己推自己的写）后回收；路由更正（r04a 复验日志实证）：=0 落 **aiter AR（GraphSafe auto 放行）非 NCCL**——r04a 臂 12/20 系容器树旧 hcu_env 泄漏仍在跑 custom（教训→容器树 git 化 sync_adapter.sh）；干净 git 臂 r04c 0/20。残留零星为本底，不碍对拍方法学 |
+| 2026-10-18 | **图内侧缓冲探针首役：replay 透视建成 + 两个新发现（prefill 尾段非确定性 / 红病灶探针敏感）+ mla 单测加餐**（TP8 红臂/无图臂交替，锚点 Berlin/Tokyo，旗标窗口采集） | 306G/8卡 | **validation-host-26 g53-tp8** dtk26041 + 官方 v0.5.21 + is_cuda + adapter | 新工具 `hcu_adapter/infra/probe_side.py`（sitecustomize `HCU_SIDE_PROBE=replay|eager` 门控）：捕获期把 emu 每调用的 q/qv/cu_q/cache_seqlens/page_table/o/lse `copy_` 进捕获前预分配侧 slab（拷贝入图、replay 重执行）+ `CUDAGraph.replay` 补丁事后落盘 + 旗标文件窗口（跳过 warmup、限同步开销）；四轮真 bug 迭代（漏传 result/slab 未定义/会话标签误挂 ctx 对象/逐 replay 全量落盘慢 100×）后全通。会话地图：0-6=verify bs8..2、7=verify bs1、15=draft-decode bs1、23=draft-extend bs1（emu 眼里 bs=查询行数，verify bs1=6 行）；verify 每步 11 次 MLA 调用（GLM-5.3-Flash 混合注意力），only_qv 吸收式（q=None） | ✅ | ✅（探针在场红配置输出转对、accept 1.12） | — | — | **三判决**：①**verify 图 replay 前 4 次 attention 调用逐位零差**（qv/o=0.000000，cu_q/cache_seqlens/page_table 全等）——fa3 emu 在 serving 大图内 replay 亦无辜；call 4 起 qv 差 0.23（≈10× bf16 ulp、13.5% 元素）逐层放大至 2.0；②**同臂二跑对照反转归因：无图臂自身 run-to-run 非确定**——双臂 prefill（皆 eager、同提示词、greedy）MLA 调用 9-11 发散（1 ulp→0.5→1.8）、verify qv 差 7-11 → call4+ 的"发散"主要是该噪声放大，**新独立 bug：eager prefill 尾段非确定性内核**（onset 恰在第 10 个 MLA 调用前，候选=原子归约类 GDN/MoE/triton 核）；③**红病灶是探针敏感 heisenbug**：图内加拷贝核即转绿，真腐蚀（词汤级）被探针扰动掩盖。**mla 加餐**：上游 unittests/mla 首跑 8 失败同根（flashmla unified 模式 extend 整体委托 flashinfer 父类）→ 桩内 `_hcu_stub_raise`（unittest 栈→SkipTest、serving 栈保持 NotImplementedError）→ 26 绿全保、mla 入 L1.5 门（四目录 88 绿/208 子用例） | 下役：A) 钉死非确定内核（call9 边界 op 级二分/`torch.use_deterministic_algorithms` 侦察）；B) 最小扰动探针重猎红病灶（单调用拷贝/rocprof 外部追踪）；C) v2 逐层 hook 定位 call3→call4 区间（GDN 状态池首嫌疑：持久缓冲+draft 链每步 5 次 replay+spec 状态存回滚） |
+| 2026-10-18 | **R-01/R-06 载体判决：custom triton AR 跨 block 写序竞态定罪，翻率 60%→2.5%**（TP4 GPU4-7 port 30187 七臂序列，生产配方） | 306G/4卡 | **validation-host-26 g53-tp8** dtk26041 + 官方 v0.5.21 + is_cuda + adapter | 探针 `hcu_adapter/infra/state_snapshot.py`（HCU_STATE_SNAPSHOT/HCU_STATE_ZERO=tail\|mamba\|all\|pages，Glm5NextModel.forward 入口 JSONL 快照+fresh 清零臂）× 7 臂（s1 仪器/s2 基线/s3tail/s4zero/s5pages/s6pages/s7nccl）；统一口径=Berlin×20 马拉松数"跳 think 前缀直接出词" | ✅ | ✅ | ✅ **s7nccl 1/40 + r04c 干净臂 0/20、锚点 4/4** vs custom AR 四臂 48/80（60%） | — | **判决链**：①状态池三载体排除法全过——mamba/KDA ssm（fresh 入口 abs=0，清零链实证）、kpool 尾缓冲（47 次真清零仍 16/20 翻）、index 页（11 层清仍翻）——"泄漏"不在任何 KV/状态池；②`HCU_TRITON_AR=0` 路由翻转塌缩到本底 → **载体=adapter 自家 custom AR（sgl_kernel.allreduce，host-shm 信令）**；③根因（ar_ext.cu 审查）：跨 block 汇合计数器 a1/a2 是 device 域原子，**不传递其他 block 的 host-shm payload 写序**（本栈 plain store 滞后过 __threadfence_system 已有探针记录）→ last block 的 PUB/DONE 发布可先于部分 payload 落 host DRAM → 对端间歇 reduce 旧轮/撕裂行——时序敏感故同 boot 相邻请求常一致、跨历史间歇污染，兼容全部既往观察（含 MTP heisenbug 探针敏感性）；④**缓解固化**：HCU_TRITON_AR 默认 1→0（NCCL）、BACKEND_CATALOG custom 档 broken（选配即拒）、wizard BROKEN 标签、broken-rejected/default-nccl 两测试哨（config 门全绿）。**代价**：小消息 AR（≤512KB）custom 比 NCCL 快 ~2×（29-44 vs 68-75us）——真修复（汇合计数器迁 host-shm system 域原子，每 block 自己推自己的写）后回收；路由更正（r04a 复验日志实证）：=0 落 **aiter AR（GraphSafe auto 放行）非 NCCL**——r04a 臂 12/20 系容器树旧 hcu_env 泄漏仍在跑 custom（教训→容器树 git 化 sync_adapter.sh）；干净 git 臂 r04c 0/20。残留零星为本底，不碍对拍方法学 |
 | 2026-10-18 | **R-01 重启主战线：fork serving 判决前提崩塌——翻转与实现无关（emu 基线自翻 + 跨请求状态泄漏定性）**（TP4 GPU4-7 port 30187，Berlin×3 锚点 + Berlin×20 马拉松，emu 路由） | 306G/4卡 | **validation-host-26 g53-tp8** dtk26041 + 官方 v0.5.21 + is_cuda + adapter | r01 脚本族（anchors/marathon/two_pass/diff_layers/nondet_cmp2/offset_scan/flip_forensics）+ probe_side replay BS=1 + HCU_DUMP_LAYERS 修复（bab83f8：原实现挂 glm4_moe 且 sitecustomize 期 import 死于 deep_gemm 深链 → importlib 惰性挂钩 glm5_next，45 层 pre-hooks 装载实证） | ✅ | — | — | — | **载归因反转链**：①emu 基线自翻（A1 r2 / A1b r3，MQA vec/loop 皆然）+ tp4 脚本注释记载三件套（AQL dispatch）曾让无 fork 也翻 → 2026-10-16 "fork 确定性翻转"判决前提不成立；②翻转率量化 **4/20（20%，间歇性）**；③相位定位：prefill 尾段（第 10-11 次 MLA 调用区）+ decode bs=1 图 replay；④**机制判决：跨请求状态泄漏，非内核原子噪声**——同 boot 内 B1≡B2 prefill 11 调用逐位一致、decode bs=1 图 replay 逐位一致（排除逐调用内核非确定），但 Tokyo 之后的 Berlin prefill qv 偏 1.0-1.6（干净轮）/3.5（翻转轮）⇒ **prefill 计算记忆服务器请求历史**；候选载体=mHC 残差缓冲、GDN/mamba 状态池（释放-重分配与在飞 GPU 工作时序竞争）；同模型可解释 MTP heisenbug 的探针敏感与三件套敏感 → **R-01/R-06 判同族合并攻坚**；⑤make_stages 舞台机下 norm 不经模块调用、HCU_DUMP_LAYERS dump 未落盘 → 搁置该路线，改用 probe_side | 下役：状态载体定位——mamba/GDN 状态池与 mHC 缓冲请求边界快照对拍、释放-重分配时序窗口注入、`HCU_TRITON_AR=0` NCCL AR 对照排除 custom AR；fork 四臂（A2-A4 脚本已推）待非确定性修复后重验 |
 | 2026-10-16 | **GLM-5.3-Flash 对照 sglang-das 首轮性能优化**（validation-host-26 TP4 port 30187） | 306G/4卡 | **validation-host-26 BW1102 gfx938** dtk26041 py3.10-20261013 + 官方 v0.5.21 + is_cuda | 对照 maxiaobetter/sglang-das `main_glm53_flash_feature_cleanup_tx`（commit 364fabf）：vendor 其 `fla/hcu` 纯 triton 内核族（KDA prefill chunk 链/causal_conv1d fn+update/decode recurrent）入 `hcu_adapter/fla_hcu/`（13 文件，import 改写+shim，零 sglang 侵入）；新 env `HCU_KDA_PREFILL_IMPL`/`HCU_CONV1D_IMPL`（emu 默认/fork 显式/stock，取代旧 *_EMU 键） | ✅ | ✅ | ✅ emu 默认：Berlin/1+1/Tokyo/chat 思维链/中文全过；**fork 内核服务门 RED：Berlin 确定性翻转（首 token 变 ' a...'），standalone 绿门 6/6 全绿也拦不住——服务上下文特有差异，待 serving dump 对拍** | — | **内核级战果（fork，未启用于默认）**：chunk_kda 对拍 emu cos 0.99999 快 473-1009×（T=2048 414ms→0.88ms），conv fn 16.4×/update 4.3×（状态位精确相等），decode recurrent 与 stock 同速不换；若 serving 门转绿，2048 tok prefill 28s→~3s。**decode 瓶颈定性（platform 级）**：单流 2.34 tok/s（0.43s/步）与所换内核无关——py-spy 实锤宿主 100% 卡 `hipGraphLaunch`、GPU 仅 ~28% 忙（≈120ms 实算），裸图微基准 2000 节点仅 22ms ⇒ 服务全量图发射 ~300ms/步（DTK 大图发射问题；机制坐实=launch API p50 540ms/图≈24k kernel、AQL 队列喂不动+rank0 短板使 TP1-3 nccl 各等 2.5s/窗——cookbook env 处置（三件套及 ROC_AQL_QUEUE_SIZE 单变量）**A/B 双否决**：零收益+贪心非确定，详见 env-vars.md 平台 env 节 / plugins.md P9，4×Perfetto trace 存证 prof_torch/）；**eager decode 实验：bs8 14.2→30.0 tok/s（2.1×）但 Berlin FAIL（eager 路径独立数值 bug，图路径正确）**——两个可复现线索均立项待查。**须走 plugin/上游/镜像/窗口的项（已登记 docs/plugins.md P1-P9）**：sglang-das srt 级集成（glm5_next DSA backend+kpool planner/MTP/PD 分离）、aiter 预编译快路（SGLANG_USE_AITER_*，他家镜像才有）、原生 HIP decode 内核原型、E=288 MoE 调优表（现回退 stock triton+smem clamp，实测 36ms/步 @bs1，调优需专门 GPU 窗口） |
 | 2026-10-16 | **GLM-5.3-Flash fp8 词汤终局破案**（TP4 GPU4-7 port 30187，容器 g53-tp8） | 306G/4卡 | **validation-host-26 BW1102 gfx938** dtk26041 py3.10-20261013 + 官方 v0.5.21 + is_cuda | /root/launch_g53f_tp4.sh：`--tp-size 4 --port 30187 --dsa-prefill-backend fa3 --dsa-decode-backend flashmla_sparse --disable-prefill-cuda-graph`，HCU_DEEPGEMM_BRIDGE=1，KDA/conv1d/kpool-read 三 emu + **HCU_MHC_UNFUSE=1（本轮主修复）** | ✅ | ✅ | ✅ **Berlin 首 token=19808 / Japan→Tokyo / fox→jumped over the lazy dog / 1+1=2 / chat 模板完整思维链 / 中文补全连贯，全过** | — | **主病灶=mHC 跨层融合内核**：融合门控 `is_cross_layer_mhc_fusion_enabled()` 只查 env 不查 is_hip → 每层 attn→FFN 边界跑 aiter triton fused `mhc_post_pre`，hc_pre/hc_post runtime dump 对拍实锤 FFN 段 h_post z 偏移 +0.5~+5 → 逐层污染 mHC 残差流；修复=HCU_MHC_UNFUSE 关融合走纯 torch 链（马啸分支上游同修：`not is_hcu()` 门控+注释同款结论）。**方法论沉淀**：①TP4 对拍 artifact——o_proj reduce_results=False 时 ATT 快照是 rank0 16/64 头 partial，与全量参考比预期 cos≈0.5（KDA"0.40 定罪"是冤案，参考切 rank0 头片后 0.99934 全家族平反）；②45 层逐模块 checkpoint 参考（KDA replay/DSA MLA/MoE fp8 反量化/dense/router/conv）全 0.999+；③**lm_head 非 tie**（顶层独立 `lm_head.weight`，tie_word_embeddings=False，误用 embedding 得平坦垃圾）——尾部 logits 对拍成校准仪器（CPU -2.0636 vs 服务器 -2.0569）；④"france 锚点"乌龙：8418=`_Log` 非 " France"（正确 48689），探针 tokenizer 错，模型无内容残留病灶；⑤HCU_MHC_EMU 是无效操作（包夹无消费方）。性能现状：decode ~0.4s/step（功能优先 emu 路径），优化列后续任务 |
@@ -171,6 +198,25 @@
 
 **收尾态**：容器树调试补丁已 `git checkout` 还原（common.py `.copy()` 1 行=broadcast 只读缓冲修复，保留）；adapter 已拉 eebddcb（开机 banner "DSV2 capture-mode dual-stream MoE gated off on HIP" 可验针脚活）；生产=graph ON（/root/launch_dsv4f_v0522g.sh，log srv_dsv4f_v0522g.log）四门验证中。插桩在 adapter rel 线（709ae32..d145fe87）+ tmp_fetch/patch_hc_fp*.py 可复用。
 
+### 2026-11-11 Kimi-K3.1-Pro INT4-w4a8 chunked-prefix `merge_state_v2` arity 崩溃（nmz26 8 卡 TP8）
+
+- **症状**：Kimi-K3.1 TP8 服务正常起来，短 prompt 首个请求 200；第二个（更长 prompt）打到
+  chunked-prefix 路径时 scheduler 抛 `TypeError: merge_state_v2() takes 4 positional arguments
+  but 6 were given`，全 rank SIGQUIT、进程树被杀。
+- **根因**：上游 `sglang/srt/layers/attention/merge_state.py` 按 CUDA 契约调用
+  `merge_state_v2(o1, lse1, o2, lse2, output, output_lse)`（写透缓冲 + 返回对）；
+  `is_cuda()` 在 platform seam 下答 True，HCU 因此走该分支，而本仓
+  `sgl_kernel.flash_attn.merge_state_v2` 模拟实现只声明了前 4 个参数。
+  单测只覆盖 4 参数形态，故此前未暴露；`forward_mha.py` 与插件
+  `_chunked_prefix_attn_mha` 都走这条 6 参数调用。
+- **修复**：`merge_state_v2` 增加 `out`/`out_lse`，结果 copy 进缓冲并返回缓冲本身
+  （与 CUDA 的别名语义一致），无缓冲时保持原返回。测试新增 out-buffer 用例，
+  断言返回张量与缓冲同 `data_ptr`、dtype 跟随缓冲、数值仍对 fp32 参考精确。
+- **实证**：`tests/kernels/test_flash_attn3.py` 13 用例全过（`merge_state_v2 out-buffers:
+  o=0.000000 lse=0.000000`）；服务两请求均 200（1.88s / 64 tok），日志无
+  `merge_state_v2` 报错、无后续异常。全量 93 层随后在双机 TP16 上加载完成、
+  服务就绪、请求 200（2026-11-12）；精度与 DFLASH 投机未验。
+
 ### 10-23 夜 engram host 路三层根因破案 + 修复全通（validation-host-26 卡2, cut8 TP1）
 - **症状链**：host 表 boot → 建表/注册全"成功" → 首次 GPU 触表必 KERNEL VMFault（shared 崩在建表 canary、per_rank 崩在首请求）；单元级同序列 5/5 全过——单元与 server 行为分裂。
 - **三层根因（叠罗汉，逐层剥）**：①multi 单测复现是我脚本 mmap 局部变量 GC 悬空假象；②cut8 剪层破了 id 空间不变式（shared 分支 gather 不设界 + id 上限=Σ24 素数，fault VA 散布表上方 20G 与 dmesg 精确吻合；device 路不崩=越界落相邻 VRAM）；③**真凶=platform_seam 强制 is_hip()=False → engram.py 指针翻译短路 return host_ptr，hipHostGetDevicePointer 从未被调用**（v11 教训同款陷阱：seam 语义下 HIP 判定不可信）。
@@ -190,7 +236,7 @@ top20+tail JSD 0.016584；greedy regret 为 0 不能代替分布通过。
 社区 compressed-tensors 加载器拒绝整模型 FP32 诊断配置；未放宽其限制。
 默认 CPU 参考仍拒绝量化，此显式入口不支持 INT8/MoE 或其他 FP8 格式。
 源码完整性通过；配方差异、环境与证据见
-[启动就绪记录](l15-readiness-plan.md#真实-ct-fp8-的独立-cpu-qdq-参考2026-11-04)。
+[启动就绪记录](history/l15-readiness-202611-log.md#真实-ct-fp8-的独立-cpu-qdq-参考2026-11-04)。
 
 ### 2026-11-03 社区 0.5.22 真实 Qwen3 30B Channel-INT8（validation-host-a 卡4）
 
@@ -202,9 +248,110 @@ decode graph 分配 0.021 GB；报告
 修复为补齐显式 W8A8 Linear 缺失的既有 scaled GEMM 全局符号，
 未写回社区源码。CPU FP32 工具仍拒绝量化模型参考，此项未完成完整精度/
 语义验收。cookbook 固定 commit、参数差异与实际 dirty adapter 戳见
-[启动就绪记录](l15-readiness-plan.md#真实-30b-channel-int8-模型启动与生成)。
+[启动就绪记录](history/l15-readiness-202611-log.md#真实-30b-channel-int8-模型启动与生成)。
 
 ### 10-24 validation-host-18 单测三连（P1.1/1.2/1.3，卡 7）
 - **1.1 topk_v2 ragged 转正**：96 例 parity 集合语义 0 错（rem/topk/L/offsets 正交扫，4 reps）；非确定性=atomicAppend 发射到达序（topk_impl.cuh 612/617，paged 臂同源同在跑）；2.2-2.9× 快过 legacy；`HCU_TOPK_V2_RAGGED` 默认翻 1（validation-host-18 容器 dsa_topk_backend.py 已改）。**方法论：topk parity 一律比排序后集合，双跑分离"错"与"序"。**
 - **1.2/1.3 口径翻案（双双达标）**：rmsnorm 5.3-5.9µs=das 地板；router 10µs 快 das 2.8×。教训入库：**①trace 家族和÷单核地板=假膨胀 ②墙钟(bench loop)≠核时，必须 CUDA graph 重放 ③旧 trace 不代表当前树**（act_and_mul 3.1ms/reduce_bf16 438µs 都是 1.0a/b 前旧账）。P1 真残余=eager 段 per-call 50-90µs host 开销（→1.5/1.6）。
 - 容器遗产（/root）：topk_ragged_parity/bench.py、rmsnorm_bench2.py、router_graph/matrix.py、router_baseline.pt——复跑即可。
+
+## HY3 Channel FP8 适配（SGLang 0.5.22）
+
+HY3 Channel FP8 使用每个 token 一份 scale。DeepEP 翻译桥此前将 FP8 的 `quant_group_size` 固定为 128，忽略 plugin 请求的 0，导致低延迟 masked GEMM 收到不匹配的 scale 形状。桥现在透传该参数，默认值仍为 128；Channel FP8 由 plugin 显式选择 0。普通 FP8、UE8M0 和 BF16 的默认调用不变，vLLM 不使用此 SGLang 桥。
+
+AITER all-reduce 的启动探测改为检查模块文件是否存在，避免在设备绑定前导入 GPU 通信模块。文件存在仅表示可以尝试加载，实际使用仍需通过设备与通信能力检查。
+
+### 验证范围
+
+- 离线回归：`tests/adapter/test_deepep_dispatch_scale.py` 覆盖默认 128、显式 0/128、UE8M0 与 BF16 的参数透传；`tests/adapter/test_hcu_env_ar_norm.py` 覆盖 AITER 模块存在、缺失及探测不执行模块代码。两文件共 3 项测试及 3 个子例通过，`tests/test_ops_cpu.py` 38 项通过，adapter L0 通过。这些检查不代替原生内核数值验证。
+- 2026-11-11 组合验证：官方 SGLang `baa9befa`、adapter `9e616cc`、plugin `3eb48a8`；DTK 26.10、Python 3.12、Torch 2.11。HY3 Channel FP8 在 TP8 / attention DP8、DeepEP、FA3、E4M3 KV、NEXTN 配置下完成启动与问答。固定 GSM8K 5-shot 200 题，数值答案正确 197/200，正确且正常结束 196/200；1 题达到输出长度上限，0 请求错误。该结果属于两仓与计算库的组合，不能归为本桥的独立精度结论。
+- NEXTN 缓存回归共 128 次请求完整返回，未复现负尺寸 `-64` 或服务退出；合成 token 输入的冷、热缓存输出仍有差异，原因未定位。早期 0.9 显存配方曾 OOM，8 并发曾出现 NEXTN padding 失败；上述缓存回归没有按这两个原始配方复验。
+
+### 依赖与限制
+
+Channel FP8 需要配套 plugin 显式传入 `quant_group_size=0`。上述组合验证使用静态显存比例 0.70 和部署环境中的 DeepGEMM v4 兼容扩展；该扩展不在本仓提交内，仅安装两仓不能保证复现。AITER custom all-reduce 初始化存在回退警告，通信后端未验收。现有启动环境变量尚未完成配置治理，与 sglang-das 0.5.18 的同条件性能、精度对照也尚未完成。
+
+## Qwen3.8-Flash-Next W4A8 / INT8 PLE（2026-11-04）
+
+官方 v0.5.22 `baa9befa381511cd4d56f83980951e5a45fffc6d`，adapter 基线 `8bed438`，组合 plugin 基线 `fa592b5`；增量实现来自 DAS PR #586 `35719b4` 与 compact/local-INT8/MM patch。plugin 实现与配置见 `sglang-plugin-das` 仓的 `docs/hcu-sglang-development.md`、`docs/configuration.md`；逐文件来源与原始测量保存在任务交付证据中。
+
+adapter 负责 `mapped_host_view=dtk`、`qsa_scatter=triton`、HIP QSA prep 的官方 eager fallback、gfx936 QSA prefill LDS 护栏，以及 `qsa_mqa=boltops`。MQA 仅对 gfx936/BF16/4×128 query heads 使用 vendor，缺库或超出几何时保留 Torch 有效基线；vendor 执行错误直接传播。`HCU_DISABLE_OPS=qsa_mqa` 回退 Torch。catalog 条目保留 candidate，不将单一模型结果外推为 production。
+
+算子验收包含 mapped-host INT8/BF16/FP8 变 ID Graph、QSA reserved-slot/变索引 scatter、fresh/chunk prefill 数学，以及 MQA ragged、零长度重新激活、分页 decode 变输入 Graph 与快关。测试位于 `tests/kernels/test_mapped_host_hip.py`、`test_qsa_scatter_triton.py`、`test_qsa_prefill.py` 和 `tests/vendor/test_qsa_mqa.py`。
+
+组合服务在 gfx936/DTK2610/Python3.12、TP4/attention-DP4/EP4、INT8 pinned PLE、BF16 计算、E5M2 KV、fa3、EAGLE 3 steps/4 tokens、full decode Graph 下通过 smoke 32/32（含图像）、扩展 5/5。131072/1024、C1、seed42、零缓存、四次预热后三次中位数 **TTFT 17.834771 s / TPOT 11.343052 ms**；GSM8K **1287/1319=97.5739%**、错误 0、length 截断 2。历史 DAS 为 18.245208 s / 12.170289 ms、1287/1319，来自另一节点/镜像；同分不表示逐题输出一致。
+
+最终配方使用 `GPU_MAX_HW_QUEUES=2`、全局 prefill 预算 131072、AITER 通信及 CPU benchmark 客户端。queue1 候选曾在全量中挂起；queue2 全量约 23 分钟未复现，根因未完全确定。使用隔离 venv 与显式官方路径验证模块归属；官方树含 adapter 基线 bootstrap portability 改写，本次 QSA 接入采用 rebind/provider。E5M2 为 KV 存储，计算前转换 BF16；未验证 FP8 GEMM、其他架构、其他并行规模、file offload 或 vLLM。
+## DeepSeek V4.1 channel-FP8 HumanEval 回归（2026-11-12）
+
+验证环境：8×BW1101/gfx938，驱动
+`6.4.2-V2.1.0`，Torch `2.11.0+dtk2610.2611031312.g529def`，Triton
+`3.6.0+dtk2610.torch2110.2611031429.g92771c`。
+
+固定源码：official `baa9befa381511cd4d56f83980951e5a45fffc6d`；adapter
+基线 `780da02dc3961b762e6eadb48b3ec829736bb448` 加本次 AITER MoE clamp
+参数修复；plugin `1f5642095da5aa1701c046964eebb76d8992606e`。official 和
+plugin 工作树保持干净。实际模型为
+`/models/DeepSeek-V4.1-Flash-1017-Channel-FP8-w8a8`。
+
+```bash
+source /opt/open-sglang/env.sh
+cd /home/scripts/SGlang_Docs
+bash run_dpsk-v41.sh 10015 /models/DeepSeek-V4.1-Flash-1017-Channel-FP8-w8a8
+# 服务就绪后，另一个 shell：
+source /opt/open-sglang/env.sh
+cd /home/scripts/acc_test
+limit=all bash run-all-acc.sh /module/DeepSeek-V4.1-Flash-Channel-FP8 10015 dataset=humaneval
+```
+
+服务为纯 TP8、DSPARK block=5、默认 folded proposal、decode Graph max bs=32、
+max-running-requests=32，关闭 prefill Graph/radix cache，mem-fraction=0.85。
+评测保留原脚本 temperature=1、top_p=1、max_tokens=4096、stream=true、
+并发64、seed42和原评分规则。请求中的 `/module/...` 是模型名称，服务实际
+加载上述 `/models/...` 权重。
+
+结果：原 nmz110 92/164（56.1%）；nmz18 修复前关闭 folded proposal 的诊断
+对照96/164（58.5%）；nmz18 修复后恢复原配置158/164（96.3%）。三个条件
+分别记账，关闭折叠草稿不作为最终部署方案。GSM8K 本轮未复测。
+
+根因：AITER MoE 桥漏传 `MoeRunnerConfig.swiglu_limit=10`。修复优先传递
+非 None 的 swiglu limit，其余保留 gemm1_clamp_limit；运行日志确认 target
+ASM 和 draft Triton 均收到10。精度分布与反例详情见本仓 skill 的
+`references/precision-triage.md`。新增参数合同5项、真实HCU三形状数值/变输入
+Graph 3项、已有相关MoE合同8项、官方
+`test/registered/unit/layers/moe/test_flashinfer_cutlass_swiglu_params.py`
+8项通过。官方测试隐藏GPU时因HIP导入设备查询而无法收集，在真实HCU+
+adapter环境重跑通过；不把前次collection error记为skip或通过。L0 GREEN。
+
+完整评测输出：`/home/scripts/acc_test/nmz_DeepSeek-V4.1-Flash-Channel-FP8/20261112_125007/humaneval`。
+容器运行证据：`/tmp/hcu-humaneval-clamp-fixed.kojfa_ba`；诊断对照：
+`/tmp/hcu-humaneval-nmz18-resume.vwcy4A`。
+
+## HY3 INT8：原生分发入口
+
+SGLang 兼容包装保留原生量化分发入口，配套 Plugin 可显式传递 INT8 类型，既有 BF16/FP8 参数语义不变。运行修改位于 `hcu_adapter/bridges/sglang.py`，回归复用 `tests/adapter/test_deepep_dispatch_scale.py`。这只处理分发接线，不修改通信或矩阵乘法内核；同步主仓后的组合验证另记。
+
+## HY3：保留 prefill Graph
+
+只将 breakable Graph 的驱动查询绑定到 HIP，替代整体关闭 prefill Graph 的旧方案。修改位于 `prefill_bcg_gate.py`，沿主仓先注册后发布原则；`HCU_DISABLE_OPS=prefill_graph_driver` 在新进程中跳过安装。复用现有测试覆盖 HIP、非 HIP、重复安装、注册失败及停用。其他模型/架构的 Graph 支持不据此宣称通过。
+
+## HY3 NEXTN：空闲对象缺字段
+
+缺少 `kv_indptr` 的空闲验证对象在读取时抛出 AttributeError；现于已有 SGLang 桥中仅补缺失类字段 None，不覆盖现有字段或实例值。先注册成功再发布字段；停用项为 `HCU_DISABLE_OPS=nextn_idle_metadata`。回归合入已有 `test_spec_h2d_pin.py`，保留主仓精简后的既有用例，不重新引入已删除的历史测试。
+
+## HY3：保留显式 FA3 + E5M2
+
+在 `HCU_FA_IMPL=vendor`、真实 HIP 和支持的 HCU 架构下，保留用户指定的 FA3 + E5M2，避免官方检查切到 Triton。其他配置继续原检查，已有消费者全部登记成功后再替换。运行修改为 `fa_vendor.py`，回归复用 `tests/vendor/test_flash_attn.py`。配套 Plugin 运行环境显式选 `SGLANG_KV_LAYOUT_HCU_FA=1`，布局默认仍关闭。完整新 DeepGEMM wheel 为外部依赖，本仓不携带补充扩展或构建工具。同步后的验证另记，不继承旧成绩。
+
+
+### 2026-11-17：同步主仓后的组合复测
+
+固定公司 main：Adapter `253989dd224eec574c449b3516b2ace0d45ffe0d`，Plugin `3fab2fd6c723c0c8b17b44a565fc33d259464916`；官方 SGLang 0.5.22。仅保留两仓额外适配，不重复计入主仓已有 FP8/NEXTN 修复；没有新增仓库文件，纯重复布局整理提交排除。
+
+本轮 Adapter 针对性回归 54 项、Plugin 23 项通过；两仓 L0、档位清单与导览快照检查通过。Adapter L0 有 32 项警告。Plugin 一项已有 CPU 用例会调用 GPU 专用量化接口，本轮排除，不宣称全量测试通过；UI/导览浏览器视觉验收未执行。
+
+原用户启动脚本 SHA256 `9b39038c102e5d1df9e3ad98b29d5ac35cbbdefdda8a149c4654a7abe7bab7cc` 前后不变。HY3 INT8 W8A8、TP8/attention DP8、DeepEP auto、ASM=0、NEXTN 2/1/3、FA3、E5M2、page64、显存比例0.85、decode Graph BS16。外层显式选择 vendor FA、HCU KV 布局、本次源码与完整 DeepGEMM wheel；这不等于没有额外部署配置。官方会把 NEXTN 名称规范化为 EAGLE，并保留同一条 NEXTN/MTP 路径。
+
+完整服务启动，8 个并发基础问答均为完整正确答案且正常停止；实际后端仍为 FA3，decode Graph=full、prefill Graph=breakable，日志有 Graph 执行。完成后仅停止本任务进程，端口关闭且显存释放。本轮未重跑 GSM8K、稳态性能、其他模型或其他架构，基础问答不替代精度/性能验收。
+
+使用完整 DeepGEMM `2.1.0.post1+das.dtk2610.unknown` wheel，SHA256 `8b622a05075a705bf28d0d7bfe08a0d3402503bea0706d2bb72a84a8d461e59f`。没有新增内核实现、构建工具或补充扩展。原始日志、启动与清理记录、测试时 SHA 和最终 SHA 保存于仓库外 `hy3/pr_sync_20261117/`；提交内仅更新此说明。

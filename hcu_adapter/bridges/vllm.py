@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import MutableMapping
 from dataclasses import dataclass
@@ -13,14 +14,17 @@ from pathlib import Path
 
 from packaging.version import InvalidVersion, Version
 
-from hcu_adapter.extensions import (
+from hcu_adapter.infra.extensions import (
     ExtensionContext,
     ExtensionReport,
+    ExtensionStatus,
     ExtensionCommitError,
     RequiredExtensionError,
     activate_extensions,
 )
-from hcu_adapter.runtime_lifecycle import ProcessLocalLifecycle
+from hcu_adapter.infra.runtime_lifecycle import ProcessLocalLifecycle
+
+LOG = logging.getLogger("hcu.adapter")
 
 
 SUPPORTED_VLLM_RELEASE_PREFIXES = frozenset({(0, 32), (0, 33)})
@@ -33,6 +37,10 @@ _TOOLCHAIN_ROOTS = ("DTKROOT", "ROCM_PATH", "HIP_PATH")
 _VLLM_RUNTIME_LIBRARY = "VLLM_CUDART_SO_PATH"
 _REQUIRED_EXTENSIONS = "HCU_ADAPTER_VLLM_REQUIRED_EXTENSIONS"
 _REQUIRED_CAPABILITIES = "HCU_ADAPTER_VLLM_REQUIRED_CAPABILITIES"
+_FP4_INDEXER_CAPABILITIES = frozenset({
+    "hcu-v41-fp8-indexer-eager-reference",
+    "hcu-e2m1-packer-lowering",
+})
 
 
 class VllmCompatibilityError(RuntimeError):
@@ -246,18 +254,80 @@ def require_runtime_healthy() -> None:
 
     Unknown/healthy state is allowed; this is not evidence activation completed.
     Reports remain available after failure for diagnosis.
+
+    Owner aggregation is deferred while the protected runtime callback is still
+    running: owners are installed *by* that callback, so an owner that is
+    requested but not yet installed is a boot-order fact, not a failure. The
+    post-activation gate after ``run_once`` performs the full aggregation and
+    remains the check that refuses "requested but never activated".
     """
     _RUNTIME_ACTIONS.require_runtime_healthy()
+    if _RUNTIME_ACTIONS.runtime_action_in_progress():
+        return
     from hcu_adapter.bridges.vllm_mhc import require_healthy as require_mhc_healthy
     from hcu_adapter.bridges.vllm_sparse_indexer import require_healthy as require_indexer_healthy
 
     require_mhc_healthy()
     require_indexer_healthy()
+    from hcu_adapter.bridges.vllm_flashmla import require_healthy as require_flashmla_healthy
+
+    require_flashmla_healthy()
+    from hcu_adapter.bridges.vllm_flashmla_decode import require_healthy as require_flashmla_decode_healthy
+
+    require_flashmla_decode_healthy()
+    from hcu_adapter.bridges.vllm_pcp import require_healthy as require_pcp_healthy
+
+    require_pcp_healthy()
 
 
 def require_extension_healthy(capability: str) -> None:
     """Check a unique current-process ACTIVE owner without activation/repair."""
     _RUNTIME_ACTIONS.require_extension_healthy(capability)
+
+
+def _configure_indexer_kv_dtype(vllm_config) -> None:
+    """Resolve the paired V4.1 FP4 default before Core builds model/cache state."""
+    from hcu_adapter.features.dsv41.fp4_indexer import (
+        Fp4AdmissionError,
+        default_requested,
+        validate_config,
+    )
+
+    if not default_requested(vllm_config):
+        return
+    active = frozenset(
+        capability
+        for report in extension_reports()
+        if report.status is ExtensionStatus.ACTIVE
+        for capability in report.capabilities
+    )
+    if not _FP4_INDEXER_CAPABILITIES.issubset(active):
+        return
+    for capability in sorted(_FP4_INDEXER_CAPABILITIES):
+        require_extension_healthy(capability)
+    cache = vllm_config.cache_config
+    provisional = (vllm_config.parallel_config.prefill_context_parallel_size == 1
+                   and getattr(cache, 'user_specified_block_size', None) is False
+                   and cache.block_size == getattr(cache, 'DEFAULT_BLOCK_SIZE', None))
+    try:
+        plan = validate_config(vllm_config, block_size=64 if provisional else None)
+    except Fp4AdmissionError as exc:
+        LOG.debug("Keeping DeepSeek V4.1 indexer_kv_dtype=auto: %s", exc)
+        return
+    if plan is None:
+        return
+    from hcu_adapter.features.dsv41.v41_fp8_indexer import fp4_reader_ready
+
+    if fp4_reader_ready() is False:
+        LOG.info("Keeping DeepSeek V4.1 indexer_kv_dtype=auto: FP4 reader unavailable")
+        return
+    if provisional:
+        cache.block_size = plan.manager_block
+    vllm_config.attention_config.indexer_kv_dtype = "mxfp4"
+    LOG.info(
+        "HCU DeepSeek V4.1 indexer_kv_dtype auto -> mxfp4 "
+        "(paired FP4 providers active, explicit indexer_kv_dtype=fp8 selects FP8)"
+    )
 
 
 def install() -> None:
@@ -278,6 +348,13 @@ def _hcu_platform_class() -> type:
         device_name = "hcu"
 
         @classmethod
+        def get_unquantized_aiter_moe_compatibility(cls):
+            # Optional v0.33 public seam; no global AITER/CDNA override.
+            from hcu_adapter.bridges.vllm_moe_aiter import get_compatibility
+
+            return get_compatibility()
+
+        @classmethod
         def use_custom_allreduce(cls) -> bool:
             """Extend official admission only for healthy requested HCU AITER.
 
@@ -291,7 +368,7 @@ def _hcu_platform_class() -> type:
             status = state()  # Read-only; fatal state/policy drift must refuse.
             if super().use_custom_allreduce():
                 return True
-            from hcu_adapter import hcu_env
+            from hcu_adapter.infra import hcu_env
             from vllm import envs
 
             if (
@@ -308,10 +385,36 @@ def _hcu_platform_class() -> type:
                 and detection.architecture in SUPPORTED_HCU_ARCHES
             )
 
+        _worker_selector = None
+
+        @classmethod
+        def pre_register_and_update(cls, parser=None) -> None:
+            super().pre_register_and_update(parser)
+            from .vllm_cli import add_config_switches
+
+            add_config_switches(parser)
+
+        @classmethod
+        def register_worker_selector(cls, selector):
+            """Let one extension specialize the default worker after Core config."""
+            if not callable(selector):
+                raise TypeError("HCU worker selector must be callable")
+            if cls._worker_selector is not None and cls._worker_selector is not selector:
+                raise RuntimeError("HCU worker selector already has an owner")
+            cls._worker_selector = staticmethod(selector)
+
         @classmethod
         def check_and_update_config(cls, vllm_config) -> None:
             require_runtime_healthy()
-            # Upstream owns config validation/defaults, including worker choice.
+            from .vllm_cli import validate_config_switches
+
+            validate_config_switches(vllm_config)
+            _configure_indexer_kv_dtype(vllm_config)
+            # Core validates the effective config and chooses its default worker.
+            from hcu_adapter.bridges.vllm_moe_aiter import configure_padding_policy
+
+            configure_padding_policy(vllm_config.kernel_config.moe_backend)
+            worker_was_auto = vllm_config.parallel_config.worker_cls == "auto"
             super().check_and_update_config(vllm_config)
             from hcu_adapter.bridges.vllm_model_load import (
                 OFFICIAL_MODEL_LOAD_WORKER,
@@ -324,6 +427,19 @@ def _hcu_platform_class() -> type:
                 and parallel.distributed_executor_backend in ("uni", "mp")
             ):
                 parallel.worker_cls = POST_MODEL_LOAD_WORKER
+            if (worker_was_auto and cls._worker_selector is not None
+                    and parallel.worker_cls in ("auto", OFFICIAL_MODEL_LOAD_WORKER,
+                                                POST_MODEL_LOAD_WORKER)):
+                parallel.worker_cls = cls._worker_selector(parallel.worker_cls, vllm_config)
+
+        @classmethod
+        def get_kv_cache_config_builder_cls(cls, vllm_config) -> str:
+            require_runtime_healthy()
+            from .vllm_kv_cache import select_kv_cache_builder
+
+            return select_kv_cache_builder(
+                vllm_config, super().get_kv_cache_config_builder_cls(vllm_config)
+            )
 
         @classmethod
         def get_attn_backend_cls(
@@ -390,6 +506,29 @@ def _ensure_hcu_platform_selected() -> None:
         )
 
 
+def _log_post_install_bindings() -> None:
+    """Diagnosability only: report bindings AFTER every install_* has run.
+
+    The bootstrap-time "HCU adapter runtime:" summary and HCU_ADAPTER_DUMP
+    snapshot are taken in common.install(), i.e. before any install_* in this
+    function. They cannot say whether a bridge bound anything; this line and
+    the rewritten dump can. It records state, it does not activate or repair.
+    """
+    from hcu_adapter.infra import hcu_env
+    from hcu_adapter.infra import registry
+
+    bound = registry.records()
+    for op in ("vllm_flashmla_prefill", "vllm_flashmla_decode"):
+        LOG.warning("HCU adapter install-done: %s <- %s", op,
+                    bound[op]["impl"] if op in bound else "NOT-BOUND")
+    dump_path, _ = hcu_env.resolve("HCU_ADAPTER_DUMP")
+    if dump_path and dump_path != "1":
+        try:
+            registry.dump(dump_path)
+        except OSError as error:  # diagnostics must never break the boot
+            LOG.warning("HCU adapter install-done: dump refresh failed: %s", error)
+
+
 def hcu_runtime_plugin() -> None:
     """Apply the required vLLM runtime guards once in each HCU process."""
     # A healthy fork must first activate/adopt its inherited mHC registration;
@@ -412,6 +551,19 @@ def hcu_runtime_plugin() -> None:
         from hcu_adapter.bridges.vllm_fp8 import install as install_fp8_fallback
 
         install_fp8_fallback()
+        from hcu_adapter.bridges.vllm_scaled_mm import install as install_scaled_mm
+
+        install_scaled_mm()
+        if Version(vllm_version).release[:2] == (0, 33):
+            from hcu_adapter.bridges.vllm_input_quant_lightop import (
+                install as install_input_quant_lightop,
+            )
+            from hcu_adapter.bridges.vllm_input_quant_int8_lightop import (
+                install as install_input_quant_int8_lightop,
+            )
+
+            install_input_quant_lightop()
+            install_input_quant_int8_lightop()
         from hcu_adapter.bridges.vllm_allreduce import prepare_runtime
 
         prepare_runtime()
@@ -421,6 +573,18 @@ def hcu_runtime_plugin() -> None:
         from hcu_adapter.bridges.vllm_sparse_indexer import install as install_sparse_indexer
 
         install_sparse_indexer()
+        from hcu_adapter.bridges.vllm_flashmla import install as install_flashmla_prefill
+
+        install_flashmla_prefill()
+        from hcu_adapter.bridges.vllm_flashmla_decode import install as install_flashmla_decode
+
+        install_flashmla_decode()
+        from hcu_adapter.bridges.vllm_pcp import install as install_pcp
+
+        install_pcp()
+        from hcu_adapter.bridges.vllm_minimax_abi import install as install_minimax_abi
+
+        install_minimax_abi()
         context = ExtensionContext(
             adapter_version=_installed_adapter_version(),
             vllm_version=vllm_version,
@@ -435,6 +599,7 @@ def hcu_runtime_plugin() -> None:
             _RUNTIME_ACTIONS.record_extension_reports(exc.reports)
             raise
         _RUNTIME_ACTIONS.record_extension_reports(reports)
+        _log_post_install_bindings()
 
     _RUNTIME_ACTIONS.run_once("vllm-runtime", initialize)
     require_runtime_healthy()
@@ -442,7 +607,7 @@ def hcu_runtime_plugin() -> None:
 
 def _required_names(variable: str) -> frozenset[str]:
     """Read a comma-separated list; reject malformed nonempty requirements."""
-    from hcu_adapter import hcu_env
+    from hcu_adapter.infra import hcu_env
 
     raw, _source = hcu_env.resolve(variable)
     if not raw.strip():

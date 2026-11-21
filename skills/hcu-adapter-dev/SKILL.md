@@ -16,7 +16,19 @@ description: hcu-sglang-adapter 仓库开发规约：算子垫片/影子库新�
 以功能和精度为验收标准，性能不设门槛；每日追新推迟到其余优化完成后。
 历史磁盘 text/JIT 补丁逐项迁移，不能把运行时写回源码称为“零修改”。
 迁移函数绑定需测试已缓存别名和 spawn 子进程；仅换 module 属性可能遗漏
-早先的 `from ... import ...`。`dist_bc` 已以保留函数对象和私有 numpy
+早先的 `from ... import ...`。
+
+SGLang spawn workers must select their assigned GPU before common/host bootstrap
+imports AITER or other native GPU libraries. The parent launch context carries a
+private one-use device hint; preserve its yielded logical device, visibility,
+existing callable aliases and parent environment on exceptions. Auxiliary
+non-spawn helpers must not consume the hint as a GPU assignment. See
+`docs/sglang-spawn-device.md` and `tests/adapter/test_sglang_spawn_device.py`.
+The exact CPython resource-tracker helper must return before hardware detection;
+it inherits the host environment but only serves a standard-library pipe. Match
+the original interpreter command, without skipping normal spawn/model commands.
+
+`dist_bc` 已以保留函数对象和私有 numpy
 facade 的运行时桥替代磁盘补丁；不可重新引入 common.py 写回。
 `moe_dualstream_gate` 同样已迁移为保留函数对象的运行时分支适配；
 仅作用于 MoE forward 的私有 capture predicate，不能改全局 capture 状态
@@ -183,7 +195,33 @@ MoE router 的有限分数并列须遵循社区较小专家 ID 优先规则，�
     同时放开 FP8/GEMM/MHA/MLA 等不相关能力。只在最窄 seam 表达真实能力，
     测试至少覆盖普通、MLA、Sparse MLA 路由以及安装态 wheel 的实际 backend 日志。
 
+14. **桥内补绑宿主算子只准 import 包面**（catalog 分档，L0
+    `ops-import-depth` 执法）：`sglang.kernels.ops.<域>` 是宿主 fused-op
+    的调度面（priority + capability）；`…ops.<域>.<模块>` 是模块体，import
+    它等于越过 catalog 钉死一个实现——CUDA 优先 JIT 时在 HCU 上直接触发
+    ninja 现编（实证：L1 kernels 段 `HCU JIT: built
+    sgl_kernel_jit_activation_... in 33s`）。例外必须同行注记：`JIT 唯一实现`
+    （无替代档）或 `替代档: <符号/文件>`（替代档存在但签名/调用形不覆盖）。
+    守卫测试锁三面：HIP 平台语义 → 解析到 AOT（对照 CUDA → JIT）、调用后
+    `load_jit` 计数为 0 且 JIT cache 无新增、档位 env（如 HCU_SILU_MUL_IMPL）
+    继续生效；不能只测"绑上了"（范本：
+    `tests/adapter/test_bridge_activation_rebind.py`）。
+
 ## 任务路由（做某类事之前先读对应参考文档）
+
+### vLLM 0.33 Layer Split 配套接口
+
+- 用目标 Core 已公开的 parser、platform KV builder 和 worker 初始化接口。
+  Adapter 负责注册、准入、冲突校验和进程生命周期。Plugin 负责选择 builder、
+  解释每层的 owner/接收区、在 worker 分配前应用布局。依赖方向为 Plugin → Adapter。
+- `--enable-layer-split` 合入 `additional_config.hcu_layer_split`。校验
+  `--additional-config` 参数顺序、冲突、静态 EPLB 共存及 worker 收到的配置。
+  PCP1 的 dSpark 草稿只使用自己的配置副本。旧 Adapter 路径继续支持普通部署；
+  在准备发布 Layer Split 的 wheel 或镜像时，核对两仓配套 hooks 和实际解析结果。
+- 验收记录绑定最终 Adapter、Plugin、Core、算子和模型权重的实际来源。分开记录
+  CPU 契约、HCU 路由及数值对拍、已准入的 Graph/前缀/SWA Replay、长输入与
+  HE32、性能和正常退出。默认 RoPE 还需同版本对拍明确的 stock 路线、各算子的
+  实际调用和独立快关。历史环境的通过结果按原来源保留。
 
 vLLM 0.33/gfx936 的 C4 indexer 候选见
 `docs/frameworks/vllm033-sparse-indexer.md`。复用官方 logits/top-k 和 public
@@ -204,6 +242,11 @@ Adapter，优先 public OOT 委托官方 Torch pre/post 和公开 IR RMS；原�
 小批次通过不覆盖大 prefill 舍入差异。capture 后须先 replay 建立基线，
 空 Graph 与非空分开。候选默认 stock；注册、两层缓存、late drift、
 spawn/fork 和四质量维度须留证，CPU lifecycle 不能作为模型/设备通过。
+可选 FlashMLA 的隐式默认须先探测 vendor wheel 与实际 ABI，缺失时保持 stock；
+显式 native 与已发布后的失败锁存仍严格。跨 vLLM 版本的执行桥按真实 call site
+适配，不在仍支持的旧宿主中无条件读取新版私有符号。packed KV 设备夹具须从
+有限输入经官方 writer 生成，并以独立解码/attention 参考检查改输入 replay，
+不能用随机 uint8 的 finite 断言代替合法 KV；细节见 `docs/frameworks/vllm033.md`。
 注册后直接重试遇到非法策略也须锁存失败；恢复配置不得重新准入。
 多个内置 owner 组合时，宿主健康边界须逐个检查；同名函数导入必须独立绑定，
 避免后一次覆盖前一次。回归同时覆盖各 owner 失败和全健康路径。
@@ -215,6 +258,10 @@ vLLM worker/executor/env-cache 覆盖查询归 `bridges.vllm_model_load`，薄 W
 导入，禁止共享层反向导入宿主桥作兼容壳。验证必须含双宿主 import-blocking
 下的真实共享 dispatch，而不只检查 import 成功；详见
 `docs/frameworks/vllm032-post-model-load.md`。
+
+迁移配置模块到 `infra/` 时，配置发现仍须锚定 `sitecustomize.py` 旁的部署根，
+不能随模块目录移动。回归从其他工作目录启动，分别用源码与实际构建的 wheel
+验证根配置、cwd/显式路径优先级及坏配置拒绝，并覆盖双宿主策略解析。
 
 vLLM public registry/extension health 修改先读 `docs/vllm-flash-registry.md`。
 共享 lifecycle 机制放 `runtime_lifecycle.py`，不能长在宿主薄桥内；改动须
@@ -231,6 +278,12 @@ optional 误判为 fatal。保留 callback 原有捕获边界，不新增恢复�
 详见 `docs/vllm-commit-fatal.md` 与测试参考。
 
 > 全仓文档地图与失效信号清单见 `docs/reading-guide.md`（新会话先读它）。
+
+CI 宿主标签只选择额外 HCU 车道，不排除公共检查：`sglang`/`ci-sglang`
+（兼容 `ci-hcu`）与 `vllm`/`ci-vllm` 各自触发宿主车道，`ci-all` 同跑。
+公共 CPU workflow 同时保留 common/bootstrap/lifecycle 契约，HOSTnone 并隐藏设备。
+标签事件核对 `github.event.action`，不能把 `labeled` 当作 event_name；不同标签
+的 concurrency 组隔离。完整触发矩阵与一次触发语义见 `docs/ci.md`。
 
 | 你要做的事 | 先读 |
 |---|---|
@@ -324,3 +377,15 @@ skills/hcu-adapter-dev/  本 skill
   skill/对应参考文档，不等最终总结；一次性环境日志只留验证证据。README
   是指针型入口，静态资产表只活在 catalog/models.md（已立规约：README
   不维护清单、不留本地任务编号）。
+
+Runner registry fork guards run before acquiring locks; rebuild child locks and reject inherited active registrations. Recheck process/ownership after predicates and factories, including false matches and successful returns. Regression tests cover a real fork with another parent thread holding the lock and forks inside callbacks.
+
+MiniMax 新能力的环境治理：新功能不再引入私有 env；适用契约内的性能路径默认启用，数值 dtype/后端及制品输入使用公开配置。调试 capture/逐批布局/路由注解应从生产调用链移除；加载凭据、ABI 与同代 IPC 校验属于正确性契约，不能一并删除。参见 `docs/env-vars.md` 的 MiniMax 部署边界及独立 Plugin 的 `docs/minimax31_configuration.md`。
+
+原生 SGLang diffusion 优先公开 OOT，保留真实 HIP 能力；不得补造 vendor
+属性。独立 worker registry 与 local-rank 设备合同须实际验证；可选 provider
+按既有 ABSENT/deny 表达缺失，不能让通配 stub 造成能力探测假阳性。
+平台与部署见 `docs/image-dtk2610.md` §8，非分页 attention 见
+`docs/dense-flashattention.md`；partial RoPE、输出布局、预导入消费者和
+变输入 Graph 的回归要求见 `references/test-suite.md`。原生崩溃先定位栈，
+部署规避须回到原模型验证，一次性调试过程留任务证据。

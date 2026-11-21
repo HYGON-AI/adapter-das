@@ -47,8 +47,10 @@ class _VarlenFA:
     def __call__(self, q, k, v, causal, scale):
         tq, h, d = q.shape
         tk = k.shape[0]
-        cq = torch.tensor([0, tq], dtype=torch.int32, device=q.device)
-        ck = torch.tensor([0, tk], dtype=torch.int32, device=q.device)
+        # Shape-only metadata must not enqueue pageable CPU copies during
+        # capture. Build the same CU values on device, as the dense bridge does.
+        cq = torch.arange(2, dtype=torch.int32, device=q.device) * tq
+        ck = torch.arange(2, dtype=torch.int32, device=q.device) * tk
         # ABI drift across wheel versions: 2.6.x returns (out, lse), 2.8.x
         # (out, lse, rng_state?) — inspectable shapes first, tensor wins.
         res = self.fn(
@@ -109,7 +111,8 @@ def _backend_sanity(b):
     r = sdpa_ref(q.float(), k.float(), v.float(), True, scale)
     q0, k0, v0 = q.clone(), k.clone(), v.clone()
     # backends take the 3D [t, h, d] varlen form (same as the matrix calls)
-    o = b(q.squeeze(0), k.squeeze(0), v.squeeze(0), True, scale).float()
+    o = b(*(t[0].transpose(0, 1).contiguous() for t in (q, k, v)),
+          True, scale).transpose(0, 1)[None].float()
     for nm, t0, t1 in (("q", q0, q), ("k", k0, k), ("v", v0, v)):
         if not torch.equal(t0, t1):
             print(f"[fa-stress] WARNING: {b.name} modified its input "
@@ -141,7 +144,11 @@ def sdpa_ref(q, k, v, causal, scale):
             tq, tk, dtype=torch.bool, device=q.device
         ).tril(diagonal=tk - tq)
         att = att.masked_fill(~mask, float("-inf"))
-    return F.softmax(att, dim=-1) @ v
+    # Bottom-right causal attention permits fully masked rows when Tq>Tk.
+    # FA defines their output as zero. Avoid NaN in the independent oracle.
+    valid = torch.isfinite(att).any(dim=-1, keepdim=True)
+    probabilities = F.softmax(torch.where(valid, att, torch.zeros_like(att)), dim=-1)
+    return (probabilities * valid) @ v
 
 
 def check(name, out, ref):
@@ -198,9 +205,9 @@ def test_fa_scenario_matrix(dtype, hd, qo, kv, causal):
     for b in backs:
         try:
             out = b(
-                q.squeeze(0).contiguous(),
-                k.squeeze(0).contiguous(),
-                v.squeeze(0).contiguous(),
+                q[0].transpose(0, 1).contiguous(),
+                k[0].transpose(0, 1).contiguous(),
+                v[0].transpose(0, 1).contiguous(),
                 causal, scale,
             )
         except NotImplementedError as e:
@@ -208,7 +215,7 @@ def test_fa_scenario_matrix(dtype, hd, qo, kv, causal):
         check(
             f"{b.name} qo={qo} kv={kv} hd={hd} "
             f"{str(dtype).split('.')[-1]} causal={causal}",
-            out, ref,
+            out.transpose(0, 1)[None], ref,
         )
 
 
@@ -248,8 +255,103 @@ def test_fa_graph_replay_tracks_fresh_inputs():
                 g.replay()
                 torch.cuda.synchronize()
                 ref = sdpa_ref(
-                    nq.view(1, h, qo, d).float(),
-                    nk.view(1, h, kv, d).float(),
-                    nv.view(1, h, kv, d).float(), True, scale,
+                    nq.transpose(0, 1)[None].float(),
+                    nk.transpose(0, 1)[None].float(),
+                    nv.transpose(0, 1)[None].float(), True, scale,
                 )
-            check(f"{b.name} graph-replay[{trial}]", out, ref)
+            check(f"{b.name} graph-replay[{trial}]", out.transpose(0, 1)[None], ref)
+
+
+@pytest.fixture
+def fallback_host(monkeypatch):
+    import sys
+    import types
+    from hcu_adapter.infra import hcu_env, registry
+
+    monkeypatch.setattr(torch.version, "hip", "test-hip")
+    monkeypatch.setattr(hcu_env, "resolve", lambda name: ("vendor", "explicit"))
+    monkeypatch.setattr(hcu_env, "arch_name", lambda: "gfx936")
+    monkeypatch.setattr(registry, "_RECORDS", {})
+    monkeypatch.setattr(registry, "_BOUND", {})
+    modules = {}
+    for name in ("sglang", "sglang.srt", "sglang.srt.arg_groups",
+                 "sglang.srt.arg_groups.overrides", "sglang.srt.arg_groups.attention_hook"):
+        module = types.ModuleType(name)
+        module.__path__ = []
+        modules[name] = module
+        monkeypatch.setitem(sys.modules, name, module)
+        parent, _, attr = name.rpartition(".")
+        if parent in modules:
+            setattr(modules[parent], attr, module)
+    overrides = modules["sglang.srt.arg_groups.overrides"]
+    consumer = modules["sglang.srt.arg_groups.attention_hook"]
+
+    def original(view):
+        return {"fallback": (view.attention_backend, view.kv_cache_dtype)}
+
+    overrides._attention_backend_fa3_fp8_fallback = original
+    consumer._attention_backend_fa3_fp8_fallback = original
+    overrides.POST_PROCESS_PASSES = [original, object(), original]
+    return overrides, consumer, original
+
+
+def test_e5m2_guard_updates_consumers_and_preserves_fallback(fallback_host):
+    from types import SimpleNamespace
+    from hcu_adapter.bridges import sglang_fa_vendor as fa_vendor
+
+    overrides, consumer, original = fallback_host
+    fa_vendor._install_e5m2_backend_guard()
+    installed = overrides._attention_backend_fa3_fp8_fallback
+    assert installed is consumer._attention_backend_fa3_fp8_fallback
+    assert overrides.POST_PROCESS_PASSES[0] is installed
+    assert overrides.POST_PROCESS_PASSES[2] is installed
+    assert installed(SimpleNamespace(attention_backend="fa3", kv_cache_dtype="fp8_e5m2")) == {}
+    for backend, dtype in (("fa3", "fp8_e4m3"), ("triton", "fp8_e5m2")):
+        view = SimpleNamespace(attention_backend=backend, kv_cache_dtype=dtype)
+        assert installed(view) == original(view)
+    fa_vendor._install_e5m2_backend_guard()
+    assert overrides._attention_backend_fa3_fp8_fallback is installed
+
+
+@pytest.mark.parametrize("mode,arch,hip", [
+    ("auto", "gfx936", "test"), ("triton", "gfx936", "test"),
+    ("emu", "gfx936", "test"), ("vendor", "gfx942", "test"),
+    ("vendor", "gfx936", None),
+])
+def test_e5m2_guard_disabled_keeps_all_bindings(fallback_host, monkeypatch, mode, arch, hip):
+    from hcu_adapter.bridges import sglang_fa_vendor as fa_vendor
+    from hcu_adapter.infra import hcu_env, registry
+
+    overrides, consumer, original = fallback_host
+    monkeypatch.setattr(hcu_env, "resolve", lambda name: (mode, "explicit"))
+    monkeypatch.setattr(hcu_env, "arch_name", lambda: arch)
+    monkeypatch.setattr(torch.version, "hip", hip)
+    fa_vendor._install_e5m2_backend_guard()
+    assert overrides._attention_backend_fa3_fp8_fallback is original
+    assert consumer._attention_backend_fa3_fp8_fallback is original
+    assert overrides.POST_PROCESS_PASSES[0] is original
+    assert registry.get("flash_attention") is None
+
+
+def test_e5m2_guard_registration_failure_is_atomic(fallback_host, monkeypatch):
+    from hcu_adapter.bridges import sglang_fa_vendor as fa_vendor
+    from hcu_adapter.infra import registry
+
+    overrides, consumer, original = fallback_host
+    register = registry.register
+    count = 0
+
+    def reject_second(*args, **kwargs):
+        nonlocal count
+        count += 1
+        if count == 2:
+            raise ValueError("registration refused")
+        return register(*args, **kwargs)
+
+    monkeypatch.setattr(registry, "register", reject_second)
+    with pytest.raises(ValueError, match="registration refused"):
+        fa_vendor._install_e5m2_backend_guard()
+    assert overrides._attention_backend_fa3_fp8_fallback is original
+    assert consumer._attention_backend_fa3_fp8_fallback is original
+    assert overrides.POST_PROCESS_PASSES[0] is original
+    assert registry.get("flash_attention") is None

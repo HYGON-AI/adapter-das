@@ -20,8 +20,8 @@ contracts. All transfers are index-based gather/scatter over whole token rows:
 
 _indices are int32/int64 device tensors of flat token-slot ids; transfers are
 exact copies (no dtype conversion; item_size is accepted for API parity).
-The scale of these transfers is host<->device hicache traffic; torch ops keep
-them correct-first, triton ports can replace the hot loops later.
+MLA kernel transfers use byte-addressed Triton copies, including pointer
+tables and pinned-host buffers. Other transfers retain the torch ports.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from __future__ import annotations
 import ctypes
 import glob
 import os
+from functools import lru_cache
 from typing import List, Optional
 
 import torch
@@ -145,6 +146,28 @@ def _register_torch_op() -> None:
 
 
 _register_torch_op()
+
+
+def _kernel_address(tensor, device_index):
+    if not tensor.is_contiguous():
+        raise ValueError("HiCache kernel buffers must be contiguous")
+    if tensor.device.type == "cuda":
+        return tensor.data_ptr()
+    if tensor.device.type != "cpu" or not tensor.is_pinned():
+        raise ValueError("HiCache host kernel buffers must be pinned")
+    return get_device_accessible_ptr(tensor, device_index)
+
+
+def _copy_mla_rows(*args, **kwargs):
+    from hcu_adapter.infra import registry
+    from hcu_adapter.kernels.kvcacheio_triton import copy_rows
+
+    registry.register(
+        "hicache_mla_transfer", "triton",
+        target="sgl_kernel.kvcacheio:transfer_kv_*mla*",
+        mechanism=registry.MECH_SEAM,
+    )
+    return copy_rows(*args, **kwargs)
 
 
 def transfer_kv_per_layer(
@@ -323,6 +346,13 @@ def transfer_kv_per_layer_mla(
 ):
     if block_quota is None:
         block_quota = _default_mla_block_quota()
+    if src_indices.device.type == "cuda":
+        device_index = src_indices.device.index
+        return _copy_mla_rows(
+            _kernel_address(src, device_index),
+            _kernel_address(dst, device_index),
+            src_indices, dst_indices, item_size,
+        )
     dst_i = dst_indices.to(torch.long)
     dst[dst_i] = _row_index(src, src_indices).to(dst.dtype)
 
@@ -338,7 +368,35 @@ def transfer_kv_per_layer_mla_pf_lf(
     block_quota: Optional[int] = None,
     num_warps_per_block: int = 16,
 ):
-    transfer_kv_per_layer_mla(src, dst, src_indices, dst_indices, item_size, block_quota)
+    device_index = src_indices.device.index
+    return _copy_mla_rows(
+        _kernel_address(src, device_index) + layer_id * item_size,
+        _kernel_address(dst, device_index),
+        src_indices, dst_indices, item_size, src_stride=src_layout_dim,
+    )
+
+
+@lru_cache(maxsize=1)
+def _get_transfer_kv_mla_ptr_table_kernel():
+    # CPU-only environments import this module without Triton installed.
+    import triton
+    import triton.language as tl
+
+    @triton.jit
+    def _transfer_kv_mla_ptr_table(
+        src_layers, dst_layers, src_indices, dst_indices,
+        ROW_BYTES: tl.constexpr, BLOCK_BYTES: tl.constexpr,
+    ):
+        row = tl.program_id(0)
+        layer = tl.program_id(1)
+        cols = tl.arange(0, BLOCK_BYTES)
+        src = tl.load(src_layers + layer).to(tl.pointer_type(tl.uint8))
+        dst = tl.load(dst_layers + layer).to(tl.pointer_type(tl.uint8))
+        src_row = tl.load(src_indices + row).to(tl.int64)
+        dst_row = tl.load(dst_indices + row).to(tl.int64)
+        data = tl.load(src + src_row * ROW_BYTES + cols, cols < ROW_BYTES, other=0)
+        tl.store(dst + dst_row * ROW_BYTES + cols, data, cols < ROW_BYTES)
+    return _transfer_kv_mla_ptr_table
 
 
 def transfer_kv_all_layer_mla(
@@ -351,6 +409,24 @@ def transfer_kv_all_layer_mla(
     block_quota: int = 2,
     num_warps_per_block: int = 16,
 ):
+    if src_layers.ndim == 1 and dst_layers.ndim == 1:
+        # SGLang's layer-first pools pass tables of GPU-accessible addresses,
+        # including mapped pinned host memory, rather than stacked buffers.
+        if src_indices.numel() == 0 or num_layers == 0:
+            return
+        from triton import next_power_of_2
+
+        device = src_layers.device
+        kernel = _get_transfer_kv_mla_ptr_table_kernel()
+        kernel[(src_indices.numel(), num_layers)](
+            src_layers,
+            dst_layers,
+            src_indices.to(device=device).contiguous(),
+            dst_indices.to(device=device).contiguous(),
+            item_size,
+            next_power_of_2(item_size),
+        )
+        return
     src_i = src_indices.to(torch.long)
     dst_i = dst_indices.to(torch.long)
     for l in range(num_layers):
@@ -368,8 +444,10 @@ def transfer_kv_all_layer_mla_lf_pf(
     block_quota: int = 2,
     num_warps_per_block: int = 16,
 ):
-    transfer_kv_all_layer_mla(
-        src_layers, dst, src_indices, dst_indices, item_size, num_layers
+    return _copy_mla_rows(
+        src_layers, _kernel_address(dst, src_indices.device.index),
+        src_indices, dst_indices, item_size, num_layers, src_table=True,
+        dst_stride=dst_layout_dim, dst_offset=item_size,
     )
 
 

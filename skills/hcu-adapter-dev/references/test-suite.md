@@ -1,11 +1,36 @@
 # 自动化测试套件要求
 
+SGLang grouped-topk / sampling 的串行启动发布见
+`tests/adapter/test_sglang_leaf_publication.py`。先解析 provider 和已缓存别名，
+登记全部成功后再发布；`registry.registration_transaction` 只保护登记记录，
+不能单独回滚宿主函数。回归须在各登记点注入失败，检查原符号/记录不变、
+干净重试成功、外部 owner 变更不被覆盖，以及发布中断时恢复原属性和删除
+新增属性。单桥隔离仍由原宿主顺序结构断言检查；这些 CPU double 结果不代表
+真实 SGLang 启动、数值或设备 Graph 已通过，也不是并发 import 事务保证。
+
+`cases/vllm_dsv41_indexer_cpu.py` 使用真实 Triton 解释器执行 scorer 的 CPU
+oracle。部分 DTK interpreter 将比较结果转回整数操作数 dtype；夹具先探测
+布尔 handle 能力，仅在需要时修正解释器比较结果，测试结束后恢复绑定。
+保留独立分数/掩码参考和原精确断言，不修改编译内核或 vendor 包；解释器
+原生返回布尔 handle 时不接入。CPU oracle 不替代设备、Graph 或模型验收。
+
+DSA writer 回归见 `tests/kernels/test_mqa_triton_gfx938.py`：在调用时解析
+新 kvcache/旧 attention 路径，区分页跨度 ABI；依赖导入错误不能当作接口迁移
+而隐藏。pytest 必须实际执行两种池布局、融合写入和派发的数值/top-k 断言，
+并恢复临时环境和 dtype 绑定，不能仅消除收集错误。
+LightOp metadata 的 Graph 对拍须传真实设备的计算单元数，不能硬编码为64。
+
 共享机制的 framework-free 契约覆盖 import 和调用两个阶段。模型 lifecycle
 测试须在新解释器阻断 vLLM、SGLang、Torch 导入后，执行真实注册、原子预检、
 post-load/guard dispatch；另以真实 vLLM Worker/config 验证桥上的原覆盖查询、
 空注册表短路和调用顺序。双宿主 bootstrap/import 回归不等于模型或 GPU 验收。
 公开门面迁移须检查 source/wheel/install 来源及实际消费者的 callable ABI，
 不能用安装成功代替宿主语义验证。
+
+目录迁移还须覆盖函数体内的延迟导入。`tests/vendor/test_flash_attn.py -k
+e5m2_guard` 是不需 GPU 的 Adapter 启动契约，须在 HOSTnone、隐藏设备的独立
+进程运行；不能因测试文件位于 vendor/ 而遗漏，也不能用预先注入包根属性掩盖
+旧导入路径。该检查不执行或验证 FlashAttention 设备内核。
 
 guard 的非 None 返回属于契约违规，不能被回调异常包装成主动 refused；分别断言
 诊断分类、owner/operation/role、原异常 cause、后续 guard 不执行和 dispatch 状态
@@ -16,14 +41,58 @@ guard 的非 None 返回属于契约违规，不能被回调异常包装成主�
 selector 和真实 metadata/spawn 门禁。双宿主 import 探针拒绝框架/Torch/
 kernel/provider import；named consumer 回归不得冒称 SGLang engine 试验。
 
+vLLM 启动编排测试应显式隔离当前所有 provider 的安装边界（包括 MiniMax
+ABI），并断言顺序；遗漏新 owner 会让 CPU 顺序测试意外导入真实设备路径。
+组合健康测试使用真实 `ProcessLocalActions`，逐个覆盖内建 owner 的失败短路、
+激活期间的暂缓聚合及返回后的完整检查；同时验证已锁存的宿主错误在激活仍
+进行时也先拒绝。不要用缺少生命周期接口的 `SimpleNamespace` 或全局健康
+stub 掩盖准入失败。真实 vLLM host、CUDA 未初始化和模块来源需分别记录；
+隐藏 GPU 后官方 ROCm import 若要求设备，保留原始收集错误；显式 CPU
+metadata doubles 的范围见下段，不能据此记为 HCU 通过。
+
+针对平台/Worker/AR 的 CPU doubles，可将 ROCm 导入期的架构描述单独放在
+可恢复的 metadata context 中；退出该 context 后恢复设备查询拒绝守卫，
+不把该合成描述当成硬件准入证据。AOT policy 回归仅替身独立的
+`CacheBase.get_system` 设备描述，普通/AOT collector 本体及 factor 断言保留。
+复用启动 owner 夹具时，显式保留被测 owner（例如 AR 或带事件记录的 FP8/AR），
+不得替身宿主失败锁存或扩展健康接口。
+独立 host lane 记录本阶段 Git HEAD/合并父提交，以及 Core、Adapter、Plugin
+等组件的已安装版本和模块路径；镜像标签不代表 Core 版本。版本信息用于溯源，
+不能改为共享车道的精确 wheel 准入，也不能代替设备或模型验证。
+inventory 探针本身失败时须在执行测试前退出，不能继续报 GREEN；可选组件
+未安装仍记录为 null，不因此新增组件或版本限制。
+独立 host lane 须声明 `AR_ADAPTER_ROOT` 阶段根并保留显式覆盖。wheel 阶段的
+checkout 可通过包符号链接指向安装目录；解析声明文件与实际模块的精确路径，
+不能用模块是否位于 checkout 目录下判断，也不能省略外来根的拒绝对照。fresh-process 生命周期探针在子进程中
+显式不选择无关 provider，保留原健康查询与超时；父进程配置不变。
+
 vLLM 扩展生命周期：source 与独立 wheel installed 分开跑。check_health 的
 必需参数须在激活前拒绝；报告替换/重复、sink 失败、caught error 后其他
 selector、实际 fork 格式化窗口均需断言。public registry clear/foreign 必须
 经真实官方 selector 验证，不以直接 checker 测试替代。见
 `docs/vllm-flash-registry.md`；不把 CPU 协议验证当作数值验收。
 
+
+精简测试家族时同步维护独立 `__main__` 入口；依赖 fixture/skip 的入口可委托
+`pytest.main`，避免调用已删除的函数。spawn 测试的临时宿主环境须覆盖 context、
+Queue、Process 创建和 start 失败；资源清理异常也不能跳过父进程环境恢复。
+bootstrap 的 import 期环境恢复须分别验证原值未设置、显式0/1及宿主导入失败，
+不能只删除新增键而保留上游覆盖后的值。
+
 目标：**adapter API 全绿 ⇒ 官方 sglang 在 HCU 上无大问题**。为此每个出口
 API 必须覆盖四个质量维度，缺一不可（每个维度都有历史 bug 背书）：
+
+融合残差 RMSNorm 的存储边界回归见 `tests/kernels/test_layernorm.py`：
+默认路径用未舍入的 FP32 `input + residual` 计算方差，以转回激活 dtype
+的 residual 作为分子；不能将两者都替换为未舍入和。显式
+`cast_x_before_out_mul=True` 则保留 FP32 和作为分子，在乘权重前将归一化
+结果转回激活 dtype。两种模式须分别经过真实社区接口，并用能区分两种
+结果的输入对拍独立 CPU FP64 参考。默认直接算子的 16 个参数节点覆盖
+普通/Gemma、Torch/Triton、FP16/BF16 及 hidden 128/12289；社区普通
+fused-add 入口的 8 个参数节点覆盖两个显式存储模式、两种 dtype 和两种
+宽度。大宽度包含多 tile 与 masked tail，三个同地址新输入分别检查
+eager/Graph 输出、残差及权重，原精确断言不变。
+该专项不代替整模型精度门，也不将可选 LightOp 的跳过算作设备通过。
 
 CT-FP8 CPU 参考回归见 `test_checkpoint_quantization_reference.py`：
 真实小型 Qwen3 safetensors、官方加载器、独立 Linear QDQ 数学对拍、
@@ -85,9 +154,11 @@ CPU doubles 不代替全新进程的真实 bootstrap、官方加载和 DeepEP LL
 社区默认 Triton MLA decode 的压缩缓存专项见
 `tests/kernels/test_sglang_mla_decode.py`：32 heads、K576/V512 共享存储、
 V 行间距576、非连续物理索引，长度33/437/460与split7的空尾分片；
-未引用缓存及scratch以NaN填充。对拍独立CPU FP32 dense softmax，
-另要求连续V与原视图输出逐位一致；Graph先replay基线，再同地址改变
-Q、缓存、索引、有效长度和split数。该组件测试由kernels段自动收集，
+未引用缓存及scratch以NaN填充，并断言有效分段有限、未用槽位仍为NaN。
+对拍独立CPU FP32 dense softmax，另要求连续V与原视图、eager与Graph
+输出逐位一致；Graph先replay基线，再同地址改变Q、缓存、索引、
+有效长度和split数。额外固定split7执行448→449→448，覆盖分段宽度
+64↔96、有效分段7↔5的双向切换。该组件测试由kernels段自动收集，
 不增加家族manifest计数，也不替代整模型精度验收。
 
 社区融合SiLU存储边界专项见 `tests/kernels/test_original_silu.py`：
@@ -234,6 +305,36 @@ FP8 grouped GEMM 小形状门见 `test_gemm_fp8.py` 的
 空专家/padding 禁写及 64-row aligned contiguous 尾 tile。graph 必须
 同时更新输入/权重/尺度与 counts/expert IDs。该直接内核合同不能
 代替真实 DeepEP 分布式 dispatch/combine 或模型精度证据。
+
+GDN target-verify vendor 路由的回归在
+tests/kernels/test_gdn_verify_aiter.py，接线在 gdn_aiter.py；保持原函数对象和
+缓存别名，不能只换一个 module 属性。真实 SGLang gate 是二维 [tokens, heads]，
+dt_bias 可为 BF16，线性 MTP 的 parent map 可为 None；这些变体不能用只有
+三维 gate / FP32 bias / tree 的夹具代替。对拍独立 FP32 递推、全部快照槽位及
+初始状态不被写回；Graph 同时覆盖首次 auto 调用就在 capture 内与多轮变输入。
+auto 的架构探测须使用已分配输入 tensor 的设备，不在安装时初始化默认 GPU。
+vendor 数值夹具须在隔离的函数命名空间显式绑定 AITER，避免进程默认 auto
+把范围外的 ragged/fixed 变体回退成上游、造成误测；不能重绑全局入口影响同车测试。
+auto 正面设备测试仅在已验证构建/架构运行，其他环境明确 platform skip；
+CPU 接线仍覆盖未验证版本/架构/合同回上游和显式 triton/总闸优先级。
+vendor 已执行后的异常不能重试上游，因为快照可能已经写入。
+
+
+BoltOps HIPC 编译子进程也须隔离宿主启动环境：其缓存标识包含
+aicc --version 的完整输出；继承 SGLang PYTHONPATH 时，Python helper 会把
+带时间戳的 adapter 日志混入版本输出，导致标识不稳定并反复冷编译。
+可在测试 runner 通过 vendor 公开 BOLT_OPS_AICC 指定包装器，仅在 exec
+同一 aicc 时设置 HCU_ADAPTER_HOST=none、_HCU_ADAPTER_ACTIVE_HOST=none
+并清空 PYTHONPATH；主测试进程继续使用真实 SGLang 环境。保留编译参数、
+数值断言和原始 FAIL，此隔离不能作为放宽门禁的理由。
+
+channel-FP8 MoE 的三组 swiglu-clamp 用例位于 tests/kernels/test_aiter_moe.py。
+gfx936 当前没有可执行的 AITER channel-FP8 MoE provider，测试在执行时读取
+当前分配设备的真实 gcnArchName（去掉冒号后的 feature suffix），于分配 tensor
+前明确 skip；不在模块收集阶段初始化设备。其他架构继续要求 AITER 实际执行，
+并保留原数值阈值与变输入 Graph 检查，不能因 provider 返回 None 而通用跳过。
+
+
 
 Mamba2 graph 数值门见 `test_l15_execution_chains.py` 的
 `test_mamba2_decode_fresh_input_graph`：独立 CPU FP32 计算投影、卷积、
@@ -1012,3 +1113,47 @@ SHA256 `0c02ce30d66b4cc28c257b7ae31f3d906fa65f96a7ab70009127b4730a1ca3b3`。
 SHA256 `71cbc0c5e9e521a595988a3c4bd8463e29fd4574dd7362cd0a871bb52a8d9d8c`。
 全量 adapter 回归另行执行；旧完整 51 项与本次 Dense 10 项不拼为
 新完整 54 项通过。
+
+## 非分页 diffusion 接口回归
+
+- `test_rotary_partial_width.py`：真实公共 API、partial width 的补齐 lane
+  掩码、head 尾块、未旋转尾维、packed guard；独立 FP64 与变输入 Graph。
+- `test_fa_dense_batch.py`：真实 dispatcher 与预导入消费者，覆盖 batch/GQA/
+  causal、strided QKV/out、guard、LSE、packed 控制及变输入 Graph；
+  4121/9253×56×128 的长序列独立 FP64 抽行不能称为全输出验证。
+- vendor 压测 BHTD→THD 使用 transpose；Tq>Tk 的 causal 全遮蔽行参考输出零。
+  Graph CU 在设备上按 shape 构造，避免 pageable CPU 长度复制，保留原数值阈值。
+  快关优先级由 `test_env_guards.py` 验证；算子通过不替代实际六步生成。
+
+Mamba verify-state scatter 的回归位于 `tests/kernels/test_mamba_state_scatter.py`
+和 `tests/adapter/test_mamba_state_scatter_bridge.py`：复制路径要求完整目标状态按位
+相等，覆盖非 identity source-row、无效 source/destination/step、entry 尾块和外层
+stride；Graph 同时改变输入值与映射元数据。桥接测试保留已缓存 wrapper 别名，
+并验证 fresh-process 显式快关与 spawn 子进程。真实桥接夹具必须兼容自动 bootstrap
+已经安装路由的进程：隔离原始 JIT 后测试，再恢复进入测试前的绑定，不能把
+HOSTnone 单独通过误作完整 suite 兼容证据。
+
+
+Mamba scatter routing CPU regressions exercise exact gfx936/gfx938 architecture names
+and feature suffixes, per-input-device probe caching, retained aliases and source-row
+arguments, plus rejection of other architectures and dtype/device/size contracts.
+The real wrapper/Graph and spawn probes accept either supported HCU architecture;
+a CPU skip does not validate gfx938 device execution or serving.
+
+
+GDN verify auto qualification admits gfx936/gfx938 on the matched DTK stack,
+without a fixed batch ceiling. Positive batch size, packed TP2/draft4 shapes,
+dtype/layout/index and state/snapshot contracts remain mandatory. CPU routing
+covers both exact architecture names and feature suffixes beyond the former
+18/64 limits, including empty-batch rejection.
+
+Device regressions compare AITER and upstream Triton at N=65/128/256/512 with
+BF16/FP32 bias and linear/tree parents. The entire written snapshot pool is
+checked in bounded blocks against a CPU copy of the Triton result; untouched
+slots and source state must remain exact. Independent FP32 recurrence additionally
+checks first/middle/last active sequences. N=128/512 Graph tests replay the
+original data and three changed-input/source-index/destination-index/parent maps,
+including a zero-length padded row. N=128 also covers first-call auto capture.
+An explicit low-free-memory skip is a resource condition, not device qualification;
+only executed cases count as numerical evidence.
+

@@ -20,65 +20,104 @@ from __future__ import annotations
 
 from typing import Optional
 
+import logging
 import torch
 
 from .compat import HAS_TRITON, check_cuda_tensor, next_power_of_2
 
-_RMS_IMPL = None  # cached backend choice: "triton" | "aiter" | "lightop" | "torch"
-_FUSED_ADD_IMPL = None      # cached fused-add tier: "triton" | "lightop" | "torch"
+_RMS_IMPL = None  # cached backend choice: "lightop" | "aiter" | "triton" | "torch"
+_FUSED_ADD_IMPL = None      # cached fused-add tier: "lightop" | "triton" | "torch"
 _LIGHTOP_FUSED_ADD = None   # resolved (fused_add_rms_norm, gemma_fused_add_rmsnorm)
 
 
+def _probe_lightop_rms():
+    import lightop
+
+    return getattr(lightop, "rms_norm", None)
+
+
+def _is_adapter_stub(fn) -> bool:
+    """hcu_adapter fills aiter faces with stubs (function or Missing)."""
+    return (
+        type(fn).__module__.startswith("hcu_adapter")
+        or getattr(fn, "__module__", "").startswith("hcu_adapter")
+    )
+
+
+def _probe_aiter_rms():
+    import aiter
+
+    fn = getattr(aiter, "rmsnorm_forward", None)
+    return None if fn is None or _is_adapter_stub(fn) else fn
+
+
+def _aiter_rms_fn():
+    """Aiter rmsnorm callable for a per-call fallback (None when absent)."""
+    try:
+        return _probe_aiter_rms()
+    except Exception:
+        return None
+
+
+def _probe_lightop_fused_add():
+    global _LIGHTOP_FUSED_ADD
+    from lightop import fused_add_rms_norm, gemma_fused_add_rmsnorm
+
+    _LIGHTOP_FUSED_ADD = (fused_add_rms_norm, gemma_fused_add_rmsnorm)
+    return _LIGHTOP_FUSED_ADD
+
+
 def _resolve_rms_impl():
-    """rms_norm backend tier (config file > env > default triton).
+    """rms_norm backend ladder: lightop > aiter > triton (explicit wins).
 
     Applies to the plain rmsnorm() entry only; the fused-add family has
     its own tier (HCU_FUSED_ADD_RMS_IMPL)."""
     global _RMS_IMPL
     if _RMS_IMPL is None:
-        _RMS_IMPL = "triton"
-        try:
-            from hcu_adapter import hcu_env
+        from hcu_adapter.infra import hcu_env
+        from hcu_adapter.infra import tier_policy
 
-            impl, _src = hcu_env.resolve("HCU_RMS_NORM_IMPL")
-            if impl in ("triton", "aiter", "lightop", "torch"):
-                _RMS_IMPL = impl
-        except Exception:
-            import traceback
-
-            traceback.print_exc()
+        requested, source = hcu_env.resolve("HCU_RMS_NORM_IMPL")
+        # governance 3b-8/9 (2026-11-19): strict single-tier resolution --
+        # torch is retired from runtime candidates (CPU-tensor contract
+        # faces compute torch math directly, outside this ladder), and
+        # resolution failures propagate instead of defaulting to triton.
+        _RMS_IMPL = tier_policy.pick(
+            "rms_norm",
+            {
+                "lightop": _probe_lightop_rms,
+                "aiter": _probe_aiter_rms,
+                "triton": lambda: True,
+            },
+            requested=requested if source == "explicit" else None,
+        )[0]
     return _RMS_IMPL
 
 
 def _resolve_fused_add_impl():
-    """fused_add_rmsnorm backend tier (config file > env > default triton).
+    """fused_add_rmsnorm backend ladder: lightop > aiter > triton.
 
     lightop 0.6.0 ships in-place fused_add_rms_norm(x, residual, weight,
-    variance_epsilon, limit=-1.0) plus the gemma_fused_add_rmsnorm variant —
-    Vendor numerics require their own parity checks: the triton path below
-    uses the unrounded fp32 sum for variance and the stored residual for the
-    numerator. auto = triton; lightop is opt-in until it passes the contract
-    + graph-replay matrix (same policy as HCU_SILU_MUL_IMPL)."""
-    global _FUSED_ADD_IMPL, _LIGHTOP_FUSED_ADD
+    variance_epsilon, limit=-1.0) plus the gemma_fused_add_rmsnorm variant.
+    The DTK aiter wheel exposes no fused-add export, so aiter is absent from
+    the candidate map (the ladder still holds: no implementation to pick).
+    Explicit HCU_FUSED_ADD_RMS_IMPL wins (lightop|triton); torch left the
+    runtime candidates under zero-fallback governance (2026-11-19) — the
+    eager path it used to shadow is gone, not silently re-routed."""
+    global _FUSED_ADD_IMPL
     if _FUSED_ADD_IMPL is None:
-        _FUSED_ADD_IMPL = "triton"
-        try:
-            from hcu_adapter import hcu_env
+        from hcu_adapter.infra import hcu_env
+        from hcu_adapter.infra import tier_policy
 
-            impl, _src = hcu_env.resolve("HCU_FUSED_ADD_RMS_IMPL")
-            if impl == "lightop":
-                from lightop import fused_add_rms_norm, gemma_fused_add_rmsnorm
-
-                _LIGHTOP_FUSED_ADD = (fused_add_rms_norm, gemma_fused_add_rmsnorm)
-                _FUSED_ADD_IMPL = "lightop"
-            elif impl in ("triton", "torch"):
-                _FUSED_ADD_IMPL = impl
-        except Exception:
-            # visibility beats silence: a silent vendor-probe failure reads
-            # as "auto mode" and hides a real wheel/env problem.
-            import traceback
-
-            traceback.print_exc()
+        requested, source = hcu_env.resolve("HCU_FUSED_ADD_RMS_IMPL")
+        _FUSED_ADD_IMPL = tier_policy.pick(
+            "fused_add_rmsnorm",
+            {
+                "lightop": _probe_lightop_fused_add,
+                "triton": lambda: True,
+            },
+            requested=requested if source == "explicit" else None,
+        )[0]
     return _FUSED_ADD_IMPL
 
 
@@ -214,14 +253,15 @@ if HAS_TRITON:
         for off in range(0, N, BLOCK):
             cols = off + tl.arange(0, BLOCK)
             mask = cols < N
-            # Keep the FP32 sum for both variance and normalization. Storing
-            # residual in the first pass would round it before this reload.
+            # Default community fused-add uses the FP32 sum for variance but
+            # the activation-dtype residual for the normalization numerator.
             x = tl.load(x_row + cols, mask=mask, other=0.0).to(tl.float32)
             r = tl.load(res_row + cols, mask=mask, other=0.0).to(tl.float32)
             t = x + r
+            stored = t.to(RES.dtype.element_ty)
             w = tl.load(W + cols, mask=mask, other=0.0).to(tl.float32)
-            y = t * rstd * (w + d2f)
-            tl.store(res_row + cols, t.to(RES.dtype.element_ty), mask=mask)
+            y = stored.to(tl.float32) * rstd * (w + d2f)
+            tl.store(res_row + cols, stored, mask=mask)
             tl.store(x_row + cols, y.to(X.dtype.element_ty), mask=mask)
 
 
@@ -262,21 +302,41 @@ def _do_rmsnorm(
         raise ValueError(f"out shape {tuple(out.shape)} != {tuple(input.shape)}")
 
     impl = _resolve_rms_impl()
-    if gemma and impl != "triton":
-        impl = "triton"  # vendor backend covers the plain norm only
-    if impl == "torch" or not input.is_cuda:
+    if not input.is_cuda:
         return _rmsnorm_native(input, weight, eps, gemma, out)
-    if impl == "lightop":
-        # Only the BF16 plain-norm contract has been qualified with this provider.
-        # Other dtypes and Gemma retain the existing Triton implementation.
-        if input.dtype == weight.dtype == out.dtype == torch.bfloat16:
+    # governance 3b-8 (2026-11-19, refined after acceptance round): the
+    # aiter_moe precedent governs -- routing by STATIC CALL FACTS (dtype,
+    # gemma variant) in AUTO mode is deterministic selection, legal and
+    # AUDITED (one log line per capability reroute); an EXPLICIT tier
+    # request that cannot serve the call raises. The old ladder differed
+    # by being silent and by catching runtime errors (one-strike).
+    from hcu_adapter.infra import hcu_env as _he
+
+    _explicit = _he.resolve("HCU_RMS_NORM_IMPL")[1] == "explicit"
+
+    def _reroute_or_raise(reason, fix):
+        if _explicit:
+            raise RuntimeError(
+                "rmsnorm: explicit tier %r cannot serve this call (%s); "
+                "runtime fallback is forbidden (governance 3b-8) -- %s"
+                % (impl, reason, fix))
+        logging.getLogger("hcu.adapter").info(
+            "rmsnorm: auto reroute %s -> triton (%s)", impl, reason)
+
+    if gemma and impl != "triton":
+        _reroute_or_raise("gemma variant", "use triton for gemma models")
+    elif impl == "lightop" and input.dtype != torch.bfloat16:
+        _reroute_or_raise("lightop is BF16-only, got %s" % input.dtype,
+                          "select another tier explicitly")
+    elif impl == "aiter" and input.dtype not in (torch.bfloat16, torch.float16):
+        _reroute_or_raise("aiter is bf16/fp16-only, got %s" % input.dtype,
+                          "select another tier explicitly")
+    else:
+        if impl == "lightop" and input.dtype == weight.dtype == out.dtype == torch.bfloat16:
             return _lightop_rmsnorm(input, weight, eps, out)
-        impl = "triton"
-    if impl == "aiter":
-        if input.dtype in (torch.bfloat16, torch.float16):
+        if impl == "aiter":
             out.copy_(_aiter_rmsnorm(input, weight, eps))
             return out
-        impl = "triton"  # vendor bf16/fp16 only; fall through
 
     use_triton = (
         HAS_TRITON
@@ -290,7 +350,19 @@ def _do_rmsnorm(
 
     check_cuda_tensor(input, weight, out)
     x_2d = input.contiguous().view(-1, input.shape[-1])
-    y_2d = out.contiguous().view(-1, out.shape[-1])
+    # Aliased out= IS input is part of the upstream contract (the CUDA
+    # two-pass kernel reloads after the store pass). Whether the triton
+    # compiler preserves load-before-store ordering for same-pointer X/Y
+    # is NOT verified on-device, so the aliased case defensively routes
+    # through a scratch buffer — one extra copy, aliased calls only
+    # (the on-device anchor test passes either way; it originally failed
+    # on a test-side bug, reference snapshot taken after the rewrite).
+    aliased = out.data_ptr() == input.data_ptr()
+    y_2d = (
+        torch.empty_like(x_2d)
+        if aliased
+        else out.contiguous().view(-1, out.shape[-1])
+    )
     had_noncontig_out = y_2d.data_ptr() != out.data_ptr()
     n = x_2d.shape[-1]
     block = min(next_power_of_2(n), 8192)
@@ -343,21 +415,55 @@ def _do_fused_add(
     gemma: bool,
 ) -> None:
     impl = _resolve_fused_add_impl()
-    if impl == "lightop" and _try_lightop_fused_add(input, residual, weight, eps, gemma):
-        return
-    use_triton = (
-        impl != "torch"
-        and HAS_TRITON
-        and input.is_cuda
-        and residual.is_cuda
-        and input.dtype in (torch.bfloat16, torch.float16, torch.float32)
-        and input.is_contiguous()
-        and residual.is_contiguous()
-        and input.shape == residual.shape
-    )
-    if not use_triton:
+    if not input.is_cuda:
         _fused_add_rmsnorm_native(input, residual, weight, eps, gemma)
         return
+    # governance 3b-8 (refined after acceptance round): static-fact
+    # capability reroutes in AUTO mode are audited selection (the
+    # aiter_moe precedent); an EXPLICIT lightop request that the wheel's
+    # documented contract cannot serve raises. The old one-strike
+    # CATCH-descent (vendor exception -> silent triton forever) is gone:
+    # only the deterministic capability guards reroute.
+    from hcu_adapter.infra import hcu_env as _he
+
+    _explicit = _he.resolve("HCU_FUSED_ADD_RMS_IMPL")[1] == "explicit"
+    if impl == "lightop":
+        # deterministic capability guard (mirrors _try_lightop_fused_add's
+        # documented contract) -- no vendor CALL happens before it
+        capable = (
+            input.dtype in (torch.bfloat16, torch.float16)
+            and input.is_contiguous() and residual.is_contiguous()
+            and input.shape == residual.shape and weight.dim() == 1)
+        if not capable:
+            if _explicit:
+                raise RuntimeError(
+                    "fused_add_rmsnorm: explicit tier 'lightop' cannot "
+                    "serve this call (dtype/shape contract); runtime "
+                    "fallback is forbidden (governance 3b-8) -- select "
+                    "triton explicitly")
+            logging.getLogger("hcu.adapter").info(
+                "fused_add_rmsnorm: auto reroute lightop -> triton "
+                "(static capability guard)")
+        else:
+            # direct vendor call -- a runtime error propagates (one-strike
+            # disabling was the 3b-8 violation); view-flatten per contract
+            fn = _LIGHTOP_FUSED_ADD[1] if gemma else _LIGHTOP_FUSED_ADD[0]
+            fn(input.view(-1, input.shape[-1]),
+               residual.view(-1, residual.shape[-1]),
+               weight, eps)
+            return
+    # impl == "triton"
+    if not (HAS_TRITON
+            and input.dtype in (torch.bfloat16, torch.float16, torch.float32)
+            and input.is_contiguous()
+            and residual.is_contiguous()
+            and input.shape == residual.shape):
+        raise RuntimeError(
+            "fused_add_rmsnorm: triton tier cannot serve this call "
+            "(triton=%s dtype=%s contiguous=%s/%s same-shape=%s); "
+            "runtime fallback is forbidden (governance 3b-8)"
+            % (HAS_TRITON, input.dtype, input.is_contiguous(),
+               residual.is_contiguous(), input.shape == residual.shape))
 
     check_cuda_tensor(input, residual, weight)
     x_2d = input.view(-1, input.shape[-1])

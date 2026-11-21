@@ -117,7 +117,8 @@ import tvm_ffi → 缓存缺失 → 再派构建进程，**形成 122 个构建�
 **解法**：启动任何服务前，在干净环境手工预编译一次（<1 分钟）：
 
 ```bash
-env -u PYTHONPATH python3 $(python3 -c \
+env -u PYTHONPATH HCU_ADAPTER_HOST=none _HCU_ADAPTER_ACTIVE_HOST=none python3 \
+  $(env -u PYTHONPATH HCU_ADAPTER_HOST=none _HCU_ADAPTER_ACTIVE_HOST=none python3 -c \
   "import tvm_ffi, os; print(os.path.join(os.path.dirname(tvm_ffi.__file__), 'utils', '_build_optional_torch_c_dlpack.py'))") \
   --output-dir /root/.cache/tvm-ffi \
   --libname libtorch_c_dlpack_addon_torch211-rocm.so \
@@ -153,6 +154,13 @@ validation-host-26 g53-tp8 ← validation-host-18 nsa-tp8，md5 b1fb7b35 校验�
 PYTHONPATH）」的等效变体已失效**——10-24 起 dsa_topk_v2 eager import 使带
 PYTHONPATH 的裸 import 在 sitecustomize 阶段即触发自递归；手工预热一律
 `env -u PYTHONPATH`（命令替换里查路径的那一步也要）。
+
+**editable 安装补充（2026-11-03）**：安装态 `sitecustomize` 可由 site-packages
+找到，仅移除 `PYTHONPATH` 仍会继承宿主并再次进入预热，子进程等待父进程
+持有的同一把锁。构建子进程必须同时设置 `HCU_ADAPTER_HOST=none` 和
+`_HCU_ADAPTER_ACTIVE_HOST=none`；直接 helper 和兜底 Popen 均使用复制后的
+隔离环境，父进程及其他环境键保持原值。环境消费回归见
+`tests/adapter/test_tvmffi_warmup.py`；此项构建隔离不改变服务后端选择。
 
 ## 4. 运行时库路径补丁
 
@@ -276,6 +284,13 @@ HCU_L1_TIMEOUT_SCALE=3 bash ci/l1_gpu_gate.sh <gpu> --up-tree /sglang-v0522
 
 ## 6. Bootstrap 完成自检（四条全绿再起服务）
 
+sglang 的 AITER 拒用分支必须在 `HCU_DISABLE_OPS=aiter_ar` 下实际检查
+dispatch；不能仅检查环境摘要。2026-11-04 修复了自研 AR 退役后遗留的
+`_tar_installed` 引用：旧分支抛 NameError 并跳过拒用接线，新分支直接
+按当前拒用判定安装 NCCL 回退。回归入口为
+`pytest tests/vendor/test_allreduce.py -k gate_disable_list`；该接线检查
+不代表 AITER 数学与 Graph 压测已通过。
+
 ```bash
 cd /work && PYTHONPATH=/work:/work/official-sglang/python python3 - <<'PY'
 import numpy, pydantic, fastapi, msgspec   # 依赖层
@@ -380,3 +395,32 @@ curl -s http://127.0.0.1:30000/v1/chat/completions \
   ROCtracer/ROCprofiler/hipprof/hipgdb 调优调试。查 HIP API 语义、profiler
   用法、RCCL env 时以此为准；平台级问题（如大图发射、hipGraphLaunch 开销）
   定量分析时先翻这里。对应本文 §5 镜像差异表中 dtk2604x 的上游文档源。
+
+### SGLang 0.5.22: composing the Breakable Prefill driver gate with plugins
+
+The adapter's installed `capture_prefill_graph` wrapper exposes a callable
+`_hcu_prefill_bcg_gate` marker. Use it on the effective original callable when
+composing an AROUND hook; it is true only when this capture resolves to
+Breakable Prefill. Invoke that original to use the existing eager target or
+no-runner draft fallback. Other Prefill backends and Decode Graph ownership are
+unchanged. A plugin that captures through a private copy of the entry point
+cannot see this guard and will enter the CUDA driver path on HCU.
+
+
+## HIP multimem 探测回退（2026-11-15）
+
+`multimem_gate` 在 SGLang 宿主桥的算子准备完成后安装，真实 `torch.version.hip` 非空时，将社区 `MultimemAllGatherer.__init__` 的 `enabled` 参数固定为 False；其它参数、类和原生 `tensor_model_parallel_all_gather` 保留。安装保留函数对象与已有别名，不改社区磁盘、不伪装硬件、不新增数值内核或环境旋钮；CUDA 保留原行为。绑定登记为 platform_detect / multimem-nccl-fallback。
+
+起因是两组独立 P 实例的 warmup：一个 TP rank 在 symmetric-memory 探测 socket bind 失败后回退，另一个仍停在 rendezvous；真实等待栈分别位于正常请求 broadcast 与 logits `_build`。这证明探测/回退分歧，不能单凭该栈确认另一次 VMFault 根因。构造合同、缓存别名、重复安装、未知/后期漂移及真实 consumer fallback 的专用回归通过；L0 通过，完整模型与三长度原生缓存/MTP复验另记外部实验结果。Graph 沿用同一原生 fallback，本轮最终D graph实际验收之前不宣称新验证已完成。
+
+本轮已执行完整模型边界验证：64K C26/N130：TTFT P90 7.076s、TPOT 29.706ms、MTP 74.72%/3.240；128K C30/N150：TTFT P90 14.455s、TPOT 32.615ms、MTP 69.25%/3.076；256K C14/N140：TTFT P90 13.986s、TPOT 23.992ms、MTP 71.99%/3.158。启动40个四长度质量题、8项文本视觉smoke以及所选并发算术/完整序列质量通过，原生P/D逐请求85%缓存及MTP合同通过；D沿用graph8与EAGLE3/replaySSM。全部首批请求保留，N≥128 P90通过不表示突发逐请求均达标。最终源码提交后还须新容器重复。宿主桥的安装沿用try/warning异常隔离；未知构造合同不安装、不宣称能力已生效，正式复验另要求实际门控日志合同。结构回归原有qsa_pool未隔离失败保留，未改其实现。
+
+
+## 2026-11-16 PD 辅助进程与 HIP multimem 评审分支
+
+本轮以 upstream release/sglang_v0.5.22 的 0318ca3129fd1cc4642db52bd3e6faa308ce4ece 为基线，应用来源 2e723ccf83e726c197ab4ece26cd656555b1bec0 相对旧基线的四个本地提交，无文本冲突。保留上游 swiglu_limit 优先解析、JIT include 惰性绑定及 CI 更新；新增辅助解释器入口防护和真实 HIP multimem 不支持时的确定性回退，沿现有 bootstrap/sglang bridge 所有权安装。
+
+配套 plugin 分支 feat/qwen38-pd-prefill-opt-v0522 基于 81315b299ff4620205372e1b9997b226e3fb650b，官方 SGLang 保持 release/v0.5.22 的 baa9befa381511cd4d56f83980951e5a45fffc6d。此前 2026-11-16 服务 smoke/质量及三长度短测使用旧 plugin 28861d1、adapter 2e723cc；属于旧证据，不外推到本次上游同步后的新组合。新分支未重启服务、未执行 GPU/Graph/模型性能验收；本次离线检查结果另列。
+
+本次离线检查：bootstrap、multimem、上游AITER MoE bridge和JIT sources共79项通过、16项跳过；显式指定官方SGLang树运行multimem消费者契约，未执行GPU编译或真实collective。L0为GREEN（31条提示，未宣称strict通过），源码/空白检查通过。完整日志在外部实验目录pd-disag/codex-work/upstream-pr-20261116/logs，服务和模型验证仍pending。
+

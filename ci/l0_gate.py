@@ -16,9 +16,15 @@ the invariants that historically broke us (see docs/ci.md):
     5. every var referenced by BACKEND_CATALOG exists in REGISTRY
     6. every sgl_kernel module routing glue imports resolves to a file
     7. hcu_adapter.example.yaml op keys are real catalog ops
+    8. no deep `sglang.kernels.ops.<domain>.<module>` imports in hcu_adapter
+       without a bridge note (`JIT 唯一实现` / `替代档:`) -- package faces
+       are the catalog's dispatch seam; module bodies pin one implementation.
+       Both spellings count: `import sglang.kernels.ops.<d>.<m>` outright,
+       and `from sglang.kernels.ops.<d> import <m>` when <m> is provably a
+       module body (see check_ops_import_depth)
 
   SOFT (warnings; --strict turns them into failures for local dev)
-    - registered HCU_* vars read via bare os.environ outside hcu_env.py
+    - registered HCU_* vars read via bare os.environ outside infra/hcu_env.py
       (env 三原则: behavioral reads must go through the registry)
     - .py files with CRLF endings
 
@@ -29,6 +35,7 @@ Exit:   0 green / 1 red; per-check PASS/FAIL lines go to stdout.
 import argparse
 import ast
 import os
+from pathlib import Path
 import re
 import sys
 
@@ -41,13 +48,28 @@ SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "node_modules", "build", "d
 # helpers
 # ---------------------------------------------------------------------------
 
+_FILE_CACHE = {}
+
+
+def _walk_files(exts):
+    """One os.walk per distinct extension set (cached): 10 iter_files call
+    sites used to re-walk the whole tree (120s+ timeout on NFS mounts in
+    the L1 container -- single-digit seconds locally, ~4-10x on network
+    filesystems)."""
+    if exts not in _FILE_CACHE:
+        out = []
+        for dirpath, dirnames, filenames in os.walk(ROOT):
+            dirnames[:] = [d for d in dirnames
+                           if d not in SKIP_DIRS and not d.startswith("tmp")]
+            for fn in filenames:
+                if fn.endswith(exts):
+                    out.append(os.path.join(dirpath, fn))
+        _FILE_CACHE[exts] = tuple(out)
+    return _FILE_CACHE[exts]
+
+
 def iter_files(*exts):
-    for dirpath, dirnames, filenames in os.walk(ROOT):
-        dirnames[:] = [d for d in dirnames
-                       if d not in SKIP_DIRS and not d.startswith("tmp")]
-        for fn in filenames:
-            if fn.endswith(exts):
-                yield os.path.join(dirpath, fn)
+    yield from _walk_files(tuple(sorted(exts)))
 
 
 def rel(p):
@@ -121,13 +143,13 @@ def check_secrets(r):
 
 
 def registry_names():
-    src = open(os.path.join(ROOT, "hcu_adapter/hcu_env.py"), encoding="utf-8").read()
+    src = open(os.path.join(ROOT, "hcu_adapter/infra/hcu_env.py"), encoding="utf-8").read()
     # registry keys look like    "HCU_XXX": {   at dict depth 1
     return set(re.findall(r'^\s{4}"(HCU_[A-Z0-9_]+)":\s*\{', src, re.M))
 
 
 def catalog_var_refs():
-    src = open(os.path.join(ROOT, "hcu_adapter/hcu_config.py"), encoding="utf-8").read()
+    src = open(os.path.join(ROOT, "hcu_adapter/infra/hcu_config.py"), encoding="utf-8").read()
     refs = set(re.findall(r'"var":\s*"(HCU_[A-Z0-9_]+)"', src))
     for m in re.findall(r'"vars":\s*\{(.*?)\}', src, re.S):
         refs |= set(re.findall(r'"(HCU_[A-Z0-9_]+)"', m))
@@ -150,7 +172,7 @@ def check_catalog_refs(r, reg):
 
 def routing_glue_files():
     """Return the thin loader, dispatcher, and framework bridge sources."""
-    files = ["sitecustomize.py", "hcu_adapter/bootstrap.py"]
+    files = ["sitecustomize.py", "hcu_adapter/infra/bootstrap.py"]
     bridge_dir = os.path.join(ROOT, "hcu_adapter", "bridges")
     for base, _, names in os.walk(bridge_dir):
         files.extend(rel(os.path.join(base, name)) for name in sorted(names) if name.endswith(".py"))
@@ -195,7 +217,7 @@ def check_routing_glue_imports(r):
 
 
 def check_example_yaml(r):
-    cat = open(os.path.join(ROOT, "hcu_adapter/hcu_config.py"), encoding="utf-8").read()
+    cat = open(os.path.join(ROOT, "hcu_adapter/infra/hcu_config.py"), encoding="utf-8").read()
     ops = set(re.findall(r'^\s{4}"([a-z0-9_]+)":\s*\{', cat, re.M))
     ex = open(os.path.join(ROOT, "hcu_adapter.example.yaml"), encoding="utf-8").read()
     in_ops = False
@@ -212,10 +234,124 @@ def check_example_yaml(r):
                 in_ops = False
 
 
+_OPS_DEEP_IMPORT = re.compile(r"^sglang\.kernels\.ops\.[^.]+\..+$")
+_OPS_DOMAIN_IMPORT = re.compile(r"^sglang\.kernels\.ops\.[^.]+$")
+_BRIDGE_NOTE_MARKERS = ("JIT 唯一实现", "替代档:")
+
+# Same-named package-face re-exports: upstream ``quantization/__init__.py``
+# re-exports the get_kernel-dispatching wrapper as ``per_token_group_quant``
+# while a module of that name also exists. The 3-level
+# ``from sglang.kernels.ops.quantization import per_token_group_quant`` binds
+# the FACE (the sanctioned pattern); only the deep ``import`` spelling binds
+# the module body. New dual-name discoveries get added here after a curator
+# checks the host ``__init__`` actually re-exports the symbol.
+_OPS_FACE_REEXPORTS = {("quantization", "per_token_group_quant")}
+
+
+def _ops_body_module_proof():
+    """(domain, module) pairs this repo itself binds as module bodies.
+
+    Static evidence only: an actual import statement whose dotted path is
+    ``sglang.kernels.ops.<domain>.<module>`` or deeper, anywhere in
+    hcu_adapter (either spelling). Docstrings/comments are NOT evidence --
+    raw-text harvesting would also pick up dotted symbol paths that name the
+    sanctioned package-face pattern.
+    """
+    proof = set()
+    for p in iter_files(".py"):
+        if not rel(p).startswith("hcu_adapter/"):
+            continue
+        try:
+            tree = ast.parse(open(p, encoding="utf-8").read())
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                mods = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                mods = [node.module]
+            else:
+                continue
+            for m in mods:
+                parts = m.split(".")
+                if (
+                    len(parts) >= 5
+                    and parts[:3] == ["sglang", "kernels", "ops"]
+                    and parts[3] and parts[4]
+                ):
+                    proof.add((parts[3], parts[4]))
+    return proof
+
+
+def check_ops_import_depth(r):
+    """HARD: hcu_adapter must not pin a host module-body implementation.
+
+    ``sglang.kernels.ops.<domain>`` is the catalog / fused-op dispatch seam;
+    importing ``…<domain>.<module>`` bypasses the priority + capability filter
+    and pins that module's implementation (on HCU this forced a 33s ninja JIT
+    build for ``silu_and_mul`` in the L1 kernels segment). Exceptions must say
+    why inline: ``JIT 唯一实现`` (no other tier exists) or ``替代档: <location>``
+    (point at the alternative tier this call shape cannot use / does not need).
+
+    Equivalent spellings are checked too (2026-11-12 review): plain
+    ``import sglang.kernels.ops.<domain>.<module>`` (ast.Import) always binds
+    the module body. ``from sglang.kernels.ops.<domain> import <module>``
+    binds a body when the name repeats the domain
+    (``from …activation import activation``) or is proven a module by this
+    repo's own deep imports -- minus package faces that re-export a
+    same-named wrapper symbol (_OPS_FACE_REEXPORTS): those 3-level imports
+    bind the sanctioned face, not the body.
+    """
+    proof = _ops_body_module_proof()
+    n = 0
+    for p in iter_files(".py"):
+        rp = rel(p)
+        if not rp.startswith("hcu_adapter/"):
+            continue
+        try:
+            src = open(p, encoding="utf-8").read()
+            tree = ast.parse(src)
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue  # check_py_syntax owns that failure
+        lines = src.splitlines()
+        hits = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                hits.extend(
+                    (node, a.name)
+                    for a in node.names
+                    if _OPS_DEEP_IMPORT.match(a.name)
+                )
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                if _OPS_DEEP_IMPORT.match(node.module):
+                    hits.append((node, node.module))
+                elif _OPS_DOMAIN_IMPORT.match(node.module):
+                    domain = node.module.rsplit(".", 1)[-1]
+                    for a in node.names:
+                        if a.name == domain or (
+                            (domain, a.name) in proof
+                            and (domain, a.name) not in _OPS_FACE_REEXPORTS
+                        ):
+                            hits.append(
+                                (node, f"{node.module}.{a.name} (from-import)")
+                            )
+        for node, what in hits:
+            n += 1
+            window = "\n".join(lines[max(0, node.lineno - 3): node.end_lineno])
+            if not any(marker in window for marker in _BRIDGE_NOTE_MARKERS):
+                r.fail(
+                    "ops-import-depth",
+                    f"{rp}:{node.lineno} imports host module body "
+                    f"{what!r} without a bridge note (add "
+                    f"'JIT 唯一实现' or '替代档: ...')",
+                )
+    return n
+
+
 def check_bare_environ(r, reg):
     """SOFT: registered vars read via os.environ outside the registry."""
     allowed_files = {
-        "hcu_adapter/hcu_env.py",  # the registry itself
+        "hcu_adapter/infra/hcu_env.py",  # the registry itself
         "ci/l0_gate.py",
     }
     pat = re.compile(r"os\.environ(?:\.get)?\(?[\"'](HCU_[A-Z0-9_]+)")
@@ -275,7 +411,7 @@ def check_glue_has_no_numerics(r):
 def _parse_allowlist():
     """Text-patch needles allowed, parsed from registry.py (no import)."""
     src = open(os.path.join(
-        ROOT, "hcu_adapter/registry.py"), encoding="utf-8").read()
+        ROOT, "hcu_adapter/infra/registry.py"), encoding="utf-8").read()
     body = re.search(
         r"TEXT_PATCH_ALLOWLIST\s*=\s*\{(.*?)\n\}", src, re.S)
     if not body:
@@ -299,7 +435,7 @@ def check_text_patch_allowlist(r):
     needles, ok = _parse_allowlist()
     if not ok:
         r.fail("text-patch", "cannot parse TEXT_PATCH_ALLOWLIST from "
-               "hcu_adapter/registry.py")
+               "hcu_adapter/infra/registry.py")
         return
     allowed_needles = {n for _, n in needles}
     sources = []
@@ -331,7 +467,7 @@ def check_text_patch_allowlist(r):
 
 def check_registry_ops_in_catalog(r):
     """HARD: every registry.register(op=...) names a BACKEND_CATALOG op."""
-    from hcu_adapter.hcu_config import BACKEND_CATALOG
+    from hcu_adapter.infra.hcu_config import BACKEND_CATALOG
     ops = set(BACKEND_CATALOG)
     for p in iter_files(".py"):
         rp = rel(p)
@@ -356,9 +492,23 @@ def check_registry_ops_in_catalog(r):
 # ---------------------------------------------------------------------------
 
 # governance §3b: operator implementations, actual dispatch facades and mechanisms.
-_KERNEL_TIERS = {"emu", "triton", "cpp", "fork", "ref", "aiter", "lightop", "dtk", "rccl"}
+_KERNEL_TIERS = {"emu", "triton", "cpp", "fork", "ref", "aiter", "lightop", "boltops", "dtk", "rccl"}
 _KERNEL_FACADES = {"gemm", "gather", "norm", "index_ops", "fused_transform"}
-_KERNEL_MECHANISMS = {"runtime_config", "lightop_usage"}
+_KERNEL_MECHANISMS = {"runtime_config", "lightop_usage", "pcp_dspark",
+                   "pcp_rope_policy",  # Shared startup selection for the PCP RoPE providers.
+                   # W3-2: byte-preserving weight permutations --
+                   # layout mechanism, no tier semantics (no fallback
+                   # ladder exists; torch strided copies at HBM bw)
+                   "mla_layout",
+                   # W3-3: same mechanism class -- load-time ABI layouts and
+                   # device-side metadata/state plumbing (graph-capture-safe,
+                   # no numeric emulation semantics, no fallback ladder)
+                   "weight_scale",
+                   # W3-5: load-time engram norm-weight fusion (one-shot
+                   # init math, same class as weight_scale)
+                   "engram_init",
+                    # DeepGEMM provider binding and staged workspace handoff.
+                    "mhc_mega"}
 
 
 def check_impl_naming(r):
@@ -416,7 +566,12 @@ def check_impl_naming(r):
     try:
         proc = subprocess.run(
             [sys.executable, gen, "--check"],
-            capture_output=True, text=True, timeout=60,
+            # 60 s was too tight for a cold, tenant-loaded box: the gen
+            # subprocess pays a full torch import + FS scan and tipped past
+            # 60 s on 2026-11-17 nmz16 while the same check passed in ~30 s
+            # on an idle node. The cap exists to catch hangs, not to bound
+            # a warm run.
+            capture_output=True, text=True, timeout=120,
         )
         if proc.returncode != 0:
             r.fail("impl-naming", proc.stderr.strip().splitlines()[-1]
@@ -425,7 +580,161 @@ def check_impl_naming(r):
         r.fail("impl-naming", f"tier-matrix check crashed: {exc}")
 
 
+def check_layout_ownership(r):
+    """HARD: directory ownership rules (governance "宿主绑定归属判定" 2026-11-18).
+
+    a) New computation modules must live under kernels/ or features/<族>/
+       (never flat at hcu_adapter top level).  The 13 pre-rule top-level
+       Triton/TileLang modules are grandfathered in LEGACY_LAYOUT_ALLOWLIST;
+       an entry leaves the list only together with its family's migration.
+    b) Family integrity: once features/<family>/ exists, no top-level file
+       may still carry that family's prefix (family = migration unit; no
+       split families across old/new homes).
+    """
+    # [a] grandfathered computation modules at top level (exhaustive over
+    # the triton/tilelang inventory at rule date; shrink as families move)
+    LEGACY_LAYOUT_ALLOWLIST = set()  # fully converged 2026-11-18 (E2)
+    tops = []
+    for f in iter_files(".py"):
+        p = rel(f)
+        if (p.startswith("hcu_adapter/") and p.count("/") == 1
+                and not p.endswith("__init__.py") and not p.endswith("_base.py")):
+            tops.append(p[len("hcu_adapter/"):-3])
+    tops.sort()
+    for m in tops:
+        if m in LEGACY_LAYOUT_ALLOWLIST:
+            continue
+        src = open(os.path.join(ROOT, "hcu_adapter", m + ".py"),
+                   encoding="utf-8").read()
+        if re.search(r"@triton\.jit|@tilelang\.jit|import triton|import tilelang", src):
+            r.fail("layout", f"hcu_adapter/{m}.py is a new computation module at "
+                   "top level; kernels/ or features/<family>/ only "
+                   "(governance 算子三居地图)")
+    # [b] family integrity: features/<fam>/ exists -> zero top-level siblings
+    FAMILY_PREFIXES = {
+        "dsv4": ("dsv4",), "dsv41": ("dsv41", "v41"),
+        "ct_w4a8": ("ct_w4a8",), "deep_gemm": ("deep_gemm", "deepgemm"),
+        "hadamard": ("hadamard",), "gdn": ("gdn", "conv1d", "kda", "mamba"),
+        "dsa": ("dsa",), "slimquant": ("slimquant",), "mqa_logits": ("mqa",),
+        "allreduce": ("allreduce", "ar_norm"), "aiter": ("aiter",),
+    }
+    feat_root = os.path.join(ROOT, "hcu_adapter", "features")
+    if os.path.isdir(feat_root):
+        for fam in sorted(os.listdir(feat_root)):
+            pref = FAMILY_PREFIXES.get(fam)
+            if not pref:
+                continue
+            stray = [m for m in tops
+                     if any(m == p or m.startswith(p + "_") for p in pref)]
+            if stray:
+                r.fail("layout", f"features/{fam}/ exists but top-level "
+                       f"members remain: {', '.join(stray)}")
+
+
+def check_dual_dist_packaging(r):
+    """HARD: dual-dist layout invariants (governance §7.4).
+
+    sgl-kernel (root pyproject) is a pure shadow kernel: no sitecustomize
+    py-module, no entry-points, packages limited to sgl_kernel*. hcu-adapter
+    (packaging/hcu-adapter) owns sitecustomize + the vllm entry-points and
+    interlocks the kernel dist at build time: its setup.py/_pin.py renders
+    sgl-kernel==<public>[+<dtk.torch platform>[.<stamp>]] from the single
+    kernel version source (sgl_kernel/version.py), and build.sh passes one
+    platform label + DAS_BUILD_STAMP to both wheels. Without either the pin
+    names the public kernel version only.
+    The adapter base dependencies also carry the validated torch/triton pins
+    so a plain adapter install cannot drift to the newest nightly stack.
+    Versions are independent lines; only the pin is machine-checked.
+    """
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # py3.9/3.10 gate environments
+        import tomli as tomllib
+
+    root_pp = tomllib.loads((Path(ROOT) / "pyproject.toml").read_text(encoding="utf-8"))
+    adapter_pp_path = Path(ROOT) / "packaging" / "hcu-adapter" / "pyproject.toml"
+    adapter_pp = tomllib.loads(adapter_pp_path.read_text(encoding="utf-8"))
+
+    kernel_project = root_pp["project"]
+    if "entry-points" in kernel_project:
+        r.fail("dual-dist", "root pyproject must not declare entry-points "
+               "(they live in hcu-adapter)")
+    if "sitecustomize" in root_pp.get("tool", {}).get("setuptools", {}).get(
+            "py-modules", []):
+        r.fail("dual-dist", "sitecustomize ships with hcu-adapter, not the "
+               "kernel dist")
+    include = root_pp.get("tool", {}).get("setuptools", {}).get(
+        "packages", {}).get("find", {}).get("include")
+    if include != ["sgl_kernel*"]:
+        r.fail("dual-dist", f"kernel dist packages.find.include must be "
+               f"['sgl_kernel*'], got {include!r}")
+
+    version_src = (Path(ROOT) / "sgl_kernel" / "version.py").read_text(encoding="utf-8")
+    m = re.search(r'^__version__ = "(.+?)"$', version_src, re.M)
+    if not m:
+        r.fail("dual-dist", "sgl_kernel/version.py lacks __version__")
+        return
+    kernel_version = m.group(1)
+    public_version = kernel_version.split("+", 1)[0]
+
+    adapter_project = adapter_pp["project"]
+    dynamic = adapter_project.get("dynamic") or []
+    if "dependencies" not in dynamic or "version" not in dynamic:
+        r.fail("dual-dist", "hcu-adapter version/dependencies must be dynamic "
+               "(rendered by setup.py/_pin.py at build time)")
+    try:
+        import importlib.util
+        pin_file = adapter_pp_path.parent / "_pin.py"
+        spec = importlib.util.spec_from_file_location("hcu_adapter_build_pin", pin_file)
+        pin_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pin_mod)
+        pin = pin_mod.kernel_pin(stamp="", platform="")
+    except Exception as exc:
+        r.fail("dual-dist", f"cannot evaluate hcu-adapter interlock pin: {exc}")
+    else:
+        if pin != f"sgl-kernel=={public_version}":
+            r.fail("dual-dist",
+                   f"hcu-adapter interlock pin must be "
+                   f"'sgl-kernel=={public_version}', got {pin!r}")
+    if adapter_project.get("entry-points", {}).get("vllm.platform_plugins") != {
+            "hcu_adapter": "hcu_adapter.bridges.vllm:hcu_platform_plugin"}:
+        r.fail("dual-dist", "hcu-adapter vllm.platform_plugins entry-point "
+               "drifted (zero-change migration rule)")
+    if adapter_project.get("entry-points", {}).get("vllm.general_plugins") != {
+            "hcu_adapter": "hcu_adapter.bridges.vllm:hcu_runtime_plugin"}:
+        r.fail("dual-dist", "hcu-adapter vllm.general_plugins entry-point "
+               "drifted (zero-change rule)")
+    if "sitecustomize" not in adapter_pp.get("tool", {}).get(
+            "setuptools", {}).get("py-modules", []):
+        r.fail("dual-dist", "hcu-adapter must ship sitecustomize (py-modules)")
+
+    # Docker layering split: hcu-runtime composes the subgroups by self-reference.
+    extras = adapter_project.get("optional-dependencies") or {}
+    runtime_groups = (
+        "hcu-runtime-kernels",
+        "hcu-runtime-serve",
+        "hcu-runtime-aux",
+    )
+    missing_groups = [g for g in runtime_groups if g not in extras]
+    if missing_groups:
+        r.fail("dual-dist", f"hcu-runtime subgroups missing: {missing_groups}")
+    else:
+        expected = {f"hcu-adapter[{g}]" for g in runtime_groups}
+        actual = set(extras.get("hcu-runtime") or [])
+        if actual != expected:
+            r.fail("dual-dist",
+                   "hcu-runtime must compose hcu-runtime-kernels/serve/aux "
+                   f"by self-reference; missing={sorted(expected - actual)} "
+                   f"extra={sorted(actual - expected)}")
+
+    adapter_version_file = adapter_pp_path.parent / "VERSION"
+    if not adapter_version_file.read_text(encoding="utf-8").strip():
+        r.fail("dual-dist", "packaging/hcu-adapter/VERSION is empty "
+               "(adapter dist version single source)")
+
+
 # ---------------------------------------------------------------------------
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -445,11 +754,14 @@ def main():
     check_catalog_refs(r, reg)
     check_routing_glue_imports(r)
     check_example_yaml(r)
+    check_ops_import_depth(r)
     check_bare_environ(r, reg)
     check_glue_has_no_numerics(r)
     check_text_patch_allowlist(r)
     check_registry_ops_in_catalog(r)
     check_impl_naming(r)
+    check_layout_ownership(r)
+    check_dual_dist_packaging(r)
 
     print(f"l0 gate: scanned {n_py} py / {n_sh} sh / {n_sec} text files")
     for w in r.warns:

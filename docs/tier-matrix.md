@@ -1,8 +1,19 @@
 # 算子档位矩阵（自动生成，勿手改）
 
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-07）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
+> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-21）；事实源 = `BACKEND_CATALOG`（hcu_adapter/infra/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
+
+## vllm_inverse_rope
+
+Plugin HCU inverse GPT-J RoPE on V41 PCP BF16 attention output
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| hcu | candidate Default on eligible gfx938 native ea |
+| stock | candidate Original Core inverse RoPE |
+
+路由变量：（auto）
 
 ## cuda_graph
 
@@ -10,7 +21,156 @@ HIP driver guard for breakable prefill graph capture
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| prefill-bcg-driver-truth | candidate Breakable prefill uses the upstream  |
+| prefill-bcg-driver-truth | candidate Preserves prefill graphs and queries |
+
+路由变量：（auto）
+
+## vllm_flashmla_decode
+
+vLLM 0.33 V4.1 native packed-FP8 sparse decode without BF16 KV gather
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| native | candidate Default gfx938 D512 OCP 584-byte cac |
+| stock | candidate Explicit stock fallback: original de |
+
+路由变量：`HCU_VLLM_FLASHMLA_DECODE`
+
+## vllm_flashmla_prefill
+
+vLLM 0.33 V4.1 gathered-BF16 sparse prefill via native FlashMLA
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| native | candidate Default gfx936/gfx938 D512 BF16 dens |
+| stock | candidate Explicit stock fallback: unchanged o |
+
+路由变量：`HCU_VLLM_FLASHMLA_PREFILL`
+
+## vllm_fp4_indexer
+
+V41 LightOp FP4 indexer with variable allocator pages
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| lightop | candidate Eligible V4.1 auto defaults to MXFP4 |
+| stock | candidate Explicit stock fallback: existing FP |
+
+路由变量：`HCU_VLLM_FP4_INDEXER_IMPL`
+
+## vllm_fp4_packer
+
+Plugin-owned vLLM 0.33 E2M1 arithmetic lowering
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Default: gfx938 Plugin packer; CPU c |
+| stock | candidate Explicit stock fallback: audited ups |
+
+路由变量：`HCU_VLLM_FP4_PACKER_IMPL`
+
+## vllm_dsv41_channel_fp8
+
+vLLM 0.33 V4.1 channel-wise FP8 config via the public quantization API
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| native | candidate Register hcu_dsv41_channel_fp8 witho |
+| stock | candidate Do not register the distinct config; |
+
+路由变量：`HCU_VLLM_DSV41_CHANNEL_FP8_IMPL`
+
+## vllm_ct_w4a8
+
+vLLM 0.33 V4.1 compressed-tensors W4A8 config via the public quantization API
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| native | candidate Register hcu_dsv41_ct_w4a8; HCU MoE  |
+| stock | candidate Do not register the distinct config; |
+
+路由变量：`HCU_VLLM_CT_W4A8_IMPL`
+
+## vllm_pcp
+
+vLLM 0.33 V4.1 PCP attention owned by the adapter kernel module
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| native | candidate Adapter-owned V41 PCP backends/index |
+| stock | candidate Default: adapter builds no PCP class |
+
+路由变量：`HCU_VLLM_PCP_IMPL`
+
+## vllm_pcp_q_rope
+
+vLLM V4.1 PCP prefill Q-only RoPE
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| hcu | candidate Default on eligible gfx938 native ea |
+| stock | candidate Upstream fused query preparation |
+
+路由变量：（auto）
+
+## vllm_dsv41_pcp_compat
+
+vLLM V4.1 compatibility for the opt-in PCP extension
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| scoped | candidate FP8 SHUFFLE scoring, delayed mHC and |
+
+路由变量：（auto）
+
+## mamba_state_scatter
+
+SGLang Mamba verify-state copy launch geometry
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate gfx936/gfx938 FP32 entries >=1024: f |
+
+路由变量：（auto）
+
+## qsa_prefill
+
+QSA sparse prefill launch geometry on HCU
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate gfx936 uses 64/1 through 64 rows and |
+
+路由变量：（auto）
+
+## qsa_mqa
+
+QSA indexer MQA on HCU
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| torch | candidate Official Torch reference for unsuppo |
+| boltops | candidate gfx936 BF16 QSA indexer with four 12 |
+
+路由变量：（auto）
+
+## qsa_scatter
+
+QSA state and compressed-key row stores on HCU
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate No host sync; duplicate destination  |
+
+路由变量：（auto）
+
+## mapped_host_view
+
+DTK mapped CPU allocation exposed as a device tensor
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| dtk | candidate INT8/BF16/FP8 live-ID Graph replay p |
 
 路由变量：（auto）
 
@@ -27,14 +187,48 @@ vLLM 0.33 C4 sparse indexer through public OOT and official helpers
 
 ## vllm_mhc
 
-vLLM 0.33 mHC compatibility; official Torch math via public OOT
+vLLM 0.33 mHC via public OOT; AITER project with TileLang stage2 by default
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| torch | candidate Opt-in gfx936 official pre/post and  |
-| stock | candidate Default unchanged upstream; diagnost |
+| aiter | candidate Default gfx936/gfx938 AITER project  |
+| torch | candidate Opt-in gfx936/gfx938 official pre/po |
+| stock | candidate No longer the adapter default; expli |
 
 路由变量：`HCU_VLLM_MHC_IMPL`
+
+## vllm_scaled_mm
+
+vLLM native FP8/INT8 Linear execution through LightOp with official Triton fallback
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | validated Preserve official providers without  |
+| lightop | candidate Require LightOp wheel; native quanti |
+| auto | candidate LightOp when installed: INT8 gfx936/ |
+
+路由变量：（auto）
+
+## vllm_minimax_prefill
+
+MiniMax PCP8 native-MSA prefill and static-selector fusion (Plugin provider)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Default in the admitted MiniMax path |
+| stock | candidate Explicit startup comparison: preserv |
+
+路由变量：（auto）
+
+## vllm_minimax_qknorm_abi
+
+vLLM MiniMax fused qknorm native ABI compatibility
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| native-25 | candidate Exact audited wrapper and old native |
+
+路由变量：（auto）
 
 ## vllm_fp8_linear
 
@@ -67,15 +261,70 @@ vLLM AR-only gate compatibility; global AITER and real architecture unchanged
 
 路由变量：（auto）
 
+## sglang_grouped_topk
+
+SGLang biased single-group MoE routing
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Opt-in upstream fused router for FP3 |
+| torch | validated Default current upstream dispatch |
+
+路由变量：（auto）
+
+## int8_scaled_mm
+
+SGLang symmetric per-token/per-channel INT8 dense GEMM
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | validated Default stride-aware INT32 accumulat |
+| lightop | candidate Opt-in BF16 prefill M>=32, K multipl |
+| hipblaslt | candidate Opt-in LightOp hipBLASLt for bias-fr |
+
+路由变量：（auto）
+
+## hicache_mla_transfer
+
+MLA HiCache byte transfers through device pointer tables and pinned host memory
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Layer-first and page-first MLA trans |
+
+路由变量：（auto）
+
+## sglang_mla_sparse
+
+SGLang BF16 NoPE sparse MLA interface
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| emu | candidate Default Torch compatibility implemen |
+| dtk | candidate Opt-in H1-64 D512 topk2048-2112 nati |
+
+路由变量：（auto）
+
+## sglang_mla_fp8
+
+SGLang V32_NO_ROPE packed E4M3 sparse MLA decode
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| emu | candidate SGLang-only 528-byte rows; FP32 atte |
+
+路由变量：（auto）
+
 ## silu_and_mul
 
 gated activation out = silu(x[:,:d]) * x[:,d:]
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| triton | production default (auto); fp32 accumulate |
-| lightop | validated lightop.fuse_silu_and_mul (input, ou |
-| torch | production reference path, eager debug |
+| triton | production auto ladder fallback (lightop > aite |
+| aiter | candidate real wheel aiter.silu_and_mul(out, i |
+| lightop | validated auto first when lightop imports; lig |
+| torch | retired governance 3b-9 (2026-11-19): emu/to |
 
 路由变量：`HCU_SILU_MUL_IMPL`
 
@@ -85,10 +334,10 @@ RMSNorm (plain); the fused-add family is its own op below
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| triton | production default |
-| aiter | candidate aiter.rmsnorm_forward(x,w,eps,traini |
-| lightop | candidate Public BF16 plain RMSNorm; other dty |
-| torch | production reference path |
+| triton | production auto ladder fallback (lightop > aite |
+| aiter | candidate auto second; aiter.rmsnorm_forward(x |
+| lightop | candidate auto first when lightop imports; Pub |
+| torch | retired reference path |
 
 路由变量：`HCU_RMS_NORM_IMPL`
 
@@ -98,9 +347,9 @@ residual += input; input = rmsnorm(residual)*w, in-place
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| triton | production default (auto) |
-| lightop | validated lightop.fused_add_rms_norm(x, residu |
-| torch | production reference path |
+| triton | production auto ladder fallback (lightop > trit |
+| lightop | validated auto first (2026-11 tier order) for  |
+| torch | retired reference path |
 
 路由变量：`HCU_FUSED_ADD_RMS_IMPL`
 
@@ -145,13 +394,24 @@ DSA paged MQA logits
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| triton | production homegrown triton kernel (mqa_logits_ |
-| emu | production torch emulation — correct opt-out (H |
+| triton | production auto ladder landing tier (lightop is |
+| emu | candidate 2026-10-30: restored upstream per-he |
 | aiter | planned probed absent 2026-10-18: the on-box |
-| lightop | planned lightop.attention.paged_mqa_logits;  |
+| lightop | planned lightop.gemmopt.paged_mqa_logits wir |
 | deepgemm | broken deepgemm wheel direct call via mqa_v |
 
 路由变量：`1`/`triton`/`vendor`
+
+## minimax_h3_rotary_embedding
+
+MiniMax-H3 NeoX partial RoPE: DiT128/96 and VAE64/48; native preferred by plugin
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate BF16/FP16/FP32 old-native canonical  |
+| torch | candidate CPU contract and diagnostic fallback |
+
+路由变量：（auto）
 
 ## rotary_embedding
 
@@ -174,6 +434,52 @@ topk_softmax / topk_sigmoid / moe_fused_gate (contract = torch baseline)
 | triton | production no switch needed |
 | aiter | planned moe_fused_gate_sqrtsoftplus_v41_hcu  |
 | lightop | planned fast_topk_transform_* family |
+
+路由变量：（auto）
+
+## merge_state_v2
+
+LSE-exact merge of two partial attention states (MTP verify / cascade)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | production fp32 FMA, ±inf lse -> -inf; all-mask |
+| cpp | production setup_hip.py wheel (merge_attn_state |
+| emu | production torch fallback (CPU / no-triton); op |
+
+路由变量：（auto）
+
+## concat_mla
+
+MLA concat copies: concat_mla_k (in-place (T,128,192)), concat_mla_absorb_q (allocating (...,576))
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | production row-copy kernel; bf16/3D/unit-stride |
+| cpp | production setup_hip.py wheel: concat_mla_absor |
+| emu | production strided torch copies / torch.cat fal |
+
+路由变量：（auto）
+
+## copy_to_gpu_no_ce
+
+small pinned int32 H2D, N in {32,64,72} (upstream copy.cu)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | production setup_hip.py wheel: the REAL no-CE p |
+| emu | production output.copy_(input); the upstream no |
+
+路由变量：（auto）
+
+## per_token_group_quant_8bit
+
+sgl_per_token_group_quant_8bit bridge, v1 + v2 variants (C-class gap: the python seam was missing entirely — callers hit AttributeError)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | production setup_hip.py wheel: plain 16-lane-pe |
+| emu | production torch ports of both upstream kernels |
 
 路由变量：（auto）
 
@@ -219,6 +525,16 @@ TP init 广播 payload（行为还原：torch2.11 dlpack 只读 BufferError）
 
 路由变量：（auto）
 
+## fused_a_gemm
+
+DeepSeek-V3 fused QKV-A GEMM 最小延迟路径 (deepseek_v2 prepare_qkv_latent / q_b_proj_forward、nemotron_h latent MLP)
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cuda-only-kernel-off | candidate HIP 恒不具备：kernel 仅 __CUDA_ARCH__>=900 |
+
+路由变量：（auto）
+
 ## triton_pdl
 
 triton 编译期 PDL 指令剥离（行为还原：gfx936 无 griddepcontrol）
@@ -251,6 +567,16 @@ fa3 backend 注意力面（kvcache 分页/统一窗 + varlen prefill）
 
 路由变量：`HCU_FA_IMPL`
 
+## sglang_tree_sampling
+
+SGLang target-only speculative tree sampling
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Tree traversal, residual mass and CD |
+
+路由变量：（auto）
+
 ## sampling
 
 top-k/top-p/min-p renorm+sample（§0.5 is_cuda sampler 面）
@@ -268,10 +594,22 @@ GDN/gated-delta-rule 线性注意力（sglang fla 面）
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| triton | production 上游 fla triton 核（auto 默认；gfx93x wave6 |
-| aiter | validated DTK aiter CK/triton 核路由（fwd_h 状态递推 b |
+| triton | production 上游 fla triton 核（auto 末档 / aiter 失败回退 |
+| aiter | validated auto 首选（2026-11 档位：aiter > triton）：D |
 
 路由变量：`HCU_LINEAR_ATTN_GDN`
+
+## linear_attn_gdn_verify
+
+SGLang GDN MTP target verification
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | production explicit upstream rollback; also aut |
+| aiter | validated vendor verify bridge in gdn_aiter.py |
+| auto | production default policy: qualified DTK2610 st |
+
+路由变量：`HCU_LINEAR_ATTN_GDN_VERIFY`
 
 ## fused_moe
 
@@ -353,7 +691,7 @@ per-token fp8/int8 quant (dynamic)
 | 档位 | 状态 / 备注 |
 |---|---|
 | aiter | candidate R-09③ 2026-10-19 落位（quant_aiter 桥，au |
-| lightop | planned per-token quant family |
+| lightop | planned per-token quant family wired through |
 | torch | production upstream natives（scaled_fp8_quant to |
 
 路由变量：`HCU_QUANT_IMPL`

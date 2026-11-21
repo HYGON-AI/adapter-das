@@ -1,0 +1,109 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+
+name: Nightly Wheel
+
+# main 线双 dist：一次构建出 sgl-kernel（setup_hip.py 编译的 native 扩展）
+# + hcu-adapter 两张 wheel，版本在构建期打成
+# +dtk<DTK>.torch<TORCH>.<时间>.g<commit6>，adapter 元数据精确互锁同戳内核，
+# 产物即最终包（不走 CIUpload REPAIR / 上传后改写）。
+# push main 直接上传 nightly 归档；workflow_dispatch 只构建并保留 artifact。
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '要构建的 Git ref/branch/tag/SHA，默认当前分支 HEAD'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+  # CIUpload --record 上传前需查询关联 PR (只读)
+  pull-requests: read
+  # CIUpload --record 上报需读取 check-run 统计 (只读)
+  checks: read
+
+concurrency:
+  group: nightly-wheel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-wheel:
+    name: build
+    # 内网 devpi 与镜像仓库只在自托管 runner 可达
+    runs-on: hygon-build
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    # DTK 基础镜像自带 /opt/dtk 工具链（hipcc）；python 侧只缺 torch，
+    # 在本 job 里从 nightly 归档安装。候选镜像在 registry 内固定，
+    # 换镜像只影响工具链版本，不改变版本戳规则。
+    container:
+      image: ${{ vars.HARBOR_SITE }}/hcu/base/dtk:26.10-ubuntu22.04-py3.12
+
+    env:
+      PYPI_URL: ${{ vars.PYPI_URL }}
+      # DTK token：决定 torch 归档路径，也参与 wheel 的 dtk<ver> 版本标签。
+      DTK_VER: '2610'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      # 基础镜像带 DTK 工具链，python 侧只补 torch（必须来自 nightly 归档，
+      # 裸 PyPI 会拉到同名 CUDA 构建）；ninja/wheel 等编译依赖缺失时由
+      # build.sh 自动补装。
+      - name: Install torch from DTK archive
+        run: |
+          if [ -f /opt/dtk/env.sh ]; then source /opt/dtk/env.sh; fi
+          echo "ROCM_PATH=/opt/dtk" >> "$GITHUB_ENV"
+          echo "ROCM_HOME=/opt/dtk" >> "$GITHUB_ENV"
+          PYPI_HOST="${PYPI_URL#*://}"; PYPI_HOST="${PYPI_HOST%%/*}"; PYPI_HOST="${PYPI_HOST%%:*}"
+          TORCH_PIN="$(python -c "import tomllib; d = tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']; print(next(x for x in d if x.startswith('torch==')))")"
+          python -m pip install --no-cache-dir "$TORCH_PIN" \
+            -i "${PYPI_URL}/nightly/dtk${DTK_VER}/+simple/" \
+            --trusted-host "${PYPI_HOST}"
+
+      # AMDGPU_TARGETS 由基础镜像/runner 环境提供，setup_hip.py 会为其中
+      # 每个目标生成 --offload-arch；--no-stamp/时间戳由 build.sh 统一管理。
+      - name: Build stamped wheels
+        run: |
+          if [ -f /opt/dtk/env.sh ]; then source /opt/dtk/env.sh; fi
+          bash packaging/build.sh
+          echo "=== wheels ==="
+          ls -lh dist/*.whl
+
+      - name: Upload nightly
+        env:
+          CIUPLOAD_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
+            pip install --no-cache-dir ciupload -i https://pypi.sourcefind.cn/release/dtk/
+            CIUpload NIGHTLY \
+              --devpi_url "${PYPI_URL}" \
+              --password "${CIUPLOAD_PASSWORD}" \
+              --dtk_version "${DTK_VER}" \
+              --record \
+              -f dist/*.whl
+          fi
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: adapter-wheels
+          path: dist/*.whl
+          if-no-files-found: error
+
+      # 容器 job 以 root 运行, 会在共享 workspace 留下 root 文件,
+      # 导致同机器上其他 job 的 checkout 失败; 跑完清掉
+      - name: 清理 workspace
+        if: always()
+        run: rm -rf "${GITHUB_WORKSPACE}"/* "${GITHUB_WORKSPACE}"/.[!.]* || true

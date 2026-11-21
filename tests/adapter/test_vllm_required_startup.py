@@ -8,7 +8,7 @@ import os
 import pytest
 
 from hcu_adapter.bridges import vllm as bridge
-from hcu_adapter import extensions
+from hcu_adapter.infra import extensions
 
 
 @dataclass
@@ -33,8 +33,30 @@ def startup(monkeypatch):
     # Required-extension policy has no device/runtime prerequisites. Native ABI
     # and FP8 registration are exercised by their dedicated contract tests.
     monkeypatch.setattr(bridge, "_require_vllm_hip_runtime_abi", lambda: None)
+    from hcu_adapter.bridges import vllm_allreduce
+    monkeypatch.setattr(vllm_allreduce, "prepare_runtime", lambda: None)
+    from hcu_adapter.infra import kill_switch
+    monkeypatch.setattr(kill_switch, "log_state", lambda: None)
+    from hcu_adapter.bridges import vllm_minimax_abi
+    monkeypatch.setattr(vllm_minimax_abi, "install", lambda: False)
     from hcu_adapter.bridges import vllm_fp8
     monkeypatch.setattr(vllm_fp8, "install", lambda: False)
+    # Required-policy CPU fixtures isolate startup admission. Scaled-MM provider
+    # installation imports a device-specific LightOp module and has separate
+    # backend/runtime tests; do not initialize a GPU from this policy test.
+    from hcu_adapter.bridges import vllm_scaled_mm
+    monkeypatch.setattr(vllm_scaled_mm, "install", lambda: False)
+    # These tests exercise required-policy plumbing, not V4.1 bridge policy.
+    # FlashMLA/PCP have their own admission tests and require release/config
+    # context; keep the CPU runtime fixture independent of them.
+    from hcu_adapter.bridges import vllm_flashmla, vllm_flashmla_decode, vllm_pcp
+    for module in (vllm_flashmla, vllm_flashmla_decode, vllm_pcp):
+        monkeypatch.setattr(module, "install", lambda: False)
+        monkeypatch.setattr(module, "require_healthy", lambda: None, raising=False)
+    # AllReduce preparation has dedicated runtime/ABI tests; keep these
+    # required-policy fixtures independent of its configuration and providers.
+    from hcu_adapter.bridges import vllm_allreduce
+    monkeypatch.setattr(vllm_allreduce, "prepare_runtime", lambda: None)
     # Required-policy CPU fixtures isolate operator activation. The real C4
     # publication, health and startup paths have their own contracts/probes.
     from hcu_adapter.bridges import vllm_sparse_indexer
@@ -171,7 +193,8 @@ def _record_startup_evidence(case, mode, caplog):
 @pytest.mark.parametrize("mode", ["default", "explicit", "blank", "malformed-extension", "malformed-capability"])
 def test_host_none_actual_bootstrap_and_runtime_resolve_sources_without_common_summary(startup, monkeypatch, caplog, mode):
     import logging
-    from hcu_adapter import bootstrap, hcu_env
+    from hcu_adapter.infra import bootstrap
+    from hcu_adapter.infra import hcu_env
 
     points, checks = startup
     contexts, order = [], []
@@ -218,7 +241,10 @@ def test_host_none_actual_bootstrap_and_runtime_resolve_sources_without_common_s
     if mode.startswith("malformed"):
         assert len(order) == len(reached) and contexts == []
     else:
-        assert order[len(reached):] == [("version",), ("registration-boundary",)]
+        assert order[len(reached):] == [
+            ("version",), ("registration-boundary",),
+            ("resolve", "HCU_ADAPTER_DUMP", "", "default"),
+        ]
         assert len(contexts) == 1
         assert contexts[0].requested_extensions == (frozenset({"provider"}) if mode == "explicit" else frozenset())
         assert contexts[0].requested_capabilities == (frozenset({"attention"}) if mode == "explicit" else frozenset())
@@ -229,7 +255,9 @@ def test_host_none_actual_bootstrap_and_runtime_resolve_sources_without_common_s
 @pytest.mark.parametrize("mode", ["default", "explicit", "blank", "malformed"])
 def test_real_vllm_bootstrap_common_logs_once_then_actual_runtime_preserves_policy(startup, monkeypatch, caplog, mode):
     import logging
-    from hcu_adapter import bootstrap, hcu_env, hcu_config, nccl_topo_guard, tvmffi_warmup
+    from hcu_adapter.infra import bootstrap, tvmffi_warmup
+    from hcu_adapter.infra import hcu_config, nccl_topo_guard
+    from hcu_adapter.infra import hcu_env
 
     points, checks = startup
     contexts, order = [], []

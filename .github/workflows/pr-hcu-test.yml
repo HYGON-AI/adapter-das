@@ -1,0 +1,590 @@
+name: HCU MR CI (K8s)
+
+on:
+  pull_request_target:
+    branches:
+        - main
+        # release 线是单 whl 打包模型（只有 sgl-kernel，含 hcu_adapter/）
+        - 'release/**'
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  workflow_dispatch:
+    inputs:
+        pr-number:
+            description: 'PR number to merge into the selected branch (leave empty to test the branch as-is)'
+            required: false
+            default: ''
+        pip_index_url:
+            description: 'pip index url'
+            required: false
+            default: ''
+        pip_trusted_host:
+            description: 'pip trusted host'
+            required: false
+            default: ''
+        lane:
+            description: 'GPU 车道: sglang(默认) / vllm / all'
+            type: choice
+            options: [sglang, vllm, all]
+            default: sglang
+permissions:
+  contents: read
+
+concurrency:
+  # 标签名入组：加未知标签（如 wip）不再取消在跑的自动/车道 run；同一车道
+  # 标签重复添加仍然取消并重启该标签自己的 run
+  group: hcu-mr-k8s-${{ github.event.pull_request.number || inputs.pr-number || github.ref }}-${{ github.event.label.name || inputs.lane || 'auto' }}
+  cancel-in-progress: true
+
+env:
+  SGLANG_REPO_URL: ${{ vars.SGLANG_REPO_URL || 'https://github.com/sgl-project/sglang.git' }}
+  SGLANG_REF: v0.5.22
+  SGLANG_COMMIT: baa9befa381511cd4d56f83980951e5a45fffc6d
+  PIP_TRUSTED_HOST: ${{ inputs.pip_trusted_host || vars.PIP_TRUSTED_HOST }}
+  PIP_INDEX_URL: ${{ inputs.pip_index_url || vars.PIP_INDEX_URL }}
+
+jobs:
+  image:
+    name: resolve CI image
+    # 公共 build/L0 随任一宿主车道执行；只认明确的宿主/兼容标签，避免任意标签
+    # 重跑 build+L0；opened/synchronize 等非 labeled 事件不受影响
+    if: >-
+      github.event.action != 'labeled' ||
+      contains(fromJSON('["sglang", "vllm", "ci-sglang", "ci-vllm", "ci-hcu", "ci-all"]'), github.event.label.name)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      image: ${{ steps.read.outputs.image }}
+    steps:
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          # 镜像属于基础设施，取基线分支的版本：PR 里改 ci/ci_docker_image 不会影响本次运行（要试新镜像就合入基线）
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
+          persist-credentials: false
+          
+      - name: Read ci/ci_docker_image
+        id: read
+        run: |
+          set -euo pipefail
+          # main 与 release 线都带这个文件；缺失就意味着基线分支漏提交了基础设施
+          # 文件，直接失败比悄悄用别的镜像跑绿更安全
+          [ -f ci/ci_docker_image ] \
+            || { echo "::error::基线分支没有 ci/ci_docker_image"; exit 1; }
+          image="$(tr -d '[:space:]' < ci/ci_docker_image)"
+          echo "用镜像: $image"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build whl
+    if: >-
+      github.event.action != 'labeled' ||
+      contains(fromJSON('["sglang", "vllm", "ci-sglang", "ci-vllm", "ci-hcu", "ci-all"]'), github.event.label.name)
+    needs: [image]
+    runs-on: hygon-build
+    timeout-minutes: 20
+    container:
+      # 镜像来自 ci/ci_docker_image（前置 image job 解析），必须带 digest
+      image: ${{ needs.image.outputs.image }}
+    defaults:
+      run:
+        # 容器 job 的默认 shell 是 sh，set -o pipefail 是 bash 扩展，不显式指定会在第一行就退出
+        shell: bash
+    outputs:
+      # L1 按这个目录安装 whl，不自己拼路径：merge 的提交号由 build 算出来，
+      # 让 L1 自己推等于两边各算一遍，迟早对不上
+      wheel_dir: ${{ steps.stage.outputs.wheel_dir }}
+      # dual = main 线（两个 dist）；single = release 线（一个 sgl-kernel 含两个包）
+      whl_model: ${{ steps.build.outputs.whl_model }}
+    steps:
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
+          fetch-depth: 0
+          # Keep the token out of .git/config so PR code cannot read it.
+          persist-credentials: false
+
+      - name: Merge PR into base
+        if: github.event_name == 'pull_request_target' || inputs.pr-number != ''
+        env:
+          # Pass via env instead of inline ${{ }} so a manual input cannot inject shell commands.
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr-number }}
+          # The repo is private, so the fetch needs a token; pass it only to this one command so it never lands in .git/config.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 容器里 workspace 常以别的 uid 挂进来，git 会以 dubious ownership 拒绝操作
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          auth=$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)
+          git -c http.extraheader="AUTHORIZATION: basic ${auth}" \
+            fetch "https://github.com/${GITHUB_REPOSITORY}.git" "pull/${PR_NUMBER}/head:pr"
+          git merge --no-ff --no-edit pr
+
+      - name: build whl
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist repair
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          # 两条线的打包模型不同，按仓库实际结构分派：
+          #   main    : packaging/build.sh 出双 dist（sgl-kernel + hcu-adapter，精确互锁）
+          #   release : 无 packaging/，根 pyproject.toml 出一个 sgl-kernel，包内同时含
+          #             sgl_kernel/ 与 hcu_adapter/（+ sitecustomize、vllm entry-points）
+          if [ -x packaging/build.sh ]; then
+            MODEL=dual
+            HCU_ADAPTER_HOST=none bash packaging/build.sh
+          else
+            MODEL=single
+            # --no-build-isolation 需要环境里已有构建后端；build.sh 也是这么补的
+            python3 -c 'import setuptools.build_meta' >/dev/null 2>&1 \
+              || python3 -m pip install 'setuptools>=64' wheel
+            HCU_ADAPTER_HOST=none python3 -m pip wheel --no-deps --no-build-isolation \
+              --wheel-dir dist .
+          fi
+          echo "打包模型: $MODEL"
+          echo "whl_model=$MODEL" >> "$GITHUB_OUTPUT"
+
+          # repair/ 只是这次的产物暂存目录（不再走 CIUpload REPAIR 改写版本）；
+          # 目录要先建出来，glob 不匹配时 cp 会把 'repair/*.whl' 当字面量报错
+          mkdir -p repair
+          cp -f dist/*.whl repair/
+          ls -l repair
+
+          # 装到 L1 的 whl 必须各有且只有一个，否则测到的不是本次构建的产物
+          if [ "$MODEL" = dual ]; then
+            for n in sgl_kernel hcu_adapter; do
+              c=$(ls repair/${n}-*.whl 2>/dev/null | wc -l)
+              [ "$c" = 1 ] || { echo "::error::repair/ 下 ${n} whl 数量为 $c，预期 1"; exit 1; }
+            done
+          else
+            # 单 dist：文件名是 sgl_kernel-（dist 名 sgl-kernel 的规范化形式），
+            # 且必须是唯一一个 whl
+            c=$(ls repair/*.whl 2>/dev/null | wc -l)
+            [ "$c" = 1 ] || { echo "::error::release 线应只产出 1 个 whl，实际 $c 个"; exit 1; }
+            ls repair/sgl_kernel-*.whl >/dev/null 2>&1 \
+              || { echo "::error::单 dist 产物不是 sgl_kernel-*.whl"; exit 1; }
+          fi
+
+      - name: stage whl
+        id: stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          GIT_COMMIT="$(git rev-parse --short=6 HEAD)"
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          STAGING_ROOT="/ci_public/adapter-das/hcu-wheel-staging"
+          STAGING_DIR="${STAGING_ROOT}/${GITHUB_REPOSITORY_OWNER}_${REPO_NAME}/run-${GITHUB_RUN_ID}/${GIT_COMMIT}"
+          WHEEL_DIR="${STAGING_DIR}/wheels"
+          # 单独重跑 build 时先清掉上一次的 whl，免得目录里同名包有两个版本
+          rm -rf "$WHEEL_DIR" && mkdir -p "$WHEEL_DIR"
+          cp repair/*.whl "$WHEEL_DIR"/
+          ls -l "$WHEEL_DIR"
+          echo "wheel_dir=$WHEEL_DIR" >> "$GITHUB_OUTPUT"
+
+  l0:
+    name: L0 structural gate
+    if: >-
+      github.event.action != 'labeled' ||
+      contains(fromJSON('["sglang", "vllm", "ci-sglang", "ci-vllm", "ci-hcu", "ci-all"]'), github.event.label.name)
+    # L0 刻意零依赖（docs/ci.md 设计取舍），用不到卡和镜像，放云端 runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
+          fetch-depth: 0
+          # Keep the token out of .git/config so PR code cannot read it.
+          persist-credentials: false
+
+      - name: Merge PR into base
+        if: github.event_name == 'pull_request_target' || inputs.pr-number != ''
+        env:
+          # Pass via env instead of inline ${{ }} so a manual input cannot inject shell commands.
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr-number }}
+          # The repo is private, so the fetch needs a token; pass it only to this one command so it never lands in .git/config.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 容器里 workspace 常以别的 uid 挂进来，git 会以 dubious ownership 拒绝操作
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          auth=$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)
+          git -c http.extraheader="AUTHORIZATION: basic ${auth}" \
+            fetch "https://github.com/${GITHUB_REPOSITORY}.git" "pull/${PR_NUMBER}/head:pr"
+          git merge --no-ff --no-edit pr
+      - name: L0 gate
+        timeout-minutes: 5
+        run: python3 ci/l0_gate.py
+
+  l1:
+    name: L1 GPU gate (bw1100-1card)
+    # L1 测的是 build job 产出的 whl，不是检出的源码树（见 install whl 步骤）
+    needs: [image, l0, build]
+    runs-on: hygon-bw1100-1card
+    # 非 labeled 的 pull_request_target 事件跳过 l1（PR 自动跑只到 L0/build）。
+    # L1 GPU 手动通道两条：workflow_dispatch（lane 输入 sglang/all），
+    # 或给 PR 加 sglang / ci-sglang / ci-hcu / ci-all 标签
+    if: >-
+      (github.event_name == 'workflow_dispatch' &&
+       (inputs.lane == 'sglang' || inputs.lane == 'all' || inputs.lane == '')) ||
+      (github.event_name == 'pull_request_target' &&
+       github.event.action == 'labeled' &&
+       contains(fromJSON('["sglang", "ci-sglang", "ci-hcu", "ci-all"]'), github.event.label.name))
+    # 等卡 30 分钟 + L1 step 上限 300 分钟 + 其他步骤余量。
+    # L1.5 段入车后脚本内各段超时之和（×2）约 3.7h；暖缓存时全车 ~20-30 分钟，
+    # 上限只裁剪冷容器最坏情形（与 nightly 的 l15 job 同级）
+    timeout-minutes: 360
+    container:
+      # 镜像来自 ci/ci_docker_image（与 build 用的是同一个）
+      image: ${{ needs.image.outputs.image }}
+    defaults:
+      run:
+        # 容器 job 的默认 shell 是 sh，set -o pipefail 是 bash 扩展，不显式指定会在第一行就退出
+        shell: bash
+    env:
+      # 冷容器把脚本内各段超时窗口放大一倍
+      HCU_L1_TIMEOUT_SCALE: "2"
+      # 可选缓存种子，由 ci/cache_export.sh 生成并放到 /ci_public
+      HCU_CACHE_SEED: /ci_public/adapter-das/cache/hcu_cache_seed.tgz
+    steps:
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
+          fetch-depth: 0
+          # Keep the token out of .git/config so PR code cannot read it.
+          persist-credentials: false
+
+      - name: Merge PR into base
+        if: github.event_name == 'pull_request_target' || inputs.pr-number != ''
+        env:
+          # Pass via env instead of inline ${{ }} so a manual input cannot inject shell commands.
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr-number }}
+          # The repo is private, so the fetch needs a token; pass it only to this one command so it never lands in .git/config.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 容器里 workspace 常以别的 uid 挂进来，git 会以 dubious ownership 拒绝操作
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          auth=$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)
+          git -c http.extraheader="AUTHORIZATION: basic ${auth}" \
+            fetch "https://github.com/${GITHUB_REPOSITORY}.git" "pull/${PR_NUMBER}/head:pr"
+          git merge --no-ff --no-edit pr
+
+      - name: install whl
+        timeout-minutes: 5
+        env:
+          WHEEL_DIR: ${{ needs.build.outputs.wheel_dir }}
+          WHL_MODEL: ${{ needs.build.outputs.whl_model }}
+        run: |
+          set -e
+          [ -n "$WHEEL_DIR" ] || { echo "::error::build job 没有输出 wheel_dir"; exit 1; }
+          ls -l "$WHEEL_DIR"
+
+          # 以 pip 实际安装位置为准。在 / 下执行、去掉 PYTHONPATH，免得认到源码树里的
+          # *.egg-info；sitecustomize 的启动日志也打在 stdout，用 sed 只取 Location 行
+          loc() { (cd / && env -u PYTHONPATH python3 -m pip show "$1" 2>/dev/null | sed -n 's/^Location: //p'); }
+
+          if [ "$WHL_MODEL" = single ]; then
+            # release 线：本次只产出 sgl-kernel 一个 dist，而它自带 hcu_adapter/ 与
+            # sitecustomize.py；镜像里预装的 hcu-adapter dist 认领的正是同一批文件。
+            # 不先卸掉会留下一个 RECORD 已失效的 dist：它仍注册 vllm entry-points，
+            # 之后 pip 卸载它还会连带删掉新 wheel 的文件。所以必须先卸后装。
+            HCU_ADAPTER_HOST=none python3 -m pip uninstall -y hcu-adapter \
+              || echo "镜像里没有 hcu-adapter，跳过"
+            HCU_ADAPTER_HOST=none python3 -m pip install --no-deps --force-reinstall \
+              "$WHEEL_DIR"/sgl_kernel-*.whl
+          else
+            # main 线：两个 dist 各自拥有自己的包，force-reinstall 会先按 RECORD 卸旧版
+            HCU_ADAPTER_HOST=none python3 -m pip install --no-deps --force-reinstall \
+              "$WHEEL_DIR"/sgl_kernel-*.whl "$WHEEL_DIR"/hcu_adapter-*.whl
+          fi
+
+          purelib="$(loc sgl-kernel)"
+          [ -n "$purelib" ] || { echo "::error::装完找不到 sgl-kernel 的安装位置"; exit 1; }
+          if [ "$WHL_MODEL" = dual ]; then
+            [ "$purelib" = "$(loc hcu-adapter)" ] \
+              || { echo "::error::安装位置异常：'$purelib' vs '$(loc hcu-adapter)'"; exit 1; }
+          fi
+          # 两条线都要求这三个模块由本次安装提供（release 线的单 dist 全带）
+          for p in hcu_adapter/__init__.py sgl_kernel/__init__.py sitecustomize.py; do
+            [ -f "$purelib/$p" ] || { echo "::error::安装后 $purelib/$p 不存在"; exit 1; }
+          done
+
+          # l1_gpu_gate.sh 会把仓库根放到 PYTHONPATH 最前面，测试文件里也有
+          # sys.path.insert(仓库根)，源码树会盖住装好的包；tools/ 又必须从仓库根导入，
+          # 仓库根不能从路径里拿掉。所以把源码树里的三个模块换成指向安装位置的符号
+          # 链接：无论从哪条路径 import，跑的都是 whl 里的代码。
+          for p in hcu_adapter sgl_kernel sitecustomize.py; do
+            rm -rf "$GITHUB_WORKSPACE/$p"
+            ln -s "$purelib/$p" "$GITHUB_WORKSPACE/$p"
+          done
+
+          HCU_ADAPTER_HOST=none python3 - "$purelib" "$WHL_MODEL" <<'PY'
+          import os, sys, importlib.metadata as im
+          purelib = os.path.realpath(sys.argv[1])
+          model = sys.argv[2]
+          import hcu_adapter, sgl_kernel, sitecustomize
+          for m in (hcu_adapter, sgl_kernel, sitecustomize):
+              real = os.path.realpath(m.__file__)
+              assert real.startswith(purelib + os.sep), f"{m.__name__} -> {real}, not under {purelib}"
+              print(f"{m.__name__}: {m.__file__} -> {real}")
+          print("sgl-kernel", im.version("sgl-kernel"))
+          if model == "dual":
+              print("hcu-adapter", im.version("hcu-adapter"))
+          else:
+              # 单 dist 模型下不能再有 hcu-adapter：它和本次的 sgl-kernel 抢同一批文件
+              try:
+                  stale = im.version("hcu-adapter")
+              except im.PackageNotFoundError:
+                  print("hcu-adapter: absent (correct for release line)")
+              else:
+                  raise SystemExit(f"hcu-adapter {stale} still installed; it shadows the wheel")
+              # entry-points 必须由 sgl-kernel 这个 dist 提供
+              eps = [e for e in im.entry_points(group="vllm.platform_plugins")
+                     if e.name == "hcu_adapter"]
+              assert eps, "vllm platform plugin entry-point missing after install"
+              owners = {e.dist.name for e in eps if e.dist}
+              assert owners == {"sgl-kernel"}, f"entry-point owners: {owners}"
+              print("entry-point owner: sgl-kernel")
+          PY
+
+      - name: List pip env
+        run: |
+          HCU_ADAPTER_HOST=none pip list
+
+
+      - name: Environment probe
+        timeout-minutes: 5
+        run: |
+          set -x
+          echo "HCU_CI_IN_K8S=${HCU_CI_IN_K8S:-unset} NODE_NAME=${NODE_NAME:-unset} OMP_NUM_THREADS=${OMP_NUM_THREADS:-unset}"
+          python3 --version
+          python3 -c "import torch; print('torch', torch.__version__, 'devices', torch.cuda.device_count())"
+          ls -d /sglang-v0522 /root/sglang-v0522-src /sglang-v0521 /root/sglang-v0521-src 2>/dev/null || true
+
+      # R-17 三绑定（docs/ci.md）：PR 的 l1 与 nightly 的 l15 用同一个上游树锚点。
+      # 镜像内有预置树就用镜像（source=image）；没有才 clone（source=clone）。
+      # SHA 不一致时 clone 来源直接失败（tag 被移动/镜像仓库不同步），
+      # 镜像来源降级为 warning（树改不了，但结果须带着质疑看）。
+      - name: Fetch upstream sglang tree
+        timeout-minutes: 10
+        run: |
+          up=""
+          for d in /sglang-v0522 /root/sglang-v0522-src; do
+            [ -d "$d/test/registered/attention/unittests" ] && { up="$d"; break; }
+          done
+          src=image
+          if [ -z "$up" ]; then
+            src=clone
+            up="$RUNNER_TEMP/sglang-$SGLANG_REF"
+            rm -rf "$up"
+            ok=0
+            for i in 1 2 3; do
+              if git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$SGLANG_REF" "$SGLANG_REPO_URL" "$up"; then ok=1; break; fi
+              echo "clone attempt $i failed"; rm -rf "$up"; sleep 30
+            done
+            [ "$ok" = 1 ] || { echo "::error::拉取上游 sglang 失败：$SGLANG_REPO_URL @ $SGLANG_REF"; exit 1; }
+          fi
+          head="$(git -C "$up" rev-parse HEAD 2>/dev/null || echo unknown)"
+          echo "upstream tree: $up (source=$src, HEAD=$head)"
+          if [ "$head" != "$SGLANG_COMMIT" ]; then
+            if [ "$src" = clone ]; then
+              echo "::error::$SGLANG_REF 解析到 $head，预期 $SGLANG_COMMIT（tag 被移动或镜像仓库不同步）"; exit 1
+            fi
+            echo "::warning::镜像内上游树 HEAD=$head，与验证基线 $SGLANG_COMMIT 不一致"
+          fi
+          [ -d "$up/test/registered/attention/unittests" ] \
+            || { echo "::error::$up 下没有 test/registered/attention/unittests"; exit 1; }
+          echo "HCU_UP_TREE=$up" >> "$GITHUB_ENV"
+
+      - name: Seed JIT cache
+        timeout-minutes: 5
+        run: |
+          if [ -f "$HCU_CACHE_SEED" ]; then
+            bash ci/cache_import.sh "$HCU_CACHE_SEED"
+          else
+            echo "no cache seed at $HCU_CACHE_SEED -- cold JIT"
+            # 没有 tvm-ffi 缓存时冷构建会自锁（docs/ci.md L1.5h），用官方开关绕开
+            echo "TVM_FFI_DISABLE_TORCH_C_DLPACK=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: L1 GPU gate (ci/l1_gpu_gate.sh)
+        # 脚本内各段超时之和（×2）约 3.7h（含 l15_upstream 60min + l15_mech 40min
+        # + manifest collect 30min）；暖缓存时全车 ~20-30 分钟，上限只裁剪冷容器
+        timeout-minutes: 300
+        # 容器里只有分到的那张卡，编号固定为 0；直接传 0，跳过 rocm-smi 的空闲卡探测。
+        # --up-tree 钉死上游树：l15_* 段从 SKIP 变为真实执行，且 SHA 已由 fetch 步骤校验
+        run: bash ci/l1_gpu_gate.sh 0 --up-tree "$HCU_UP_TREE"
+
+      - name: Collect logs
+        if: always()
+        timeout-minutes: 5
+        run: |
+          mkdir -p l1-logs
+          cp /tmp/l1_*.log /tmp/hcu_jit_progress.*.log l1-logs/ 2>/dev/null || true
+
+      - name: Upload logs
+        if: always()
+        timeout-minutes: 10
+        uses: actions/upload-artifact@v4
+        with:
+          name: hcu-l1-logs-pr${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+          path: l1-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  vllm-lane:
+    name: L1 vLLM host lane (bw1100-1card)
+    # vLLM 宿主族（tests/adapter/conftest.py 按宿主域隔离出去的那批文件）的车道：
+    # 每文件一个新解释器，HCU_ADAPTER_HOST=vllm + VLLM_PLUGINS=none（形态依据见
+    # ci/vllm_host_lane.sh 头注）。触发：vllm / ci-vllm / ci-all，或 dispatch lane=vllm/all
+    needs: [image, l0, build]
+    if: >-
+      (github.event_name == 'workflow_dispatch' &&
+       (inputs.lane == 'vllm' || inputs.lane == 'all')) ||
+      (github.event_name == 'pull_request_target' &&
+       github.event.action == 'labeled' &&
+       contains(fromJSON('["vllm", "ci-vllm", "ci-all"]'), github.event.label.name))
+    runs-on: hygon-bw1100-1card
+    # 27 个文件 x 每文件一次 vllm import(冷 ~60s)+用例时间，冷容器 x2 余量
+    timeout-minutes: 150
+    container:
+      image: ${{ needs.image.outputs.image }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      HCU_L1_TIMEOUT_SCALE: "2"
+      HCU_CACHE_SEED: /ci_public/adapter-das/cache/hcu_cache_seed.tgz
+    steps:
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
+          fetch-depth: 0
+          # Keep the token out of .git/config so PR code cannot read it.
+          persist-credentials: false
+
+      - name: Merge PR into base
+        if: github.event_name == 'pull_request_target' || inputs.pr-number != ''
+        env:
+          # Pass via env instead of inline ${{ }} so a manual input cannot inject shell commands.
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr-number }}
+          # The repo is private, so the fetch needs a token; pass it only to this one command so it never lands in .git/config.
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 容器里 workspace 常以别的 uid 挂进来，git 会以 dubious ownership 拒绝操作
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          auth=$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)
+          git -c http.extraheader="AUTHORIZATION: basic ${auth}" \
+            fetch "https://github.com/${GITHUB_REPOSITORY}.git" "pull/${PR_NUMBER}/head:pr"
+          git merge --no-ff --no-edit pr
+
+      - name: install whl
+        timeout-minutes: 5
+        env:
+          WHEEL_DIR: ${{ needs.build.outputs.wheel_dir }}
+          WHL_MODEL: ${{ needs.build.outputs.whl_model }}
+        run: |
+          set -e
+          [ -n "$WHEEL_DIR" ] || { echo "::error::build job 没有输出 wheel_dir"; exit 1; }
+          ls -l "$WHEEL_DIR"
+
+          # 以 pip 实际安装位置为准。在 / 下执行、去掉 PYTHONPATH，免得认到源码树里的
+          # *.egg-info；sitecustomize 的启动日志也打在 stdout，用 sed 只取 Location 行
+          loc() { (cd / && env -u PYTHONPATH python3 -m pip show "$1" 2>/dev/null | sed -n 's/^Location: //p'); }
+
+          if [ "$WHL_MODEL" = single ]; then
+            # release 线：本次只产出 sgl-kernel 一个 dist，而它自带 hcu_adapter/ 与
+            # sitecustomize.py；镜像里预装的 hcu-adapter dist 认领的正是同一批文件。
+            # 不先卸掉会留下一个 RECORD 已失效的 dist：它仍注册 vllm entry-points，
+            # 之后 pip 卸载它还会连带删掉新 wheel 的文件。所以必须先卸后装。
+            HCU_ADAPTER_HOST=none python3 -m pip uninstall -y hcu-adapter \
+              || echo "镜像里没有 hcu-adapter，跳过"
+            HCU_ADAPTER_HOST=none python3 -m pip install --no-deps --force-reinstall \
+              "$WHEEL_DIR"/sgl_kernel-*.whl
+          else
+            # main 线：两个 dist 各自拥有自己的包，force-reinstall 会先按 RECORD 卸旧版
+            HCU_ADAPTER_HOST=none python3 -m pip install --no-deps --force-reinstall \
+              "$WHEEL_DIR"/sgl_kernel-*.whl "$WHEEL_DIR"/hcu_adapter-*.whl
+          fi
+
+          purelib="$(loc sgl-kernel)"
+          [ -n "$purelib" ] || { echo "::error::装完找不到 sgl-kernel 的安装位置"; exit 1; }
+          if [ "$WHL_MODEL" = dual ]; then
+            [ "$purelib" = "$(loc hcu-adapter)" ] \
+              || { echo "::error::安装位置异常：'$purelib' vs '$(loc hcu-adapter)'"; exit 1; }
+          fi
+          # 两条线都要求这三个模块由本次安装提供（release 线的单 dist 全带）
+          for p in hcu_adapter/__init__.py sgl_kernel/__init__.py sitecustomize.py; do
+            [ -f "$purelib/$p" ] || { echo "::error::安装后 $purelib/$p 不存在"; exit 1; }
+          done
+
+          # l1_gpu_gate.sh 会把仓库根放到 PYTHONPATH 最前面，测试文件里也有
+          # sys.path.insert(仓库根)，源码树会盖住装好的包；tools/ 又必须从仓库根导入，
+          # 仓库根不能从路径里拿掉。所以把源码树里的三个模块换成指向安装位置的符号
+          # 链接：无论从哪条路径 import，跑的都是 whl 里的代码。
+          for p in hcu_adapter sgl_kernel sitecustomize.py; do
+            rm -rf "$GITHUB_WORKSPACE/$p"
+            ln -s "$purelib/$p" "$GITHUB_WORKSPACE/$p"
+          done
+
+          HCU_ADAPTER_HOST=none python3 - "$purelib" "$WHL_MODEL" <<'PY'
+          import os, sys, importlib.metadata as im
+          purelib = os.path.realpath(sys.argv[1])
+          model = sys.argv[2]
+          import hcu_adapter, sgl_kernel, sitecustomize
+          for m in (hcu_adapter, sgl_kernel, sitecustomize):
+              real = os.path.realpath(m.__file__)
+              assert real.startswith(purelib + os.sep), f"{m.__name__} -> {real}, not under {purelib}"
+              print(f"{m.__name__}: {m.__file__} -> {real}")
+          print("sgl-kernel", im.version("sgl-kernel"))
+          if model == "dual":
+              print("hcu-adapter", im.version("hcu-adapter"))
+          else:
+              # 单 dist 模型下不能再有 hcu-adapter：它和本次的 sgl-kernel 抢同一批文件
+              try:
+                  stale = im.version("hcu-adapter")
+              except im.PackageNotFoundError:
+                  print("hcu-adapter: absent (correct for release line)")
+              else:
+                  raise SystemExit(f"hcu-adapter {stale} still installed; it shadows the wheel")
+              # entry-points 必须由 sgl-kernel 这个 dist 提供
+              eps = [e for e in im.entry_points(group="vllm.platform_plugins")
+                     if e.name == "hcu_adapter"]
+              assert eps, "vllm platform plugin entry-point missing after install"
+              owners = {e.dist.name for e in eps if e.dist}
+              assert owners == {"sgl-kernel"}, f"entry-point owners: {owners}"
+              print("entry-point owner: sgl-kernel")
+          PY
+
+      - name: vLLM host lane (ci/vllm_host_lane.sh)
+        timeout-minutes: 120
+        # 容器里只有分到的那张卡，编号固定为 0
+        run: bash ci/vllm_host_lane.sh 0
+
+      - name: Collect logs
+        if: always()
+        timeout-minutes: 5
+        run: |
+          mkdir -p vllm-lane-logs
+          cp /tmp/l1_vllm_*.log vllm-lane-logs/ 2>/dev/null || true
+
+      - name: Upload logs
+        if: always()
+        timeout-minutes: 10
+        uses: actions/upload-artifact@v4
+        with:
+          name: hcu-vllm-lane-logs-pr${{ github.event.pull_request.number || 'manual' }}-${{ github.run_attempt }}
+          path: vllm-lane-logs/
+          if-no-files-found: ignore
+          retention-days: 7

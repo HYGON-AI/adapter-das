@@ -20,11 +20,33 @@ import pytest
 import torch
 
 from hcu_adapter.bridges import vllm as bridge
-from hcu_adapter.extensions import (
+from hcu_adapter.infra.extensions import (
     ExtensionReport,
     ExtensionStatus,
     RequiredExtensionError,
 )
+
+
+def _stub_runtime_owners(monkeypatch, calls=None, *, preserve=()):
+    """Ordering doubles must not execute real providers on a synthetic HCU."""
+    from importlib import import_module
+    for name, action, label in (
+        ('vllm_fp8', 'install', 'fp8'),
+        ('vllm_scaled_mm', 'install', 'scaled-mm'),
+        ('vllm_allreduce', 'prepare_runtime', 'allreduce'),
+        ('vllm_mhc', 'install', 'mhc'),
+        ('vllm_sparse_indexer', 'install', 'indexer'),
+        ('vllm_flashmla', 'install', 'prefill'),
+        ('vllm_flashmla_decode', 'install', 'decode'),
+        ('vllm_pcp', 'install', 'pcp'),
+        ('vllm_minimax_abi', 'install', 'minimax-abi'),
+    ):
+        if name in preserve:
+            continue
+        owner = import_module('hcu_adapter.bridges.' + name)
+        monkeypatch.setattr(owner, action, lambda label=label: calls.append(label) if calls is not None else None)
+        if hasattr(owner, 'require_healthy'):
+            monkeypatch.setattr(owner, 'require_healthy', lambda: None)
 
 
 @pytest.mark.parametrize(
@@ -244,8 +266,9 @@ def test_platform_plugin_gates_once_and_returns_the_lazy_class_path(monkeypatch)
     assert calls == ["version"]
 
 
+@pytest.mark.parametrize("arch", ("gfx936", "gfx938"))
 def test_runtime_plugin_runs_guards_then_extensions_once_and_keeps_reports(
-    monkeypatch,
+    monkeypatch, arch,
 ):
     calls = []
     report = ExtensionReport(
@@ -258,7 +281,7 @@ def test_runtime_plugin_runs_guards_then_extensions_once_and_keeps_reports(
     monkeypatch.setattr(
         bridge,
         "detect_hcu",
-        lambda: bridge.HcuDetection(True, "gfx938", ""),
+        lambda: bridge.HcuDetection(True, arch, ""),
     )
     monkeypatch.setattr(
         bridge,
@@ -276,6 +299,9 @@ def test_runtime_plugin_runs_guards_then_extensions_once_and_keeps_reports(
         lambda: calls.append("dtk"),
     )
     monkeypatch.setattr(bridge, "_require_vllm_hip_runtime_abi", lambda: calls.append("runtime-abi"))
+    # Provider registration has its own contract tests; do not enter a real
+    # platform import from this guard/extension ordering double on either arch.
+    _stub_runtime_owners(monkeypatch, calls)
     monkeypatch.setattr(
         bridge,
         "_installed_adapter_version",
@@ -299,6 +325,8 @@ def test_runtime_plugin_runs_guards_then_extensions_once_and_keeps_reports(
         "platform",
         "dtk",
         "runtime-abi",
+        "fp8",
+        "scaled-mm", "allreduce", "mhc", "indexer", "prefill", "decode", "pcp", "minimax-abi",
         "adapter-version",
         ("extensions", "0.1.0", "0.32.0+rocm723"),
     ]
@@ -324,6 +352,7 @@ def test_runtime_plugin_records_required_reports_before_latching(monkeypatch):
     monkeypatch.setattr(bridge, "configure_vllm_hip_runtime_path", lambda: None)
     monkeypatch.setattr(bridge, "_require_vllm_hip_runtime_abi", lambda: None)
     monkeypatch.setattr(bridge, "_installed_adapter_version", lambda: "0.1.0")
+    _stub_runtime_owners(monkeypatch)
 
     def fail(_context, *, health_check_sink):
         calls.append("activate")
@@ -357,6 +386,7 @@ def test_adapter_version_comes_from_the_shipping_distribution(monkeypatch):
 def test_hcu_platform_defaults_to_triton_and_routes_flash_to_plugin(
     monkeypatch,
 ):
+    _stub_runtime_owners(monkeypatch)
     validation_calls = []
 
     class HcuFlashAttentionBackend:
@@ -468,6 +498,7 @@ def test_hcu_platform_defaults_to_triton_and_routes_flash_to_plugin(
 
 
 def test_hcu_platform_rejects_invalid_flash_plugin_configuration(monkeypatch):
+    _stub_runtime_owners(monkeypatch)
     class HcuFlashAttentionBackend:
         @classmethod
         def validate_configuration(cls, **kwargs):
@@ -630,14 +661,44 @@ def test_fused_rms_norm_supports_aliased_residual_destination(monkeypatch):
     torch.testing.assert_close(out, _rms_reference(summed, weight, 1e-6))
 
 
-def test_sglang_calls_vllm_bridge_before_grammar_bridge():
-    source = (
-        __import__("pathlib").Path(__file__).resolve().parents[2]
-        / "hcu_adapter"
-        / "bridges"
-        / "sglang.py"
-    ).read_text(encoding="utf-8")
+def test_sglang_calls_vllm_bridge_before_grammar_bridge(monkeypatch):
+    from importlib import import_module
+    from hcu_adapter.bridges import sglang_vendor_routes
 
-    rms_call = source.index("_vllm_bridge.install_rms_norm_bridge()")
-    grammar_bridge = source.index("apply_token_bitmask_inplace_cuda")
-    assert rms_call < grammar_bridge
+    calls = []
+    # Execute the extracted orchestration, replacing only unrelated providers.
+    for name in (
+        "hcu_adapter.infra.triton_libdev", "hcu_adapter.infra.triton_pdl",
+        "hcu_adapter.features.gdn.fla_hcu_router",
+        "hcu_adapter.features.gdn.gdn_aiter",
+        "hcu_adapter.features.gdn.mamba_state_scatter",
+        "hcu_adapter.features.gdn.gdn_cutedsl_fallback",
+        "hcu_adapter.bridges.sglang_fa_vendor",
+        "hcu_adapter.bridges.sglang_layernorm",
+    ):
+        parent, attribute = name.rsplit(".", 1)
+        stub = ModuleType(name)
+        stub.install = lambda: None
+        monkeypatch.setitem(sys.modules, name, stub)
+        monkeypatch.setattr(import_module(parent), attribute, stub, raising=False)
+    monkeypatch.setattr(bridge, "install_rms_norm_bridge", lambda: calls.append("rms"))
+
+    class Kernel(ModuleType):
+        def __setattr__(self, name, value):
+            if name == "apply_token_bitmask_inplace_cuda":
+                calls.append("grammar")
+            super().__setattr__(name, value)
+
+    kernel = Kernel("sgl_kernel")
+    bitmask = ModuleType("sglang.kernels.ops.grammar.bitmask_ops")
+    bitmask.apply_token_bitmask_inplace_triton = lambda *args: None
+    monkeypatch.setitem(sys.modules, "sgl_kernel", kernel)
+    monkeypatch.setitem(sys.modules, bitmask.__name__, bitmask)
+
+    sglang_vendor_routes.install()
+
+    assert calls == ["rms", "grammar"]
+    assert (
+        kernel.apply_token_bitmask_inplace_cuda
+        is bitmask.apply_token_bitmask_inplace_triton
+    )

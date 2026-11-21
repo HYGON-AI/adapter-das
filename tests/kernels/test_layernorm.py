@@ -77,16 +77,18 @@ def _reset_fused_add_cache(ln):
     ln._LIGHTOP_FUSED_ADD = None
 
 
-def _fused_add_reference(x, residual, weight, eps, gemma):
+def _fused_add_reference(
+    x, residual, weight, eps, gemma, cast_x_before_out_mul=False
+):
     """Independent CPU arithmetic with the fused kernel's storage boundary."""
     total = x.cpu().double() + residual.cpu().double()
     stored = total.to(residual.dtype)
     multiplier = weight.cpu().double() + (1.0 if gemma else 0.0)
-    normalized = (
-        stored.double()
-        / (total.square().mean(-1, keepdim=True) + eps).sqrt()
-        * multiplier
-    )
+    denominator = (total.square().mean(-1, keepdim=True) + eps).sqrt()
+    if cast_x_before_out_mul:
+        normalized = (total / denominator).to(x.dtype).double() * multiplier
+    else:
+        normalized = stored.double() / denominator * multiplier
     return normalized.to(x.dtype), stored
 
 
@@ -116,16 +118,18 @@ def test_fused_add_native_preserves_unrounded_variance(gemma, dtype):
 @pytest.mark.parametrize("backend", ["torch", "triton"])
 @pytest.mark.parametrize("gemma", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_fused_add_variance_fresh_input_graph(backend, gemma, dtype, monkeypatch):
+@pytest.mark.parametrize("width", [128, 12289])
+def test_fused_add_variance_fresh_input_graph(backend, gemma, dtype, width, monkeypatch):
     import sgl_kernel.layernorm as ln
 
     monkeypatch.setenv("HCU_FUSED_ADD_RMS_IMPL", backend)
     monkeypatch.setattr(ln, "_FUSED_ADD_IMPL", None)
     monkeypatch.setattr(ln, "_LIGHTOP_FUSED_ADD", None)
     fn = ln.gemma_fused_add_rmsnorm if gemma else ln.fused_add_rmsnorm
-    x = torch.ones(3, 128, device="cuda", dtype=dtype)
+    # The larger width spans multiple 8192-element tiles and a masked tail.
+    x = torch.ones(3, width, device="cuda", dtype=dtype)
     residual = torch.ones_like(x)
-    weight = torch.ones(128, device="cuda", dtype=dtype)
+    weight = torch.ones(width, device="cuda", dtype=dtype)
     stream = torch.cuda.Stream()
     stream.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(stream):
@@ -136,9 +140,9 @@ def test_fused_add_variance_fresh_input_graph(backend, gemma, dtype, monkeypatch
     with torch.cuda.graph(graph):
         fn(x, residual, weight)
     for wave in range(3):
-        x0 = torch.full((3, 128), 1.0 + wave, dtype=dtype)
+        x0 = torch.full((3, width), 1.0 + wave, dtype=dtype)
         r0 = torch.full_like(x0, 1.0 + torch.finfo(dtype).eps)
-        w0 = torch.full((128,), 1.0 + 0.25 * wave, dtype=dtype)
+        w0 = torch.full((width,), 1.0 + 0.25 * wave, dtype=dtype)
         expected, expected_residual = _fused_add_reference(
             x0, r0, w0, 1e-6, gemma
         )
@@ -157,27 +161,111 @@ def test_fused_add_variance_fresh_input_graph(backend, gemma, dtype, monkeypatch
             torch.testing.assert_close(weight.cpu(), w0, rtol=0, atol=0)
 
 
-def test_fused_add_backend_default_is_triton(monkeypatch):
-    """auto (=default) must stay on the triton path — the lightop vendor
-    tier is opt-in until it passes the contract + graph-replay matrix."""
+@requires_gpu
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("width", [128, 12289])
+@pytest.mark.parametrize("cast_before_weight", [False, True])
+def test_community_fused_add_storage_modes_fresh_input_graph(
+    dtype, width, cast_before_weight, monkeypatch
+):
+    import sgl_kernel.layernorm as ln
+    from sglang.kernels.ops.layernorm import norm
+
+    assert getattr(norm.fused_add_rmsnorm, "_hcu_adapter_route", False)
+    monkeypatch.setenv("HCU_FUSED_ADD_RMS_IMPL", "triton")
+    monkeypatch.setattr(ln, "_FUSED_ADD_IMPL", None)
+    monkeypatch.setattr(ln, "_LIGHTOP_FUSED_ADD", None)
+    x = torch.ones(3, width, device="cuda", dtype=dtype)
+    residual = torch.ones_like(x)
+    weight = torch.ones(width, device="cuda", dtype=dtype)
+
+    def run():
+        norm.fused_add_rmsnorm(
+            x, residual, weight, eps=1e-6,
+            cast_x_before_out_mul=cast_before_weight,
+        )
+
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        run()
+    torch.cuda.current_stream().wait_stream(stream)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        run()
+    for wave in range(3):
+        x0 = torch.full((3, width), 1.0 + wave, dtype=dtype)
+        r0 = torch.full_like(x0, 1.0 + torch.finfo(dtype).eps)
+        w0 = torch.full((width,), 1.0 + 0.25 * wave, dtype=dtype)
+        expected, expected_residual = _fused_add_reference(
+            x0, r0, w0, 1e-6, False, cast_before_weight
+        )
+        if wave == 0:
+            other, _ = _fused_add_reference(
+                x0, r0, w0, 1e-6, False, not cast_before_weight
+            )
+            assert not torch.equal(expected, other), "storage modes were not distinguished"
+        for replay in (False, True):
+            x.copy_(x0)
+            residual.copy_(r0)
+            weight.copy_(w0)
+            graph.replay() if replay else run()
+            torch.testing.assert_close(x.cpu(), expected, rtol=0, atol=0)
+            torch.testing.assert_close(residual.cpu(), expected_residual, rtol=0, atol=0)
+            torch.testing.assert_close(weight.cpu(), w0, rtol=0, atol=0)
+
+
+def _lightop_installed():
+    try:
+        import lightop  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
+
+def test_fused_add_backend_default_ladder(monkeypatch):
+    """auto = lightop > aiter > triton. The DTK aiter wheel exposes no
+    fused-add export, so lightop (validated) is the auto pick when the wheel
+    is present; otherwise triton."""
     monkeypatch.delenv("HCU_FUSED_ADD_RMS_IMPL", raising=False)
     import sgl_kernel.layernorm as ln
 
     _reset_fused_add_cache(ln)  # re-probe with the cleaned env
     try:
-        assert ln._resolve_fused_add_impl() == "triton"
-        assert ln._LIGHTOP_FUSED_ADD is None
+        choice = ln._resolve_fused_add_impl()
+        if _lightop_installed():
+            assert choice == "lightop"
+            assert ln._LIGHTOP_FUSED_ADD is not None
+        else:
+            assert choice == "triton"
     finally:
         _reset_fused_add_cache(ln)
 
 
-def test_fused_add_backend_unknown_value_falls_to_triton(monkeypatch):
+def test_fused_add_backend_unknown_value_is_a_hard_error(monkeypatch):
+    """governance 3b-8: unknown explicit tier raises at resolution --
+    no silent ladder descent."""
     monkeypatch.setenv("HCU_FUSED_ADD_RMS_IMPL", "wat")
     import sgl_kernel.layernorm as ln
 
     _reset_fused_add_cache(ln)
     try:
-        assert ln._resolve_fused_add_impl() == "triton"
+        with pytest.raises(ValueError, match="unknown tier 'wat'"):
+            ln._resolve_fused_add_impl()
+    finally:
+        _reset_fused_add_cache(ln)
+
+
+def test_fused_add_torch_tier_retired_from_runtime(monkeypatch):
+    """governance 3b-9: torch/emu are development-time only."""
+    monkeypatch.setenv("HCU_FUSED_ADD_RMS_IMPL", "torch")
+    import sgl_kernel.layernorm as ln
+
+    _reset_fused_add_cache(ln)
+    try:
+        with pytest.raises(ValueError, match="unknown tier 'torch'"):
+            ln._resolve_fused_add_impl()
     finally:
         _reset_fused_add_cache(ln)
 
@@ -223,14 +311,17 @@ def test_fused_add_lightop_parity(gemma, dtype, monkeypatch):
 
 
 @requires_gpu
-def test_fused_add_lightop_one_strike_fallback(monkeypatch):
-    """A raising vendor call must not escape: tier disabled for the process,
-    this call (and later ones) run on triton."""
+def test_fused_add_vendor_failure_propagates(monkeypatch):
+    """governance 3b-8 (2026-11-19 calibration): the resolved vendor tier's
+    RUNTIME failure propagates as-is -- the old one-strike (disable tier,
+    silently serve triton forever) is exactly the silent descent the law
+    removes. A vendor crash must be VISIBLE."""
     import sgl_kernel.layernorm as ln
 
     _reset_fused_add_cache(ln)
     try:
         saved = ln._LIGHTOP_FUSED_ADD
+        monkeypatch.setenv("HCU_FUSED_ADD_RMS_IMPL", "lightop")
         ln._FUSED_ADD_IMPL = "lightop"  # force the vendor branch armed
         ln._LIGHTOP_FUSED_ADD = (
             lambda x, r, w, e: (_ for _ in ()).throw(RuntimeError("boom")),
@@ -240,16 +331,10 @@ def test_fused_add_lightop_one_strike_fallback(monkeypatch):
         x = torch.randn(8, 256, device="cuda", dtype=torch.bfloat16)
         residual = torch.randn(8, 256, device="cuda", dtype=torch.bfloat16)
         w = torch.randn(256, device="cuda", dtype=torch.bfloat16).abs()
-        x0, r0 = x.clone(), residual.clone()
 
-        ln._do_fused_add(x, residual, w, 1e-6, False)  # must not raise
-
-        assert ln._LIGHTOP_FUSED_ADD is None  # one strike → disabled
-        rf = r0.float() + x0.float()
-        ref = rf * torch.rsqrt(rf.pow(2).mean(-1, keepdim=True) + 1e-6) * w.float()
-        torch.testing.assert_close(
-            residual.float(), rf, rtol=1.0, atol=0.5)
-        torch.testing.assert_close(x.float(), ref, rtol=1.0, atol=0.5)
+        with pytest.raises(RuntimeError, match="boom"):
+            ln._do_fused_add(x, residual, w, 1e-6, False)
+        assert ln._LIGHTOP_FUSED_ADD is not None  # tier NOT silently disabled
         ln._LIGHTOP_FUSED_ADD = saved
     finally:
         _reset_fused_add_cache(ln)

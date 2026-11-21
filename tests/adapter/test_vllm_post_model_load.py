@@ -12,7 +12,9 @@ import inspect
 from pathlib import Path
 import os
 from types import SimpleNamespace as NS
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+
+import torch
 
 import pytest
 
@@ -22,7 +24,10 @@ from vllm.config import DeviceConfig, SchedulerConfig, VllmConfig, get_current_v
 from vllm.config.compilation import CUDAGraphMode, CompilationMode
 from vllm.config.utils import hash_factors
 from vllm.compilation.caching import aot_compile_hash_factors
-from vllm.platforms.rocm import RocmPlatform
+# Core reads an architecture descriptor during import. This CPU-only fixture
+# restores the query before any Worker/config/runner contract executes.
+with patch.object(torch.cuda, "get_device_properties", return_value=NS(gcnArchName="gfx936")):
+    from vllm.platforms.rocm import RocmPlatform
 from vllm.v1.worker import gpu_worker, worker_base
 from vllm.v1.worker import gpu_model_runner as v1
 from vllm.v1.worker.gpu import model_runner as v2
@@ -33,11 +38,16 @@ from hcu_adapter import model_load as api
 from hcu_adapter.bridges import vllm_model_load as host
 from hcu_adapter.bridges import vllm as bridge
 from hcu_adapter.bridges.vllm_worker import Worker
-from hcu_adapter.extensions import ExtensionContext, ExtensionSpec, activate_extensions
+from hcu_adapter.infra.extensions import ExtensionContext, ExtensionSpec, activate_extensions
+from test_vllm_bridge import _stub_runtime_owners
 
 
 @pytest.fixture(autouse=True)
 def isolation(monkeypatch):
+    _stub_runtime_owners(monkeypatch)
+    from torch._inductor.codecache import CacheBase
+    monkeypatch.setattr(CacheBase, "get_system", staticmethod(
+        lambda: {"device": "cpu-contract"}))
     envs.disable_envs_cache()
     monkeypatch.setattr(api, "_callbacks", api._Callbacks())
     monkeypatch.delenv("VLLM_ELASTIC_EP_SCALE_UP_LAUNCH", raising=False)
@@ -91,6 +101,28 @@ def test_platform_super_first_known_only_and_idempotent(monkeypatch, choice, bac
     assert cfg.parallel_config.worker_cls == expected
 
 
+@pytest.mark.parametrize(("requested", "expected"), [
+    ("auto", "extension.Worker"),
+    (host.OFFICIAL_MODEL_LOAD_WORKER, host.POST_MODEL_LOAD_WORKER),
+    (host.POST_MODEL_LOAD_WORKER, host.POST_MODEL_LOAD_WORKER),
+    ("custom.Worker", "custom.Worker"),
+])
+def test_worker_selector_only_specializes_auto(requested, expected):
+    class Platform(bridge.HcuPlatform):
+        pass
+
+    cfg = config("mp")
+    cfg.parallel_config.worker_cls = requested
+    selector = Mock(return_value="extension.Worker")
+    Platform.register_worker_selector(selector)
+    Platform.check_and_update_config(cfg)
+    assert cfg.parallel_config.worker_cls == expected
+    if requested == "auto":
+        selector.assert_called_once_with(host.POST_MODEL_LOAD_WORKER, cfg)
+    else:
+        selector.assert_not_called()
+
+
 def test_super_failure_does_not_rewrite_worker(monkeypatch):
     cfg = config()
     cfg.parallel_config.worker_cls = host.OFFICIAL_MODEL_LOAD_WORKER
@@ -128,7 +160,8 @@ def make_runner(monkeypatch, cfg, version, events, fail_at=None):
     """Execute the complete real runner load_model with CPU provider doubles."""
     module = v1 if version == 1 else v2
     runner = object.__new__(module.GPUModelRunner)
-    model = NS()  # No torch model or checkpoint is created/loaded.
+    # An empty CPU module preserves real weight-update validation/traversal.
+    model = torch.nn.Module()
     def load_target(**kwargs):
         assert kwargs["vllm_config"] is cfg
         events.append("target-pack")
@@ -143,6 +176,9 @@ def make_runner(monkeypatch, cfg, version, events, fail_at=None):
     runner.parallel_config = cfg.parallel_config
     runner.compilation_config = cfg.compilation_config
     runner.model_config = NS(model="CPU-provider-contract", multimodal_config=None, logits_processors=())
+    if cfg.model_config is None:
+        cfg.model_config = NS(compute_hash=lambda: "CPU-provider-contract")
+    cfg.model_config.enable_sleep_mode = False  # v0.33 runtime-pool selection.
     runner.lora_config = None
     runner.jit_warmup_registry = NS(activate=nullcontext)
     runner.device = "cpu"
@@ -172,6 +208,8 @@ def make_runner(monkeypatch, cfg, version, events, fail_at=None):
         drafter = object.__new__(Draft)
         drafter.vllm_config = cfg
         drafter.use_acceptance_estimator = False
+        drafter.use_draft_logits = False  # v0.33 real speculator load contract.
+        drafter.draft_logits = None
         drafter._validate_local_argmax_reduction = lambda: None
         monkeypatch.setattr(spec, "get_layers_from_vllm_config", lambda *args: {})
         # Real DraftModelSpeculator.load_model reads target MM capability.

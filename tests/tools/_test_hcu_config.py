@@ -11,6 +11,7 @@ rms_norm + torch silu tiers.
 Run: HIP_VISIBLE_DEVICES=6 HCU_CONFIG=<file> python tests/tools/_test_hcu_config.py
 """
 
+import math
 import os
 import subprocess
 import sys
@@ -20,7 +21,8 @@ import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from hcu_adapter import hcu_config, hcu_env  # noqa: E402
+from hcu_adapter.infra import hcu_config  # noqa: E402
+from hcu_adapter.infra import hcu_env  # noqa: E402
 
 FAILS = []
 
@@ -41,10 +43,8 @@ def write_cfg(text):
 
 
 def with_cfg(text, env_extra=None):
-    """Fresh-load a config file and return (state, restore fn)."""
+    """Fresh-load a config file and return its path (restore is the caller's)."""
     path = write_cfg(text)
-    old = os.environ.get("HCU_CONFIG")
-    old_impl = os.environ.get("HCU_SILU_MUL_IMPL")
     os.environ["HCU_CONFIG"] = path
     if env_extra:
         for k, v in env_extra.items():
@@ -141,20 +141,30 @@ r = subprocess.run(
 )
 ok("wizard-list", "silu_and_mul" in r.stdout and "planned" in r.stdout,
    r.stdout[-200:] + r.stderr[-200:])
-good = write_cfg("version: 1\nops:\n  silu_and_mul: torch\n")
+good = write_cfg("version: 1\nops:\n  silu_and_mul: aiter\n")
 r2 = subprocess.run(
     [sys.executable, os.path.join(root, "tools", "hcu_config_wizard.py"),
      "--check", good],
     capture_output=True, text=True, timeout=120,
 )
-ok("wizard-check", "OK" in r2.stdout and "HCU_SILU_MUL_IMPL = torch" in r2.stdout,
+ok("wizard-check", "OK" in r2.stdout and "HCU_SILU_MUL_IMPL = aiter" in r2.stdout,
    r2.stdout[-200:] + r2.stderr[-200:])
+# governance 3b-9: retired tiers (emu/torch) are refused at config load
+bad = write_cfg("version: 1\nops:\n  silu_and_mul: torch\n")
+r3 = subprocess.run(
+    [sys.executable, os.path.join(root, "tools", "hcu_config_wizard.py"),
+     "--check", bad],
+    capture_output=True, text=True, timeout=120,
+)
+ok("wizard-retired-refused",
+   "retired" in (r3.stdout + r3.stderr) and "OK" not in r3.stdout,
+   (r3.stdout + r3.stderr)[-200:])
 
 # 11. GPU parity in fresh processes (backend caches resolve once/process)
 if torch.cuda.is_available():
     import torch  # refresh
 
-    def parity(cfg_ops, func, tag):
+    def parity_launch(cfg_ops, func):
         pcfg = write_cfg(f"version: 1\nops:\n{cfg_ops}")
         code = (
             "import sys, os, torch;"
@@ -171,22 +181,63 @@ if torch.cuda.is_available():
             "(torch.nn.functional.silu(xf[:, :512]) * xf[:, 512:]"
             ").to(torch.bfloat16).float();"
             "md = (got.float() - ref).abs().max().item();"
-            "print('MAXDIFF', md)"
+            "mref = ref.abs().max().item();"
+            "print('MAXDIFF', md, 'MAXREF', mref)"
         )
-        env = dict(os.environ, HCU_CONFIG=pcfg, HIP_VISIBLE_DEVICES=os.environ.get(
-            "HIP_VISIBLE_DEVICES", "6"))
-        r = subprocess.run([sys.executable, "-c", code], capture_output=True,
-                           text=True, timeout=300, env=env)
-        md = None
-        for line in r.stdout.splitlines():
-            if line.startswith("MAXDIFF"):
-                md = float(line.split()[1])
-        ok(tag, md is not None and md < 0.05, f"md={md} {r.stderr[-200:]}")
+        # Fresh-process tier parity only: skip the host-bridge install
+        # (HCU_ADAPTER_HOST=none). The bridges double subprocess startup
+        # (26s -> 52s measured, 2026-11-16 image) via sglang patching that
+        # this parity never exercises, and 4 such spawns blew the 300s
+        # gate budget -- the gate died mid parity-silu-lightop with every
+        # in-gate tag green.
+        env = dict(os.environ, HCU_CONFIG=pcfg, HCU_ADAPTER_HOST="none",
+                   HIP_VISIBLE_DEVICES=os.environ.get(
+                       "HIP_VISIBLE_DEVICES", "6"))
+        # 3b-9 hardening: earlier in-process steps may leave explicit impl
+        # vars in os.environ (with_cfg's env_extra is caller-cleaned); the
+        # parity child must resolve from ITS config file only -- a leaked
+        # HCU_*_IMPL=torch now raises at resolution (strict pick) instead
+        # of silently serving torch math.
+        for _k in ("HCU_SILU_MUL_IMPL", "HCU_RMS_NORM_IMPL",
+                   "HCU_FUSED_ADD_RMS_IMPL"):
+            env.pop(_k, None)
+        return subprocess.Popen([sys.executable, "-c", code],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, env=env)
 
-    parity("  rms_norm: aiter\n", "rmsnorm", "parity-rms-aiter")
-    parity("  rms_norm: torch\n", "rmsnorm", "parity-rms-torch")
-    parity("  silu_and_mul: torch\n", "silu_and_mul", "parity-silu-torch")
-    parity("  silu_and_mul: lightop\n", "silu_and_mul", "parity-silu-lightop")
+    def parity_check(tag, r):
+        out, err = r.communicate(timeout=300)
+        md = mref = None
+        for line in out.splitlines():
+            if line.startswith("MAXDIFF"):
+                parts = line.split()
+                md = float(parts[1])
+                mref = float(parts[3]) if len(parts) > 3 else 0.0
+        # scale-aware bound: the fallback tiers may legitimately differ
+        # from the fp32 reference by one bf16 ulp of the largest output
+        # (the vendored native activation.cu rounds silu to bf16 BEFORE
+        # the product -- faithful to upstream, double rounding). 0.05
+        # was tighter than 1 ulp once outputs reach |x| ~ 8 (ulp 0.0625,
+        # observed 2026-11-19 gate B).
+        allowed = 0.05
+        if mref and mref > 0:
+            allowed = max(allowed, 2.0 ** (math.floor(math.log2(mref)) - 7))
+        ok(tag, md is not None and md <= allowed,
+           f"md={md} mref={mref} allowed={allowed} {err[-200:]}")
+
+    # One fresh-process parity per op, on its production tier (aiter rms,
+    # lightop silu). The torch tiers are pure-Python fallbacks already
+    # covered by the in-process sections above. The two spawns are
+    # independent processes on independent config files, so they launch
+    # together and the gate pays one ~26s interpreter+torch startup
+    # instead of two (2026-11-17 image).
+    procs = [
+        ("parity-rms-aiter", parity_launch("  rms_norm: aiter\n", "rmsnorm")),
+        ("parity-silu-lightop", parity_launch("  silu_and_mul: lightop\n",
+                                              "silu_and_mul")),
+    ]
+    for tag, proc in procs:
+        parity_check(tag, proc)
 
 print("RESULT:", "PASS" if not FAILS else f"FAIL {FAILS}")
 sys.exit(0 if not FAILS else 1)

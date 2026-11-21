@@ -28,15 +28,21 @@
   v0.5.22 的 pyproject 声明 `sglang-kernel==0.4.10` 等一排 CUDA-only/不可解析依赖
   → 主 wheel **必须 `--no-deps` 装**；代码运行时只认 `import sgl_kernel`
   （实测 v0.5.22 全树 import 面）→ 我们的影子包按模块名截击，dist 名无关紧要但见 §4 接线点。
-- **发版物四件**：adapter wheel（dist `sgl-kernel`，含 `hcu_adapter/`+`sgl_kernel/`+`sitecustomize`，
-  见其 pyproject）→ 官方 sglang wheel（`--no-deps`）→ 插件 wheel（`--no-deps`）→ 环境级钉版。
+- **发版物五件（双 dist 解耦，governance §7.4）**：影子内核 wheel（dist `sgl-kernel`，版本
+  基线 `0.4.9+hcu.1`=配对上游内核线，native 构建打成 `0.4.9+dtk<DTK>.torch<TORCH>.<时间>.g<commit>`，
+  只装 `sgl_kernel/` + `native_ops*.so`）+ 适配层 wheel（dist `hcu-adapter`，版本基线
+  `0.5.22+hcu.1` 自有独立线，装 `hcu_adapter/`+`sitecustomize`+vllm entry-points，依赖
+  `sgl-kernel==0.4.9+dtk<DTK>.torch<TORCH>.<时间>.g<commit>` 构建期互锁；`packaging/build.sh`
+  一次出两张）→ 官方 sglang wheel
+  （`--no-deps`）→ 插件 wheel（`--no-deps`）→ 环境级钉版。升级先卸旧单 wheel 版 sgl-kernel
+  （entry-points 已迁 hcu-adapter，残留会双注册/消失）。
 
 ## 1. 不装的依赖（CUDA-only 或被我们挡位替代）
 
 | 上游声明 | 不装的原因 | 我们的对位 |
 |---|---|---|
 | `torch==2.14.1`、`torchaudio`、`torchvision`、`torchcodec` | 镜像**不自带** python DTK 栈（实测）；重装 PyPI 版=覆盖成 CUDA 版 | 按 §1.5 从现役容器迁移 DTK 栈（torch 2.11.0+hip 7.2.26365、torchvision 0.26.0；torchaudio 栈内无、需要时另配） |
-| `sglang-kernel==0.4.10` | CUDA AOT 内核，无 gfx93x 产物 | **adapter wheel（影子包，模块名 sgl_kernel）** |
+| `sglang-kernel==0.4.10` | CUDA AOT 内核，无 gfx93x 产物 | **影子内核 wheel（dist `sgl-kernel` `0.4.9+hcu.1`，模块名 sgl_kernel）+ `hcu-adapter` wheel 互锁装** |
 | `sgl-flash-mla==1.0.0` | CUDA 内核 | 影子 `sgl_kernel.flash_mla` emu / FlashMLA-das vendor 档（`mla_attention_dtk`） |
 | `sgl-deep-gemm==0.2.3.post2` | CUDA JIT 栈 | deepgemm vendor 桥 / triton 档（governance 三档路由） |
 | `sgl-deep-ep==0.1.2.post1` | CUDA/NVSHMEM | DeepEP-das 档 / NCCL fallback |
@@ -156,9 +162,11 @@ HCU_ADAPTER_HOST=none python3 -c "import tvm_ffi"    # 实测 51 s 一次性构�
 ```
 
 ```dockerfile
-# ① adapter：shadow dist sgl-kernel + hcu_adapter + sitecustomize（一发四件）
-COPY wheels/sgl_kernel-*.whl /wheels/
-RUN HCU_ADAPTER_HOST=none pip install /wheels/sgl_kernel-*.whl
+# ① adapter 双 wheel：sgl-kernel（影子内核）+ hcu-adapter（适配层：sitecustomize
+#    + 桥 + vllm entry-points）。顺序无所谓，依赖 == 互锁自动组队；两张都装，
+#    只装其一会被 sgl_kernel/__init__ 哨兵在 import 期响亮拒绝
+COPY wheels/sgl_kernel-*.whl wheels/hcu_adapter-*.whl /wheels/
+RUN HCU_ADAPTER_HOST=none pip install /wheels/sgl_kernel-*.whl /wheels/hcu_adapter-*.whl
 
 # ② 官方 sglang，零修改；--no-deps 是策略不是图省事（§0）
 COPY wheels/sglang-0.5.22-py3-*.whl /wheels/
@@ -205,8 +213,9 @@ python -c "import sys,os; assert os.environ.get('HCU_ADAPTER_HOST') is not None 
 #    预期 路径含 site-packages/sgl_kernel/，且进程日志出现
 #    "HCU adapter bootstrap: host=..."（bootstrap.py:177）
 
-# ② 影子不被官方内核覆盖（同名 dist 只此一份、路径是我们打包的）
-pip show sgl-kernel | grep -E "^(Version|Location)"
+# ② 双 dist 各就各位（影子内核 + 适配层两张都在、同名 dist 只此一份、路径是我们打包的）
+pip show sgl-kernel   | grep -E "^(Version|Location)"    # 预期 0.4.9+hcu.1
+pip show hcu-adapter  | grep -E "^(Version|Location)"    # 预期 0.5.22+hcu.1
 
 # ③ 插件可发现（sglang entry_points）
 python -c "from importlib.metadata import entry_points; \
@@ -283,3 +292,79 @@ given`。L1.5 叠加格（Engine worker 路径）三轮全绿未触发该调用�
   `--cuda-graph-max-bs-decode` 全名**，两态混跑不踩坑。
 - bootstrap.md 在 26.10 全量转正前继续作为源码态手册并存，转正时标注"旧基底
   （26041 止）"。
+
+## 8. MiniMax-H3-Image 的原生 diffusion 平台候选
+
+本节给出 gfx936/DTK26.10 的最终部署配方、支持范围与性能摘要。
+验收基线：社区 `5792cf6e5e11`、plugin `fa36983`；adapter 卸载对照为
+`e63727e`，attention 对照为 `553b28f`。环境为 Python3.12、Torch2.11、
+Triton3.6 DTK、DTK flash_attn2.8.4；两仓按各自安装说明接入同一解释器。
+
+### 平台与支持范围
+
+- adapter 使用公开 OOT 平台 `hcu`，保留真实 HIP 架构、设备和内存信息，
+  复用原生非 NVML/CUDA 语义；plugin 通过独立 diffusion registry 加载。
+- 当前 AITER wheel 缺少 `ENABLE_CK`，不得补造能力；HCU OOT 不安装
+  CUDA-only VAE 优化。`HCU_PLATFORM_SEMANTICS=hip` 会停用该 OOT 准入，
+  回到官方探测，但不代表上述依赖缺口已修复。
+- 单张 64 GiB、2048×2048、6 步、quality=exact 的文生图及参考图编辑通过。
+  TE/DiT 保持 BF16，VAE 保留原生 FP32 编码/BF16 解码与有限值检查。
+- 该环境初始化曾触发 MKL 原生异常，已验证配方固定三个 CPU 线程池为 1。
+  单 worker RSS 采样峰值约150 GiB，不是最低主机内存需求。
+
+### 2026-11-15 单卡 attention 显式优化
+
+先将 HIP/CUDA 可见设备设为同一张物理卡；`MODEL_PATH` 指向模型根目录，
+`GPU_DEVICE_SYSFS` 指向该卡的实际 sysfs device 目录。NUMA 编号按 PCI
+连接读取，不照搬验证机的节点号。沿用本文前述依赖与安装环境：
+
+```bash
+export HCU_ADAPTER_HOST=sglang SGLANG_PLUGINS=hcu_diffusion
+export SGLANG_DIFFUSION_PLATFORM_OVERRIDE=hcu HCU_AITER_AR=0
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+NUMA_NODE=$(cat "$GPU_DEVICE_SYSFS/numa_node")
+HCU_FA_IMPL=vendor python3 -m sglang.cli.main serve \
+  --model-path "$MODEL_PATH" --backend sglang \
+  --num-gpus 1 --tp-size 1 --ulysses-degree 1 --ring-degree 1 \
+  --encoder-parallel auto --numa-node "$NUMA_NODE" \
+  --component-paths.text_encoder "$MODEL_PATH/text_encoder" \
+  --component-attention-backends.text_encoder torch_sdpa \
+  --component-attention-backends.transformer fa \
+  --component-residency transformer=snapshot-offload,text_encoder=snapshot-offload,video_vae=component-offload \
+  --minimax-h3-adaln-online true --warmup-mode off
+```
+
+TE/DiT 保留 CPU 权重快照以减少回写，VAE 按组件卸载。服务就绪前通过公开
+接口各预热一次完整六步文生图与编辑；health=200 只表示初始化完成。
+常规服务保留默认 conditioning cache，公平性能对照另加
+`--disable-conditioning-cache`；性能日志用 `SGLANG_PERF_LOG_DIR` 写入任务目录。
+
+vendor 仅在该配方显式选择；`auto` 仍为 Triton。新进程改为
+`HCU_FA_IMPL=triton` 或设置 `HCU_DISABLE_OPS=vendor_fa` 可回退，后者优先。
+算子支持范围与接口约定见 [非分页 FA 桥](dense-flashattention.md)。
+
+### 性能与验收摘要
+
+以下是两轮独立对照：同卡、同模型、固定种子和编辑原图，各完整预热后各测
+三次，统一关闭跨请求编码缓存。冷准备与 profiler 请求排除，仅比较同轮结果。
+
+| 对照轮次 | 配置 | 文生图中位数 | 编辑中位数 |
+|---|---|---:|---:|
+| 卸载 | 三组件 component-offload | 20.451秒 | 60.140秒 |
+| 卸载 | TE/DiT snapshot-offload | 19.290秒 | 58.826秒 |
+| 卸载 | 快照卸载加实际 GPU NUMA 绑定 | 18.808秒 | 58.500秒 |
+| attention | 上述配置，Triton | 18.849秒 | 58.507秒 |
+| attention | 上述配置，DTK FA2 非分页 | 12.307秒 | 25.735秒 |
+
+卸载加 NUMA 的延迟降幅为8.0%/2.7%；attention 换路为34.7%/56.0%。
+实际 trace 确认命中 DTK BF16 FA2；CPU 同步含 GPU 等待，不能重复计为搬运收益。
+各 provider 内三次 seed42 文生图分别一致；跨 provider 不逐像素一致，seed52
+壶形/壶盖有可见变化，不能保证同 seed 复现旧图。固定原图编辑差异与原路径
+自身重复波动接近；红改蓝的语义核验通过，不据此宣称完整画质基准通过。
+
+CPU 接口、原生设备数值、变输入 Graph 与实际六步 t2i/edit 分别验收；
+两卡原生 TP/RCCL 另有通过记录。社区源码指纹保持不变。未覆盖其他架构、
+多参考图、并发或整模型 Graph；非分页验证不解除 vendor 分页缺口。
+详细命令、原始请求/图片、哈希与逐轮结果保留在部署目录的
+`artifacts/minimax-h3-image-20261114`、`artifacts/minimax-h3-image-single64-20261114`、
+`artifacts/minimax-h3-image-perf-20261114`、`artifacts/minimax-h3-image-attention-20261115`。

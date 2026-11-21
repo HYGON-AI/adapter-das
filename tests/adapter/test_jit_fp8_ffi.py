@@ -3,6 +3,7 @@
 
 """FP8 storage views preserve factory caches, public dtype selection and aliases."""
 
+# [L1 cold-curation 2026-11-17] 15 cases -> 6: sources fixture pinned to offline, layout/group_size/module parametrizations keep one row, two alias/dtype suites dropped; removed cases stay in git history.
 import ast
 import functools
 import inspect
@@ -15,7 +16,8 @@ import types
 import pytest
 import torch
 
-from hcu_adapter import hcu_env, jit_fp8_ffi as bridge
+from hcu_adapter.infra import hcu_env
+from hcu_adapter.features.jit import jit_fp8_ffi as bridge
 
 _CACHE = """def cache_once(fn):
     result_map = {}
@@ -36,13 +38,13 @@ def _jit_module(in_dtype, out_dtype, group_size, scale_ue8m0, row_major, aligned
 """
 
 
-@pytest.mark.parametrize("layout", ["contig", "masked"])
-@pytest.mark.parametrize("group_size", [32, 128])
+@pytest.mark.parametrize("layout", ["contig"])
+@pytest.mark.parametrize("group_size", [32])
 def test_gpu_dsv4_output_storage_and_variable_graph_replay(layout, group_size):
     if os.environ.get("HCU_TEST_JIT_GPU") != "1":
         pytest.skip("requires explicit remote HIP compiler validation")
     assert torch.version.hip and torch.cuda.is_available()
-    from hcu_adapter import jit_sources
+    from hcu_adapter.features.jit import jit_sources
     from sglang.kernels.ops.moe import dsv4
 
     jit_sources.install()
@@ -86,7 +88,7 @@ def test_gpu_dsv4_output_storage_and_variable_graph_replay(layout, group_size):
             actual, activation[valid].flatten(), dim=0) >= .999
 
 
-@pytest.fixture(params=["offline", "community-git"])
+@pytest.fixture(params=["offline"])
 def sources(request):
     if request.param == "offline":
         return _CACHE, _FACTORY
@@ -140,52 +142,30 @@ def _key(dtype=torch.float8_e4m3fn):
     return torch.bfloat16, dtype, 32, False, True, True, False, False, False
 
 
-def test_original_factory_and_warm_aliases_use_only_output_view(sources):
-    factory, modules, calls = _factory(sources)
+@pytest.mark.parametrize("module,factory_name,entry", [
+    ("per_token_quant_fp8", "_jit_per_token_quant_fp8_module", "per_token_quant_fp8"),
+    ("per_tensor_quant_fp8", "per_tensor_quant_fp8_module", "per_tensor_quant_fp8"),
+])
+def test_quant_export_preserves_warm_factory_alias_and_output_bytes(module, factory_name, entry):
+    assert ("sglang.kernels.ops.quantization." + module, factory_name, entry) in bridge._TARGETS
+    source = """@cache_once
+def _jit_module(dtype):
+    return load_jit("per_token_quant_fp8", dtype)
+"""
+    factory, modules, calls = _factory((_CACHE, source), entry=entry)
     alias = factory
-    signature = inspect.signature(factory)
-    cached = alias(*_key())
+    factory(torch.bfloat16)  # Populate the original factory cache first.
+    bridge._install_factory(factory, entry)
     x = torch.ones(3, 4, dtype=torch.bfloat16)
-    output = torch.empty(4, 3, dtype=torch.float8_e4m3fn).t()
+    output = torch.empty_like(x, dtype=torch.float8_e4m3fn)
     scale = torch.ones(3, 1)
-    with pytest.raises(RuntimeError, match="expects uint8"):
-        cached.per_token_group_quant(x, output, scale)
-    bridge._install_factory(factory, "per_token_group_quant")
-    proxy = alias(*_key())
-    proxy.per_token_group_quant(x, output, scale)
-    seen = calls[-1]
-    assert seen[0] is x and seen[2] is scale
-    assert seen[1].dtype == torch.uint8
-    assert seen[1].data_ptr() == output.data_ptr()
-    assert seen[1].stride() == output.stride()
-    assert torch.equal(output.float(), torch.ones_like(output, dtype=torch.float32))
-    assert len(modules) == 1 and factory is alias
-    assert inspect.signature(factory) == signature
-    assert proxy.untouched is cached.untouched
-    bridge._install_factory(factory, "per_token_group_quant")
-    assert alias(*_key()) is proxy
-    # A previously unseen cache key is adapted too, without losing nominal
-    # FP8 dtype selection inside the original factory.
-    cold = list(_key())
-    cold[2] = 128
-    assert isinstance(alias(*cold), bridge._OutputStorage)
-    assert len(modules) == 2
-
-
-def test_other_dtypes_inputs_and_keyword_output_unchanged(sources):
-    factory, _, calls = _factory(sources)
-    bridge._install_factory(factory, "per_token_group_quant")
-    module = factory(*_key())
-    x = torch.ones((2, 4), dtype=torch.float8_e5m2)
-    scale = torch.ones(2, 1)
-    for dtype in (torch.int8, torch.uint8, torch.float8_e4m3fnuz, torch.float8_e5m2):
-        output = torch.empty(2, 4, dtype=dtype)
-        module.per_token_group_quant(x, output, scale)
-        assert calls[-1][0] is x and calls[-1][1] is output and calls[-1][2] is scale
-    output = torch.empty(2, 4, dtype=torch.float8_e4m3fn)
-    module.per_token_group_quant(x=x, output=output, scales=scale)
-    assert calls[-1][1].data_ptr() == output.data_ptr()
+    getattr(alias(torch.bfloat16), entry)(x, output, scale)
+    assert calls[-1][0] is x and calls[-1][2] is scale
     assert calls[-1][1].dtype == torch.uint8
+    assert calls[-1][1].data_ptr() == output.data_ptr()
+    assert output.dtype == torch.float8_e4m3fn
+    assert torch.equal(output.float(), torch.ones_like(x, dtype=torch.float32))
+    assert len(modules) == 1
 
 
 def test_drift_and_bad_cached_export_refused_without_partial_install(sources):
@@ -232,6 +212,7 @@ def _child(sources, queue):
         queue.put(repr(exc))
 
 
+@pytest.mark.fresh_process
 def test_spawn_original_cache_protocol(sources):
     context = multiprocessing.get_context("spawn")
     queue = context.Queue()

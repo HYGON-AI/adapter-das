@@ -56,6 +56,10 @@ vLLM 自动 scaled-MM 的 provider 可延后至首个元数据匹配的真实调
 复用已有 native 的试验可使用仓库原有的无 stamp 开发构建，并分别绑定 Python
 源码/产物与 native 依赖来源；不改依赖元数据或冒用其他构建 stamp，亦不据此
 宣称新的配对 native release 已验证。
+对冻结安装组合复用 Plugin CI 时先核对入口：它可能从 checkout 强制重装
+Plugin wheel。保持既定产物的对照可单独复用同版本选测和公开 selector，
+执行原用例并保留导入模式、安装来源守卫和前后 RECORD；记录未执行的安装
+阶段，不能把这一组合检查称为完整 CI 通过。
 设备回放还须在执行前后校验共享 Torch/Triton/vendor 的完整 RECORD，按实际
 dist-info owner 解析文件；仅校验独立 prefix 内的实体分发不自动覆盖共享依赖。
 计数观察器以公开 callable 的真实 code 身份匹配：重导出函数的定义模块可能

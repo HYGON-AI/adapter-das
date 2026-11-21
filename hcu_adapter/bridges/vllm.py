@@ -275,6 +275,11 @@ def require_runtime_healthy() -> None:
     from hcu_adapter.bridges.vllm_flashmla_decode import require_healthy as require_flashmla_decode_healthy
 
     require_flashmla_decode_healthy()
+    from hcu_adapter.bridges.vllm_sparse_flashmla import require_healthy as require_sparse_flashmla_healthy
+
+    require_sparse_flashmla_healthy()
+    from hcu_adapter.features.hy4.pcp_profile import require_healthy as require_hy4_profile_healthy
+    require_hy4_profile_healthy()
     from hcu_adapter.bridges.vllm_pcp import require_healthy as require_pcp_healthy
 
     require_pcp_healthy()
@@ -388,6 +393,9 @@ def _hcu_platform_class() -> type:
         @classmethod
         def check_and_update_config(cls, vllm_config) -> None:
             require_runtime_healthy()
+            from hcu_adapter.bridges.vllm_sparse_flashmla import configure_cache_dtype
+
+            configure_cache_dtype(vllm_config)
             _configure_indexer_kv_dtype(vllm_config)
             # Core validates the effective config and chooses its default worker.
             from hcu_adapter.bridges.vllm_moe_aiter import configure_padding_policy
@@ -437,6 +445,10 @@ def _hcu_platform_class() -> type:
                 _require_flash_capability()
                 # The owner publishes via vLLM's public backend registry.
                 # Official ROCm selection owns class lookup and validation.
+            if selected_backend == AttentionBackendEnum.FLASHMLA_SPARSE:
+                from hcu_adapter.bridges.vllm_sparse_flashmla import require_available
+
+                require_available()
             return super().get_attn_backend_cls(
                 selected_backend,
                 attn_selector_config,
@@ -533,6 +545,11 @@ def hcu_runtime_plugin() -> None:
         from hcu_adapter.bridges.vllm_sparse_indexer import install as install_sparse_indexer
 
         install_sparse_indexer()
+        from hcu_adapter.bridges.vllm_sparse_flashmla import install as install_sparse_flashmla
+
+        install_sparse_flashmla()
+        from hcu_adapter.features.hy4.pcp_profile import install as install_hy4_profile
+        install_hy4_profile()
         from hcu_adapter.bridges.vllm_flashmla import install as install_flashmla_prefill
 
         install_flashmla_prefill()

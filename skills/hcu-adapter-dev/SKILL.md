@@ -276,6 +276,9 @@ vLLM public registry/extension health 修改先读 `docs/vllm-flash-registry.md`
 回归必须覆盖真实官方 selector 在 clear/foreign 后的拒绝、零实参签名预检、
 精确 report/PID 绑定、sink 失败和错误格式化中实际 fork；不得只直接测 owner
 checker。CPU 生命周期通过不代表 HCU 数值或模型通过。
+薄 Worker 的 CPU 加载夹具应使用 CPU runner 的真实 device 设置 worker.device，
+保留加载后准入和实际 fork/变更入口；缺失字段导致的失败先补齐夹具，不能跳过
+生产准入、伪造 GPU 属性或删除禁止 GPU 查询/初始化的断言。
 
 宿主启动失败须先锁存固定拒绝，再格式化异常；`__str__` 也可能抛
 `BaseException`、重入或 fork。扩展宿主先判原始 fatal 链，再安全生成唯一

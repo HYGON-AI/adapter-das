@@ -20,13 +20,13 @@ import pytest
 
 pytest.importorskip("vllm")
 from vllm import envs
-from vllm.config import DeviceConfig, SchedulerConfig, VllmConfig, get_current_vllm_config
-from vllm.config.compilation import CUDAGraphMode, CompilationMode
-from vllm.config.utils import hash_factors
-from vllm.compilation.caching import aot_compile_hash_factors
 # Core reads an architecture descriptor during import. This CPU-only fixture
 # restores the query before any Worker/config/runner contract executes.
 with patch.object(torch.cuda, "get_device_properties", return_value=NS(gcnArchName="gfx936")):
+    from vllm.config import DeviceConfig, SchedulerConfig, VllmConfig, get_current_vllm_config
+    from vllm.config.compilation import CUDAGraphMode, CompilationMode
+    from vllm.config.utils import hash_factors
+    from vllm.compilation.caching import aot_compile_hash_factors
     from vllm.platforms.rocm import RocmPlatform
 from vllm.v1.worker import gpu_worker, worker_base
 from vllm.v1.worker import gpu_model_runner as v1
@@ -40,6 +40,9 @@ from hcu_adapter.bridges import vllm as bridge
 from hcu_adapter.bridges.vllm_worker import Worker
 from hcu_adapter.infra.extensions import ExtensionContext, ExtensionSpec, activate_extensions
 from test_vllm_bridge import _stub_runtime_owners
+
+
+pytestmark = pytest.mark.usefixtures("cpu_builtin_owner_health")
 
 
 @pytest.fixture(autouse=True)

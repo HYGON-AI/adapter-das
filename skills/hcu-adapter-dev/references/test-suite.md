@@ -1,5 +1,57 @@
 # 自动化测试套件要求
 
+共享模块迁入 `infra/` 后，安装态子进程的包根从真实
+`hcu_adapter.__file__` 推导；同步新增测试和嵌入脚本的 canonical import。
+保留双宿主 import blocker、实际事务执行和模块来源断言，不用旧路径别名绕过。
+
+ROCm CPU 探针导入真实框架时，可在最窄导入窗口提供设备描述 metadata double，
+随后恢复原 GPU 查询守卫。AR 测试在模块收集时已导入官方 dispatcher/communicator，
+该窗口须放在模块级的这些导入周围；函数级 fixture 尚未生效，不能依赖其他
+文件先行预热 ROCm 模块。保留查询函数身份恢复和 CUDA 未初始化断言，并运行
+`CPU_VLLM_CONTRACTS` 完整六文件段及独立 AR 段。spawn 在字段 `__setstate__` 之前导入配置定义模块；
+需在真实配置反序列化前建立同一边界，不全局安装补丁或替换官方配置/插件加载器。
+夹具自身导入仍须验证无日志/环境要求，且不改变任何原 GPU callable。
+
+要求未初始化 GPU 的 CPU 契约应在独立、隐藏设备且 HOSTnone 的解释器运行。
+已执行 native kernel 的 pytest 进程不能恢复这一前提；不要替换
+`torch.cuda.is_initialized` 或放宽守卫。迁移执行段时用同一清单驱动两段的
+纳入/排除并保留失败门禁。真实 Worker 的合成夹具须跟随目标源码的模型和
+runner 状态，继续执行官方委托链与预检，不用伪造方法返回值遮盖接口漂移。
+
+Core 的 ROCm 模块可能在导入时读取架构属性。合成 CPU 平台/Worker 夹具可仅在该导入边界提供显式 `gcnArchName` 元数据，随后立即恢复设备查询函数和拒绝守卫；保留真实官方方法、健康检查、原断言与参数化，不能把 metadata double 作为硬件或模型验收。真实 metadata/spawn 探针须核对继承的 `PYTHONPATH`：父解释器已从 site-packages 加载的依赖目录不要再次作为环境路径传给隔离子解释器，否则会重新引入其排除的扩展 distribution。先保留环境污染失败，再以未改测试复验隔离修复，不过滤 entry-point API 或放宽精确扩展集合。
+
+宿主筛选与 CPU 执行段合并后，须验证目标 nodeid 实际执行。明确 HOSTnone、
+三种 GPU visibility 隐藏且未初始化 CUDA 的进程应保留 CPU vLLM 契约；
+SGLang 宿主和不满足隔离条件的进程仍拒绝。不能设置虚假的 active-host
+标记绕过筛选，也不能把整段 skip 当作执行成功。对应子 pytest 回归见
+`tests/adapter/test_host_suite_scoping.py`，执行段归属见 `docs/ci.md`。
+
+CPU 子进程须自己声明隔离条件，不能依赖父 pytest 的 HOSTnone：设备套件可能
+已传播 SGLang/vLLM 宿主。仅检查进程私有状态的子进程显式传
+`HCU_ADAPTER_HOST=none`，并独立隐藏 HIP/CUDA/ROCR 三种设备可见性；
+HOSTnone 本身不阻止惰性健康查询探测真实 HCU、选择尚未激活的默认 provider。
+只测试合成平台/backend 路由时，局部隔离无关内置 owner 的 install/health，
+继续执行被测官方 selector 和 required-extension 检查；真实 owner 健康门禁另测。
+`cpu_builtin_owner_health` 是显式选择的 CPU 夹具，只隔离内置 owner 的健康查询；
+用于合成 Flash owner 以及真实 Worker 的 CPU load/mutation/lifecycle 测试，
+不替换宿主 runtime latch、required-extension 检查或官方 Worker 方法。
+runtime ABI 的合成启动夹具同时隔离无关内置 install，保留真实官方 loader、
+显式 runtime 路径优先级和 admission/AR 准备失败锁存断言。
+缺库、无效 ELF、错误库及已加载库优先级须经过真实构造器验证；
+仅在官方模块导入期提供架构 metadata，恢复查询后继续拒绝设备访问。
+`test_vllm_builtin_health.py` 与各 owner 的 drift/lifecycle 套件不选择该夹具，
+须独立执行；不能把此夹具扩为自动全局隔离或作为 native/model 验收。
+合并新 main 时，保留真实 `ProcessLocalActions` 的锁存、激活暂缓与格式化重入
+回归，再补 forward 的内置 owner→请求 owner 顺序；不要退回缺生命周期接口的
+namespace。请求 owner 的真实事务会再次检查宿主锁存，顺序观测应保留这些
+内部查询。Worker/FULL Graph CPU 回归可在官方模块的导入边界限定架构元数据
+double，恢复后继续拒绝设备查询，并执行原 Worker/Graph 委托链；导入成功和
+CPU 回放不代替 native、完整 host 车道、已加载模型或 gfx836 验收。
+只需标准库的惰性工具导入探针使用 `-I -S`，
+并确认 blocker 安装前没有加载框架。`-I` 仍执行 installed sitecustomize，
+可能在测试代码之前启动宿主。保留原子进程 timeout，以真实继承宿主的
+RED/GREEN 对照验证隔离；启动/metadata/spawn 门禁仍在各自集成测试执行。
+
 SGLang grouped-topk / sampling 的串行启动发布见
 `tests/adapter/test_sglang_leaf_publication.py`。先解析 provider 和已缓存别名，
 登记全部成功后再发布；`registry.registration_transaction` 只保护登记记录，
@@ -13,6 +65,8 @@ oracle。部分 DTK interpreter 将比较结果转回整数操作数 dtype；夹
 布尔 handle 能力，仅在需要时修正解释器比较结果，测试结束后恢复绑定。
 保留独立分数/掩码参考和原精确断言，不修改编译内核或 vendor 包；解释器
 原生返回布尔 handle 时不接入。CPU oracle 不替代设备、Graph 或模型验收。
+12种比较与普通加法回归继续保留；真实设备还需独立 CPU FP64 参考与变输入
+Graph 对拍，见 `tests/kernels/test_shuffle_mqa_logits.py`。
 
 DSA writer 回归见 `tests/kernels/test_mqa_triton_gfx938.py`：在调用时解析
 新 kvcache/旧 attention 路径，区分页跨度 ABI；依赖导入错误不能当作接口迁移
@@ -224,6 +278,15 @@ CPU required-policy 用例须显式隔离 native ABI 与 FP8 注册前置条件�
 在被测 required 检查前退出。runtime ABI 用例保留真实官方 loader 和无效库
 负控，只隔离后续 FP8 provider；扩展替身须接收并检查公开
 `health_check_sink` 参数。前置隔离不能用于设备或 native ABI 验收。
+
+vLLM required-owner 的 loaded-Graph 故障探针使用独立可丢弃服务；正常
+模型精度和原退出 grace 的配对结果单独保留。先由真实模型产生成功请求，
+确认 manager 持有真实设备 Graph 且发生 FULL replay，再注入 owner 绑定
+漂移。可用仅转发原调用的观察器记录 Worker guard、官方 runner 委托和
+FULL replay 计数；拒绝须来自真实 guard，且后两者计数不再增加。恢复
+provider 不能清除已锁存失败。worker 可能随拒绝退出，观察记录须在退出前
+持久化，不能仅凭 HTTP 失败或启动 capture 日志判定通过。该故障服务的
+预期引擎失败不计入正常生命周期成绩，也不替代其独立验收。
 
 | 维度 | 断言 | 不测会漏掉的 bug（真实案例） |
 |---|---|---|

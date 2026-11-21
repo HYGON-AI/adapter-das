@@ -12,7 +12,8 @@
 # Segments (each independently timed out; all must pass):
 #   l0        structural gate (no GPU) -- fast fail before touching the card
 #   cpu       tests/test_ops_cpu.py            pure-torch contract paths
-#   kernels   tests/kernels + tests/adapter    triton numerics vs torch refs
+#   cpu_vllm  lifecycle/AR/mutation contracts in a device-hidden interpreter
+#   kernels   remaining tests/kernels + tests/adapter; native numerics
 #   l15_up    upstream registered/attention/unittests (dsa+kda+dense+mla)
 #             via pinned PYTHONPATH; tilelang variants excluded (DTK bug)
 #   l15_manifest  L1.5 v2 manifest collect/verify shadow (non-blocking by
@@ -199,6 +200,32 @@ run_seg l0      300  python3 ci/l0_gate.py
 # start, and with no host loaded the _cpu_process suites also skip their
 # clean-subprocess rerun: they already ARE the clean process).
 run_seg cpu     300  env HCU_ADAPTER_HOST=none python3 -m pytest tests/test_ops_cpu.py -q --no-header
+# These contracts assert that the interpreter has never initialized a GPU.
+# Keep them in a fresh, device-hidden process; kernels below initialize HIP.
+# Every transferred file is still mandatory and contributes to FAILS.
+CPU_VLLM_CONTRACTS=(
+    tests/adapter/test_vllm_allreduce.py
+    tests/adapter/test_vllm_allreduce_provider_inputs.py
+    tests/adapter/test_vllm_allreduce_invariants.py
+    tests/adapter/test_vllm_lifecycle_hooks.py
+    tests/adapter/test_vllm_commit_fatal_discovery.py
+    tests/adapter/test_model_mutation.py
+)
+CPU_VLLM_IGNORE=()
+for contract in "${CPU_VLLM_CONTRACTS[@]}"; do
+    CPU_VLLM_IGNORE+=(--ignore "$contract")
+done
+TARGET_ROOT="${VLLM_TARGET_ROOT:-$(env HCU_ADAPTER_HOST=none python3 -c '
+import importlib.util
+from pathlib import Path
+print(Path(importlib.util.find_spec("vllm").origin).resolve().parent.parent)
+')}"
+run_seg cpu_vllm 600 env HCU_ADAPTER_HOST=none HIP_VISIBLE_DEVICES=-1 \
+    ROCR_VISIBLE_DEVICES=-1 CUDA_VISIBLE_DEVICES=-1 \
+    VLLM_TARGET_ROOT="$TARGET_ROOT" \
+    AR_ADAPTER_ROOT="${AR_ADAPTER_ROOT:-$ROOT}" \
+    python3 -m pytest "${CPU_VLLM_CONTRACTS[@]}" -vv --no-header \
+    -o faulthandler_timeout=580 --tb=short
 # Family-representative cases are owned by the family lane, never by the fast
 # kernels lane. Measured on the 0.5.22 tree (2026-11-19, seed-warm): they carry
 # 8 pre-existing failures (6x quantized_linear_chain fp8/ct-fp8, 2x dsv41
@@ -256,6 +283,7 @@ else
     echo "L1: WARN pytest-xdist absent -- kernels tail runs SERIAL (~250s slower); pip install pytest-xdist in the image"
 fi
 run_seg kernels 900  python3 -m pytest tests/kernels tests/adapter -vv --no-header -m "not emu_parity and not fresh_process" "${XDIST_FLAGS[@]}" \
+    "${CPU_VLLM_IGNORE[@]}" \
     --tb=short -o faulthandler_timeout=120 --durations=60 \
     "${FAMILY_DESELECT[@]}"
 

@@ -15,6 +15,7 @@ from test_vllm_bridge import _stub_runtime_owners
 
 
 CAP = "hcu-flash-attention"
+pytestmark = pytest.mark.usefixtures("cpu_builtin_owner_health")
 
 
 def report(name="flash", status=ExtensionStatus.ACTIVE, capabilities=(CAP,)):

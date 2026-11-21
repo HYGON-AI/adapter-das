@@ -8,13 +8,39 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import torch
 
 from hcu_adapter.bridges import vllm as bridge
 from test_vllm_bridge import _stub_runtime_owners
 
 
 @pytest.fixture
-def startup(monkeypatch):
+def official_wrapper(monkeypatch):
+    """Import the real loader with CPU metadata, then forbid device queries.
+
+    ROCm resolves an architecture descriptor while importing the platform.
+    Device-hidden controls cannot query AMD SMI or initialize Torch's GPU
+    runtime. Only that import-time descriptor is synthetic; library discovery,
+    ctypes loading and the target constructor remain real below.
+    """
+    original_properties = torch.cuda.get_device_properties
+    with monkeypatch.context() as importing:
+        importing.setattr(torch.cuda, "get_device_properties",
+                          lambda *a, **k: SimpleNamespace(gcnArchName="gfx936"))
+        official = importlib.import_module(
+            "vllm.distributed.device_communicators.cuda_wrapper")
+    assert torch.cuda.get_device_properties is original_properties
+
+    def prohibit_device_query(*args, **kwargs):
+        pytest.fail("CPU runtime-loader contract queried GPU")
+
+    for name in ("_lazy_init", "init", "current_device", "get_device_properties"):
+        monkeypatch.setattr(torch.cuda, name, prohibit_device_query)
+    return official
+
+
+@pytest.fixture
+def startup(monkeypatch, cpu_builtin_owner_health):
     calls = []
     failure = []
 
@@ -94,10 +120,11 @@ def test_admission_preserves_explicit_operator_alias(startup, monkeypatch):
 
 
 @pytest.mark.parametrize("kind", ["missing", "invalid-elf", "wrong-library"])
-def test_real_official_constructor_rejects_invalid_native_library(startup, monkeypatch, tmp_path, kind):
+def test_real_official_constructor_rejects_invalid_native_library(
+        startup, official_wrapper, monkeypatch, tmp_path, kind):
     """Actual ctypes/target constructor; CPU platform/lookup metadata doubles."""
     calls, _ = startup
-    official = importlib.import_module("vllm.distributed.device_communicators.cuda_wrapper")
+    official = official_wrapper
     path = tmp_path / "invalid-runtime.so"
     if kind == "invalid-elf":
         path.write_bytes(b"not a shared library")
@@ -118,10 +145,11 @@ def test_real_official_constructor_rejects_invalid_native_library(startup, monke
     assert bridge.extension_reports() == ()
 
 
-def test_official_loaded_library_precedence_is_preserved(startup, monkeypatch, tmp_path):
+def test_official_loaded_library_precedence_is_preserved(
+        startup, official_wrapper, monkeypatch, tmp_path):
     """Real target resolver; explicit CPU library/lookup doubles, no HIP call."""
     calls, _ = startup
-    official = importlib.import_module("vllm.distributed.device_communicators.cuda_wrapper")
+    official = official_wrapper
     selected = str(tmp_path / "already-loaded-runtime.so")
     libraries = []
 

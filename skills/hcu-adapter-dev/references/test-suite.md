@@ -58,6 +58,13 @@ vLLM 自动 scaled-MM 的 provider 可延后至首个元数据匹配的真实调
 符号时保留不完整展开，离线符号化先核对可执行映射，不能把栈/数据地址
 解析出的符号当作真实调用者。保留未插桩失败与原清理期限。
 
+CPython 3.12 的 `gc.callbacks` 不覆盖模块/解释器清理中的
+`_PyGC_CollectNoFail`；首轮最终 GC 已结束，不能据此排除后续回收耗时。
+结合目标解释器源码与完整原生栈核验；独立诊断可用 `gc.DEBUG_STATS`
+观察内部回收，避免 `DEBUG_SAVEALL` 留住本应释放的对象。按阶段区分完整
+GC、设备 `empty_cache`、worker 等待及解释器退出；tracked-object 类型统计
+只描述对象规模，不证明 unreachable 对象或保活根，也不构成清理策略依据。
+
 独立 host-only 开发 wheel 仍须核对实际 `Requires-Dist`：构建 stamp 也会
 进入 native kernel 的精确配对版本；只构建 Python wheel 不会产生该原生产物。
 复用已有 native 的试验可使用仓库原有的无 stamp 开发构建，并分别绑定 Python

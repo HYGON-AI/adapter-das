@@ -319,6 +319,23 @@ TEXT_PATCH_ALLOWLIST = {
         "platform_detect",
         "    const auto [b0, b1] = cast<fp32x2_t>(b[i]);",
     ),
+    # elementwise/grouped_gemma_rmsnorm.cuh: Qwen3.8-Flash-Next PLE grouped
+    # norm (Qwen4ExpPLEGroupedNorm) JIT module. Same fp32x2_t (HIP float2,
+    # anonymous union) decomposition as rope.cuh / dot_product.cuh above —
+    # .x/.y member reads. Without it the build fails and scheduler init
+    # aborts before weights finish loading.
+    (
+        "rms_norm",
+        "      const auto [x, y] = cast<fp32x2_t>(input_vec[j][i]);",
+    ),
+    (
+        "rms_norm",
+        "      const auto [ix, iy] = cast<fp32x2_t>(input_vec[j][i]);",
+    ),
+    (
+        "rms_norm",
+        "      const auto [wx, wy] = cast<fp32x2_t>(weight_vec[j][i]);",
+    ),
 }
 
 

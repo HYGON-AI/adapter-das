@@ -1,6 +1,6 @@
 # 算子档位矩阵（自动生成，勿手改）
 
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-17）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
+> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-22）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
@@ -318,11 +318,11 @@ TP init 广播 payload（行为还原：torch2.11 dlpack 只读 BufferError）
 
 ## triton_pdl
 
-triton 编译期 PDL 指令剥离（行为还原：gfx936 无 griddepcontrol）
+triton 编译期 PDL 关断（行为还原：gfx936 无 griddepcontrol）
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| strip | production make_amdgcn 输出剔除 griddepcontrol.* 两行 |
+| strip | production 两层：前端 grid_dependency_* no-op（新 whee |
 
 路由变量：（auto）
 

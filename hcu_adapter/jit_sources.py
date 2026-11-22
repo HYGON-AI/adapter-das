@@ -27,6 +27,7 @@ _LOCK = threading.RLock()
 _TRANSFORMS = (
     "jit_rope", "jit_store_cache", "jit_ptgq", "jit_dpskmeta",
     "jit_quant_fp8", "jit_warp", "jit_concat_mla", "jit_dot_product",
+    "jit_qwen4",
 )
 _MARKER = "_hcu_jit_input_binding"
 _DISPATCH = "_hcu_jit_input_dispatch"

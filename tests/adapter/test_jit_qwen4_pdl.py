@@ -5,49 +5,34 @@
 
 Covers the two v0.5.22 Qwen3.8-Flash-Next boot failures:
 
-  - `elementwise/grouped_gemma_rmsnorm.cuh` structured-binds into a HIP vector
-    type -> hipcc "cannot decompose class type ... anonymous union member".
-    jit_qwen4 rewrites the three sites to `.x/.y` member reads.
+  - the elementwise JIT family structured-binds into `fp32x2_t`, a HIP vector
+    type with an anonymous union -> hipcc "cannot decompose class type ...".
+    jit_qwen4 rewrites every site to `.x/.y` member reads; grouped_gemma
+    aborts scheduler init before weights load, hc_combine aborts decode graph
+    capture.
   - `create_grid_dependency_*` has no HCU lowering -> `PassManager::run
     failed` inside `ConvertTritonHCUToLLVM`. triton_pdl neutralises the
     frontend semantic methods (and keeps the asm stripper for wheels that
     lower the ops).
 """
 
+import re
 import types
 
 import pytest
 
 from hcu_adapter import jit_qwen4, registry, triton_pdl
 
-# The three CUDA-isms and the observable part of each replacement.
-_CASES = (
-    (
-        "      const auto [x, y] = cast<fp32x2_t>(input_vec[j][i]);",
-        ("const fp32x2_t _xy = cast<fp32x2_t>(input_vec[j][i]);",
-         "const auto x = _xy.x, y = _xy.y;"),
-    ),
-    (
-        "      const auto [ix, iy] = cast<fp32x2_t>(input_vec[j][i]);",
-        ("const fp32x2_t _ixy = cast<fp32x2_t>(input_vec[j][i]);",
-         "const auto ix = _ixy.x, iy = _ixy.y;"),
-    ),
-    (
-        "      const auto [wx, wy] = cast<fp32x2_t>(weight_vec[j][i]);",
-        ("const fp32x2_t _wxy = cast<fp32x2_t>(weight_vec[j][i]);",
-         "const auto wx = _wxy.x, wy = _wxy.y;"),
-    ),
-)
+# The files jit_qwen4 covers, and how many bindings each one really carries.
+# hc_combine repeats its two needle groups in a second kernel body.
+_COVERED = {
+    "elementwise/grouped_gemma_rmsnorm.cuh": 3,
+    "elementwise/hc_combine.cuh": 8,
+    "elementwise/hc_combine_decode.cuh": 5,
+    "elementwise/rmsnorm.cuh": 9,
+}
 
-
-def _source(tmp_path, body=None):
-    root = tmp_path / "bundle"
-    target = root / "csrc" / jit_qwen4._RELPATH
-    target.parent.mkdir(parents=True)
-    target.write_text(
-        body if body is not None else "\n".join(n for n, _ in _CASES) + "\n"
-    )
-    return root, target
+_BINDING = re.compile(r"const auto \[[^\]]*\] = cast<fp32x2_t>")
 
 
 def _recorder():
@@ -59,46 +44,118 @@ def _recorder():
     return records, register
 
 
-def test_needles_are_the_declared_patch_set():
-    assert tuple(n for n, _ in _CASES) == tuple(n for n, _ in jit_qwen4._PATCHES)
+def _tree(tmp_path, files):
+    root = tmp_path / "bundle"
+    for relpath, body in files.items():
+        target = root / "csrc" / relpath
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body)
+    return root
+
+
+def test_every_covered_file_is_declared():
+    assert set(jit_qwen4._PATCHES) == set(_COVERED)
 
 
 def test_needles_are_allowlisted():
     """Every needle must be governance-reviewed in TEXT_PATCH_ALLOWLIST."""
-    for needle, _ in _CASES:
-        assert ("rms_norm", needle) in registry.TEXT_PATCH_ALLOWLIST, needle
+    missing = []
+    for pairs in jit_qwen4._PATCHES.values():
+        for needle, _ in pairs:
+            key = ("rms_norm", needle.lstrip("\n").splitlines()[0])
+            if key not in registry.TEXT_PATCH_ALLOWLIST:
+                missing.append(key)
+    assert not missing, missing
 
 
-def test_patch_rewrites_all_three_sites(tmp_path):
-    root, target = _source(tmp_path)
+def test_anchored_needles_do_not_shadow_each_other():
+    """A shallow-indented needle must not eat a deeper one's tail.
+
+    `hc_combine_decode.cuh` carries the same statement at 4 and 6 spaces. An
+    unanchored 4-space needle matches the 6-space line too (consuming its extra
+    indent), so the deeper site gets rewritten by the wrong replacement and its
+    own needle then goes missing.
+    """
+    pairs = jit_qwen4._PATCHES["elementwise/hc_combine_decode.cuh"]
+    text = (
+        "    const auto [x, y] = cast<fp32x2_t>(combined[i]);\n"
+        "      const auto [x, y] = cast<fp32x2_t>(combined[i]);\n"
+        "      const auto [wx, wy] = cast<fp32x2_t>(weight_values[i]);\n"
+    )
+    compiled = jit_qwen4._compile(pairs)
+    # order: residual pair, 4-space combined, 6-space combined+weight
+    shallow, deep = compiled[1], compiled[2]
+
+    once = shallow[0].findall(text)
+    assert len(once) == 1, f"shallow needle matched {len(once)} sites"
+    patched = shallow[0].sub(lambda _m: shallow[1], text)
+    assert deep[0].search(patched) is not None, "deep needle lost its target"
+    assert all(p.pattern.startswith("^") for p, _ in compiled)
+    assert all(p.flags & re.MULTILINE for p, _ in compiled)
+
+
+def test_anchoring_matches_at_file_start():
+    """`^` anchors at offset 0 too, which a leading newline needle would miss."""
+    pair = jit_qwen4._PATCHES["elementwise/grouped_gemma_rmsnorm.cuh"][0]
+    compiled = jit_qwen4._compile([pair])
+    text = pair[0] + "\n"
+    assert compiled[0][0].search(text) is not None
+
+
+def test_patch_rewrites_every_site(tmp_path):
+    """Synthetic tree carrying exactly the real binding count per file."""
+    files = {}
+    for relpath, expected in _COVERED.items():
+        pairs = jit_qwen4._PATCHES[relpath]
+        # each needle group is a contiguous block; repeat the whole set until
+        # the synthetic file reaches the real binding count
+        per_round = sum(
+            len(_BINDING.findall(needle)) for needle, _ in pairs
+        )
+        rounds = max(1, expected // per_round)
+        blocks = []
+        for _ in range(rounds):
+            for needle, _ in pairs:
+                blocks.extend(needle.lstrip("\n").splitlines())
+        files[relpath] = "\n".join(blocks) + "\n"
+        assert len(_BINDING.findall(files[relpath])) == expected, relpath
+
+    root = _tree(tmp_path, files)
     records, register = _recorder()
     jit_qwen4._apply(root, register)
 
-    text = target.read_text()
-    for needle, fragments in _CASES:
-        assert needle not in text, needle
-        for fragment in fragments:
-            assert fragment in text, fragment
-    # one allowlist record per needle, all under the rms_norm op
-    assert len(records) == len(_CASES)
+    for relpath in _COVERED:
+        body = (root / "csrc" / relpath).read_text()
+        assert not _BINDING.search(body), f"{relpath} still has a structured binding"
+    assert records, "expected allowlist records"
     for args, kwargs in records:
         assert args[0] == "rms_norm"
         assert kwargs["mechanism"] == registry.MECH_TEXT
-        assert kwargs["target"].endswith(jit_qwen4._RELPATH)
+        assert kwargs["target"].startswith("text:sglang/kernels/jit/")
 
 
 def test_patch_is_idempotent(tmp_path):
-    root, target = _source(tmp_path)
+    src = "/public/home/yaoht/sglang/github/sglang/python/sglang/kernels/jit"
+    import pathlib
+
+    if not pathlib.Path(src).is_dir():
+        pytest.skip("community sglang tree not mounted")
+    files = {
+        relpath: (pathlib.Path(src) / "csrc" / relpath).read_text()
+        for relpath in _COVERED
+    }
+    root = _tree(tmp_path, files)
     records, register = _recorder()
     jit_qwen4._apply(root, register)
-    once = target.read_text()
+    once = {r: (root / "csrc" / r).read_text() for r in _COVERED}
     calls = len(records)
-    jit_qwen4._apply(root, register)
-    assert target.read_text() == once
-    assert len(records) == calls  # no duplicate allowlist records
+
+    jit_qwen4._apply(root, register)  # second install must be a no-op
+    assert {r: (root / "csrc" / r).read_text() for r in _COVERED} == once
+    assert len(records) == calls
 
 
-def test_absent_file_is_skipped(tmp_path):
+def test_absent_files_are_skipped(tmp_path):
     root = tmp_path / "bundle"
     (root / "csrc").mkdir(parents=True)
     records, register = _recorder()
@@ -107,7 +164,10 @@ def test_absent_file_is_skipped(tmp_path):
 
 
 def test_missing_needle_raises(tmp_path):
-    root, _ = _source(tmp_path, body="// upstream dropped the kernel\n")
+    root = _tree(
+        tmp_path,
+        {relpath: "// upstream dropped the kernel\n" for relpath in _COVERED},
+    )
     _, register = _recorder()
     with pytest.raises(RuntimeError, match="needle missing"):
         jit_qwen4._apply(root, register)

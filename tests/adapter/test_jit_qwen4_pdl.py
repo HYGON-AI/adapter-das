@@ -90,8 +90,8 @@ def test_anchored_needles_do_not_shadow_each_other():
     assert len(once) == 1, f"shallow needle matched {len(once)} sites"
     patched = shallow[0].sub(lambda _m: shallow[1], text)
     assert deep[0].search(patched) is not None, "deep needle lost its target"
-    assert all(p.pattern.startswith("^") for p, _ in compiled)
-    assert all(p.flags & re.MULTILINE for p, _ in compiled)
+    assert all(p.pattern.startswith("^") for p, _, _ in compiled)
+    assert all(p.flags & re.MULTILINE for p, _, _ in compiled)
 
 
 def test_anchoring_matches_at_file_start():
@@ -100,6 +100,53 @@ def test_anchoring_matches_at_file_start():
     compiled = jit_qwen4._compile([pair])
     text = pair[0] + "\n"
     assert compiled[0][0].search(text) is not None
+
+
+def test_registered_detail_is_source_text_not_escaped_pattern():
+    """The allowlist holds source text; `re.escape`d patterns can never match.
+
+    Regression: `detail=pattern.pattern.lstrip("^")` emitted `\\ ` for every
+    space, so all 14 records failed the allowlist check and
+    `jit_sources.prepare` rejected the bundle as "unreviewed compiler
+    transformation" -- but only on a cold cache (a warm cache returns early).
+    """
+    compiled = jit_qwen4._compile(jit_qwen4._PATCHES["elementwise/rmsnorm.cuh"])
+    pattern, _repl, needle = compiled[0]
+    # the pattern is escaped, the needle is source text; they must differ
+    assert pattern.pattern != needle
+    assert "\\ " in pattern.pattern
+    assert "\\ " not in needle
+
+
+def test_apply_file_registers_allowlisted_detail(tmp_path):
+    """End-to-end: what _apply_file registers must pass registry.register().
+
+    registry.register raises on a detail outside TEXT_PATCH_ALLOWLIST, so
+    driving the real function over a synthetic tree is the actual contract
+    -- the previous unit tests only compared the constant table to itself.
+    """
+    files = {}
+    for relpath, pairs in jit_qwen4._PATCHES.items():
+        blocks = []
+        for needle, _repl in pairs:
+            blocks.extend(needle.splitlines())
+        files[relpath] = "\n".join(blocks) + "\n"
+    root = _tree(tmp_path, files)
+
+    registered = []
+
+    def real_register(*args, **kwargs):
+        # route through the genuine validator, then remember it
+        registry.register(*args, **kwargs)
+        registered.append(kwargs["detail"])
+
+    jit_qwen4._apply(root, real_register)
+
+    assert len(registered) == len(
+        [p for pairs in jit_qwen4._PATCHES.values() for p in pairs]
+    )
+    for detail in registered:
+        assert ("rms_norm", detail) in registry.TEXT_PATCH_ALLOWLIST
 
 
 def test_patch_rewrites_every_site(tmp_path):

@@ -104,7 +104,9 @@ _PATCHES = {
             "    const auto [yx, yy] = cast<fp32x2_t>(block_values[i]);",
             "    const auto _rxy = cast<fp32x2_t>(residual_values[i]);"
             "  // HCU: float2 not decomposable\n"
-            "    const auto _yxy = cast<fp32x2_t>(block_values[i]);",
+            "    const auto _yxy = cast<fp32x2_t>(block_values[i]);\n"
+            "    const auto rx = _rxy.x, ry = _rxy.y;\n"
+            "    const auto yx = _yxy.x, yy = _yxy.y;",
         ),
         (
             "    const auto [x, y] = cast<fp32x2_t>(combined[i]);",
@@ -173,7 +175,7 @@ _PATCHES = {
 
 
 def _compile(pairs):
-    """Compile needles into line-anchored patterns.
+    """Compile needles into line-anchored (pattern, replacement) pairs.
 
     Anchoring each needle at a line start is required: without it a statement
     indented 4 spaces also matches the *tail* of the identical statement
@@ -181,10 +183,19 @@ def _compile(pairs):
     so patching the shallow copy silently rewrites the deep one and the next
     needle can no longer find its target. `re.MULTILINE` + `^` anchors at file
     start too, which a leading "\\n" would miss.
+
+    The pattern is for MATCHING only. Registration always uses the original
+    needle text: `re.escape` turns spaces into `\\ `, so a compiled pattern can
+    never equal a TEXT_PATCH_ALLOWLIST entry (which holds source text), and
+    `jit_sources.prepare` would reject the whole bundle as unreviewed.
     """
     return tuple(
-        (re.compile(r"^" + re.escape(needle) if not needle.startswith("^")
-                    else needle, re.MULTILINE | re.DOTALL), repl)
+        (
+            re.compile(r"^" + re.escape(needle) if not needle.startswith("^")
+                       else needle, re.MULTILINE | re.DOTALL),
+            repl,
+            needle,
+        )
         for needle, repl in pairs
     )
 
@@ -199,7 +210,7 @@ def _apply_file(path, relpath, pairs, register):
 
     text = path.read_text(encoding="utf-8")
     applied = 0
-    for pattern, repl in _compile(pairs):
+    for pattern, repl, needle in _compile(pairs):
         if pattern.search(text) is None:
             # already patched (spawn'd child / second install): the replacement
             # carries the "HCU:" marker, so its presence means this site is done
@@ -207,20 +218,20 @@ def _apply_file(path, relpath, pairs, register):
                 continue
             raise RuntimeError(
                 f"jit_elementwise: needle missing in {relpath}: "
-                f"{pattern.pattern.splitlines()[0][:70]!r} -- upstream "
+                f"{needle.splitlines()[0][:70]!r} -- upstream "
                 "changed; re-derive (governance §3)"
             )
         text, n = pattern.subn(lambda _m, _r=repl: _r, text)
         applied += n
-        # Registration detail is the needle's first line: the multi-line
-        # needles stay readable in the dump/allowlist (indentation makes the
-        # first line unique per site).
+        # Registration detail is the ORIGINAL needle's first line (source text,
+        # as TEXT_PATCH_ALLOWLIST holds it -- never the escaped pattern). The
+        # indentation makes the first line unique per site.
         register(
             "rms_norm",
             "gfx93x-hipcc-portability",
             target=f"text:sglang/kernels/jit/{relpath}",
             mechanism=_reg.MECH_TEXT,
-            detail=pattern.pattern.lstrip("^").splitlines()[0],
+            detail=needle.splitlines()[0],
         )
 
     if applied:

@@ -35,7 +35,9 @@ Target verify preserves the upstream function object and cached imports.
 HCU_LINEAR_ATTN_GDN_VERIFY=auto chooses AITER only for the qualified stack,
 gfx936/gfx938, BF16 packed TP2 H8/HV24, FP32 state/snapshots and draft4.
 There is no fixed batch ceiling; the runtime retains its resource/shape limits.
-Other contracts stay upstream; =triton and HCU_DISABLE_OPS=gdn_verify disable it.
+HCU_LINEAR_ATTN_GDN_VERIFY=aiter_hip opts into the AITER HIP provider for
+gfx938 packed TP1 H16/HV48 BF16 draft4 verification with FP32 state/snapshots.
+Other contracts stay upstream; =triton and HCU_DISABLE_OPS=gdn_verify disable routing.
 
 Prefill/packed decode gate: HCU_LINEAR_ATTN_GDN = auto|aiter|triton (auto = triton until the
 numerics gate + e2e row graduate this to candidate/production).
@@ -219,14 +221,14 @@ def _verify_auto_stack_supported():
         return False
 
 
-def _verify_auto_contract_supported(p, torch):
-    """The verified packed TP2 GDN profile; all checks are tensor metadata."""
+def _verify_packed_contract_supported(p, torch, *, heads, value_heads):
+    """Match a packed draft4 GDN contract using tensor metadata."""
     cu = p.get("cu_seqlens")
     if cu is None:
         return False
     n = cu.numel() - 1
-    if (n < 1 or tuple(p["q"].shape[:3]) != (1, n * 4, 8)
-            or p["v"].shape[-2] != 24 or p["cache_steps"] != 4
+    if (n < 1 or tuple(p["q"].shape[:3]) != (1, n * 4, heads)
+            or p["v"].shape[-2] != value_heads or p["cache_steps"] != 4
             or p.get("use_qk_l2norm_in_kernel") is not True
             or p.get("lower_bound") is not None):
         return False
@@ -242,6 +244,23 @@ def _verify_auto_contract_supported(p, torch):
         return False
     return (p["A_log"].dtype == torch.float32
             and p["dt_bias"].dtype in (torch.float32, torch.bfloat16))
+
+
+def _verify_auto_contract_supported(p, torch):
+    return _verify_packed_contract_supported(p, torch, heads=8, value_heads=24)
+
+
+def _verify_hip_contract_supported(p, torch):
+    if not _verify_packed_contract_supported(p, torch, heads=16, value_heads=48):
+        return False
+    tokens = p["q"].shape[1]
+    gate = p["a"]
+    return (
+        p.get("cache_replayssm_inputs", False) is False
+        and tuple(gate.shape) in ((tokens, 48), (1, tokens, 48))
+        and gate.stride(-1) == 1
+        and gate.stride(-2) >= 48
+    )
 
 
 def _verify_entry(*args, **kwargs):
@@ -360,9 +379,11 @@ def _bind_target_verify_aiter(function, vendor, torch, *, policy="aiter"):
         supported = _verify_contract_supported(p, torch)
         base_supported = supported
         auto_supported = None
-        if supported and policy == "auto":
-            supported = _verify_auto_contract_supported(p, torch)
-            auto_supported = supported
+        if supported and policy in ("auto", "aiter_hip"):
+            if policy == "auto":
+                supported = auto_supported = _verify_auto_contract_supported(p, torch)
+            else:
+                supported = _verify_hip_contract_supported(p, torch)
             if supported:
                 device = p["q"].device
                 if device.index not in device_arches:
@@ -374,7 +395,9 @@ def _bind_target_verify_aiter(function, vendor, torch, *, policy="aiter"):
                     except (AttributeError, RuntimeError, ValueError) as exc:
                         device_arches[device.index] = ""
                         device_probe_errors[device.index] = type(exc).__name__
-                supported = device_arches[device.index] in _VERIFY_AUTO_ARCHES
+                arch = device_arches[device.index]
+                allowed_arches = ("gfx938",) if policy == "aiter_hip" else _VERIFY_AUTO_ARCHES
+                supported = arch in allowed_arches
         if not supported:
             if (not declined and p.get("disable_state_update") is True
                     and p.get("is_kda", False) is False):
@@ -425,14 +448,17 @@ def _bind_target_verify_aiter(function, vendor, torch, *, policy="aiter"):
     return function
 
 
-def _load_target_verify_providers():
+def _load_target_verify_providers(*, native_hip=False):
     import torch
     if torch.version.hip is None:
         return None
     from sglang.kernels.ops.attention.fla import fused_sigmoid_gating_recurrent as face
-    from aiter.ops.triton.fla.fused_sigmoid_gating_recurrent import (
-        fused_sigmoid_gating_delta_rule_update as vendor,
-    )
+    if native_hip:
+        from aiter import sglang_fused_sigmoid_gating_delta_rule_update as vendor
+    else:
+        from aiter.ops.triton.fla.fused_sigmoid_gating_recurrent import (
+            fused_sigmoid_gating_delta_rule_update as vendor,
+        )
     return torch, face.fused_sigmoid_gating_delta_rule_update, vendor
 
 
@@ -443,21 +469,24 @@ def _install_target_verify_aiter():
         LOG.warning("HCU adapter: GDN verify kept upstream by HCU_DISABLE_OPS=gdn_verify")
         return
     mode, source = hcu_env.resolve("HCU_LINEAR_ATTN_GDN_VERIFY")
-    if mode not in ("auto", "triton", "aiter"):
-        raise ValueError("HCU_LINEAR_ATTN_GDN_VERIFY must be auto, triton or aiter")
+    if mode not in ("auto", "triton", "aiter", "aiter_hip"):
+        raise ValueError("HCU_LINEAR_ATTN_GDN_VERIFY must be auto, triton, aiter or aiter_hip")
     if mode == "triton":
         return
     if mode == "auto" and not _verify_auto_stack_supported():
         LOG.debug("HCU adapter: GDN verify auto kept upstream: stack not qualified")
         return
     try:
-        providers = _load_target_verify_providers()
+        if mode == "aiter_hip":
+            providers = _load_target_verify_providers(native_hip=True)
+        else:
+            providers = _load_target_verify_providers()
         if providers is None:
             return
         torch, function, vendor = providers
         _bind_target_verify_aiter(function, vendor, torch, policy=mode)
     except (ImportError, OSError, AttributeError, RuntimeError, TypeError, ValueError):
-        if mode == "aiter":
+        if mode in ("aiter", "aiter_hip"):
             raise
         LOG.warning("HCU adapter: GDN verify auto kept upstream: provider/API "
                     "unavailable", exc_info=True)
@@ -468,9 +497,9 @@ def _install_target_verify_aiter():
         target=("sglang.kernels.ops.attention.fla.fused_sigmoid_gating_recurrent."
                 "fused_sigmoid_gating_delta_rule_update"),
         mechanism=registry.MECH_REBIND,
-        detail="policy=" + mode + "; BF16 target_verify; FP32 state/snapshots; "
-               "auto admits qualified gfx936/gfx938, TP2 H8/HV24 draft4; no fixed batch ceiling; "
-               "cached aliases retained; other contracts keep upstream",
+        detail=f"policy={mode}; provider={vendor.__module__}.{vendor.__name__}; "
+               "BF16 target_verify; FP32 state/snapshots; cached aliases retained; "
+               "other contracts keep upstream",
     )
     LOG.warning("HCU adapter: GDN verify AITER route installed "
                 "(HCU_LINEAR_ATTN_GDN_VERIFY=%s, source=%s)", mode, source)

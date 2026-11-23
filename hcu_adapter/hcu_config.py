@@ -728,6 +728,11 @@ BACKEND_CATALOG = {
                       "note": "vendor verify bridge in gdn_aiter.py; BF16 K=V=128, FP32 "
                               "contiguous state/snapshots; gfx936 eager/Graph reference "
                               "and Qwen3.6 TP2 MATH500/serving passed 2026-11-14"},
+            "aiter_hip": {"status": "candidate",
+                          "note": "Opt-in gfx938 packed TP1 H16/HV48 GDN VERIFY, BF16 K=V=128, "
+                                  "FP32 state/snapshots, draft4, no fixed batch ceiling. Uses "
+                                  "aiter.sglang_fused_sigmoid_gating_delta_rule_update. "
+                                  "Unsupported contracts use upstream Triton."},
         },
     },
     "fused_moe": {

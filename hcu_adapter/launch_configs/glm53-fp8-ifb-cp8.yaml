@@ -10,6 +10,8 @@ hosts:
       GLIBC_TUNABLES: "glibc.rtld.optional_static_tls=0x40000"
       GPU_FORCE_BLIT_COPY_SIZE: "16"
       HCU_ADAPTER_HOST: "sglang"
+      HCU_FUSED_ADD_RMS_IMPL: "lightop"
+      HCU_RMS_NORM_IMPL: "lightop"
       HIP_KERNEL_BATCH_CEILING: "100"
       HIP_KERNEL_EVENT_SYSTENFENCE: "1"
       HSA_KERNARG_POOL_SIZE: "8388608"

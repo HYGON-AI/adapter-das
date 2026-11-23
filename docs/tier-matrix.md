@@ -117,6 +117,7 @@ RMSNorm (plain); the fused-add family is its own op below
 |---|---|
 | triton | production default |
 | aiter | candidate aiter.rmsnorm_forward(x,w,eps,traini |
+| lightop | candidate Public BF16 plain RMSNorm; other dty |
 | torch | production reference path |
 
 路由变量：`HCU_RMS_NORM_IMPL`
@@ -143,6 +144,76 @@ TP all-reduce (+fused AR+RMSNorm seam, HCU_AR_NORM_IMPL)
 | nccl | production fallback (HCU_AITER_AR=0); graph-cor |
 
 路由变量：`1`/`0`
+
+## glm53_block_fp8_determinism
+
+GLM-5.3-Flash blockwise FP8 TP8 deterministic inference
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| fixed | candidate Opt in to the eight fixed paths in t |
+
+路由变量：`1`
+
+## kda_projection
+
+Batch-invariant unquantized GLM-5.3 KDA projections
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| fixed_tile | candidate Fixed BF16 Triton GEMM tile on HIP,  |
+
+路由变量：`1`
+
+## dsa_short_topk
+
+Logical-order DSA kpool short prefill selection
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| ordered | candidate Emit all valid short-context indices |
+
+路由变量：`1`
+
+## glm_mhc_stats
+
+Batch-invariant FP32 statistics for GLM mHC
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| fixed_stats | candidate Fixed IEEE FP32 tiles for the Torch  |
+
+路由变量：`1`
+
+## glm_eagle_projections
+
+Batch-invariant GLM EAGLE normalization and EH/LM-head projections
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| fixed | candidate Row-wise FP32 RMS statistics and fix |
+
+路由变量：`1`
+
+## glm53_lightop_experts
+
+GLM-5.3-Flash E4M3 block-FP8 expert projections
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| lightop | candidate TP8/EP1 on gfx938 with original FP32 |
+
+路由变量：`1`
+
+## glm_mla_matmul
+
+Batch-invariant zero-RoPE MLA matrix contractions
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| fixed | candidate Fixed BF16 projections and IEEE FP32 |
+
+路由变量：`1`
 
 ## kda_prefill
 
@@ -201,6 +272,72 @@ Diffusion norm + scale/shift; HCU CUDA-dispatch kernel
 |---|---|
 | triton | candidate gfx936 BF16 affine-free LN, D4096/51 |
 | emu | candidate Torch layer/RMS norm and general bro |
+
+路由变量：（auto）
+
+## diffusion_layernorm_modulate
+
+Diffusion BF16 LayerNorm modulation; HCU CUDA dispatch
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate HIP D divisible by 4, up to 8192; gf |
+| emu | candidate Torch BF16 LayerNorm and modulation  |
+
+路由变量：（auto）
+
+## diffusion_qknorm_complex_rope_cuda
+
+Single-tensor Q/K RMSNorm and complex RoPE
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
+## diffusion_qknorm_complex_rope_pack_
+
+In-place Q plus prefix K/V packing with RMSNorm and complex RoPE
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
+## diffusion_qknorm_complex_rope
+
+Q/K RMSNorm and complex RoPE on the Triton op entry
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
+## diffusion_qknorm_complex_rope_kv
+
+K RMSNorm and complex RoPE with prefix K/V packing
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
+## diffusion_fused_complex_rope
+
+Diffusion complex RoPE
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
 
 路由变量：（auto）
 
@@ -328,11 +465,11 @@ TP init 广播 payload（行为还原：torch2.11 dlpack 只读 BufferError）
 
 ## triton_pdl
 
-triton 编译期 PDL 指令剥离（行为还原：gfx936 无 griddepcontrol）
+triton 编译期 PDL 关断（行为还原：gfx936 无 griddepcontrol）
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| strip | production make_amdgcn 输出剔除 griddepcontrol.* 两行 |
+| strip | production 两层：前端 grid_dependency_* no-op（新 whee |
 
 路由变量：（auto）
 
@@ -402,6 +539,26 @@ w8a8 fused MoE experts (standard dispatch, triton runner entry; deepep runner un
 | aiter | validated DTK aiter_moe; blockwise->ASM tuned  |
 
 路由变量：`HCU_FUSED_MOE_IMPL`
+
+## flashmla_kv_indices
+
+FlashMLA static-pool page-table import compatibility
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate Reuse SGLang's existing page64 kerne |
+
+路由变量：（auto）
+
+## w4a8_contiguous_gemm
+
+DTK W4A8 HIPC code-object ABI compatibility
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| dtk | candidate Optional gfx936 COV5 extension for p |
+
+路由变量：（auto）
 
 ## w4a16_moe
 

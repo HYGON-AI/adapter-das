@@ -41,7 +41,8 @@ if HAS_TRITON:
 
 
     @triton.jit
-    def _welford_push(val, mean, m2, cnt, valid, MASKED: tl.constexpr):
+    def _welford_push(val, mean, m2, cnt, valid, MASKED: tl.constexpr,
+                      SEPARATE_M2: tl.constexpr = False):
         # ``valid`` masks lanes whose aten thread does not execute this
         # iteration (their state must stay untouched).
         delta = val - mean
@@ -49,7 +50,10 @@ if HAS_TRITON:
         recip = _rcp4(new_cnt)
         new_mean = tl.fma(delta, recip, mean)
         t = val - new_mean
-        new_m2 = tl.fma(delta, t, m2)
+        if SEPARATE_M2:
+            new_m2 = delta * t + m2
+        else:
+            new_m2 = tl.fma(delta, t, m2)
         if MASKED:
             new_mean = tl.where(valid, new_mean, mean)
             new_m2 = tl.where(valid, new_m2, m2)
@@ -108,6 +112,7 @@ if HAS_TRITON:
         rows: tl.constexpr,
         lanes: tl.constexpr,
         MASKED: tl.constexpr,
+        BF16_ATEN_M2: tl.constexpr = False,
     ):
         # Push the 4 elements of one aligned_vector<bf16, 4> in exact serial
         # order.  x4 is (rows, lanes, 4) fp32.
@@ -119,10 +124,12 @@ if HAS_TRITON:
         e1 = tl.reshape(e1, (rows, lanes), can_reorder=False)
         e2 = tl.reshape(e2, (rows, lanes), can_reorder=False)
         e3 = tl.reshape(e3, (rows, lanes), can_reorder=False)
+        # On the verified gfx936 BF16 ATen kernel, only the last two m2
+        # accumulations in each vec4 round the product before adding it.
         mean, m2, cnt = _welford_push(e0, mean, m2, cnt, valid, MASKED)
         mean, m2, cnt = _welford_push(e1, mean, m2, cnt, valid, MASKED)
-        mean, m2, cnt = _welford_push(e2, mean, m2, cnt, valid, MASKED)
-        mean, m2, cnt = _welford_push(e3, mean, m2, cnt, valid, MASKED)
+        mean, m2, cnt = _welford_push(e2, mean, m2, cnt, valid, MASKED, BF16_ATEN_M2)
+        mean, m2, cnt = _welford_push(e3, mean, m2, cnt, valid, MASKED, BF16_ATEN_M2)
         return mean, m2, cnt
 
 
@@ -155,7 +162,16 @@ if HAS_TRITON:
     def _layernorm_modulate_kernel(
         y_ptr, x_ptr, scale_ptr, shift_ptr, seq_len, n_rows, scale_row_stride, eps,
         D: tl.constexpr, ROWS: tl.constexpr,
+        HAS_SHIFT: tl.constexpr = True,
+        POST_OP: tl.constexpr = "bf16_modulate",
+        BF16_ATEN_M2: tl.constexpr = False,
     ):
+
+        tl.static_assert(
+            POST_OP == "bf16_modulate" or POST_OP == "fp32_modulate"
+            or POST_OP == "fp32_affine" or POST_OP == "bf16_norm_fp32_modulate",
+            "unsupported POST_OP",
+        )
         THREADS: tl.constexpr = 256
         WAVE: tl.constexpr = 64
         pid = tl.program_id(0).to(tl.int64)
@@ -179,7 +195,8 @@ if HAS_TRITON:
                     other=0.0,
                 ).to(tl.float32)
                 mean, m2, cnt = _push_vec4(
-                    x4, mean, m2, cnt, row_mask, ROWS, THREADS, MASKED=False
+                    x4, mean, m2, cnt, row_mask, ROWS, THREADS, MASKED=False,
+                    BF16_ATEN_M2=BF16_ATEN_M2,
                 )
             else:
                 # partial tail chunk: logical threads whose vector
@@ -192,7 +209,8 @@ if HAS_TRITON:
                     other=0.0,
                 ).to(tl.float32)
                 mean, m2, cnt = _push_vec4(
-                    x4, mean, m2, cnt, vec_valid, ROWS, THREADS, MASKED=True
+                    x4, mean, m2, cnt, vec_valid, ROWS, THREADS, MASKED=True,
+                    BF16_ATEN_M2=BF16_ATEN_M2,
                 )
 
         # warp fold trees, then the (0,2)/(1,3)/(0,1) inter-warp combines.
@@ -210,7 +228,7 @@ if HAS_TRITON:
 
         batch = row_offs // seq_len
 
-        # pass 2: normalize + modulate, with an explicit BF16 normalization intermediate.
+        # pass 2: normalize, then apply the selected post-op precision contract.
         for i in tl.static_range(((D + THREADS * 4 - 1) // (THREADS * 4))):
             cols = i * THREADS * 4 + tl.arange(0, THREADS * 4)
             mask = row_mask[:, None]
@@ -222,10 +240,25 @@ if HAS_TRITON:
                 other=0.0,
             ).to(tl.float32)
             y = rstd * (x - mean)
-            y = round_bf16_to_fp32(y)
+            if POST_OP == "bf16_modulate" or POST_OP == "bf16_norm_fp32_modulate":
+                y = round_bf16_to_fp32(y)
             sc = tl.load(scale_ptr + batch[:, None] * scale_row_stride + cols[None, :], mask=mask, other=0.0).to(tl.float32)
-            sh = tl.load(shift_ptr + batch[:, None] * scale_row_stride + cols[None, :], mask=mask, other=0.0).to(tl.float32)
-            y = y * (1.0 + sc) + sh
+            if POST_OP == "bf16_modulate":
+                one_plus = round_bf16_to_fp32(1.0 + sc)
+                y = round_bf16_to_fp32(y * one_plus)
+                if HAS_SHIFT:
+                    sh = tl.load(shift_ptr + batch[:, None] * scale_row_stride + cols[None, :], mask=mask, other=0.0).to(tl.float32)
+                    y = y + sh
+            else:
+                sh = tl.load(shift_ptr + batch[:, None] * scale_row_stride + cols[None, :], mask=mask, other=0.0).to(tl.float32)
+                if POST_OP == "fp32_affine":
+                    y = tl.fma(y, sc, sh)
+                elif POST_OP == "bf16_norm_fp32_modulate":
+                    # Match the community modulation kernel's FP32 FMA.
+                    y = tl.fma(y, 1.0 + sc, sh)
+                else:
+                    # Caller disables implicit FMA, as in the upstream kernel.
+                    y = y * (1.0 + sc) + sh
             tl.store(y_ptr + row_base[:, None] + cols[None, :], y, mask=mask)
 
 
@@ -291,6 +324,50 @@ def _apply_parameter(value, parameter, scale=False):
     return value * (1 + parameter) if scale else value + parameter
 
 
+def fused_layernorm_modulate(
+    x: torch.Tensor,
+    scale: torch.Tensor,
+    shift: Optional[torch.Tensor],
+    eps: float,
+) -> torch.Tensor:
+    """Launch the BF16 LayerNorm modulation used by SGLang's Triton custom op."""
+    if (
+        x.ndim != 3 or x.dtype != torch.bfloat16 or not x.is_contiguous()
+        or x.numel() == 0 or x.shape[-1] % 4 or x.shape[-1] > 8192
+    ):
+        raise RuntimeError("LayerNorm modulation expects contiguous BF16 [B, S, D], D divisible by 4 and <= 8192")
+
+    batch, tokens, hidden = x.shape
+    for parameter in (scale,) if shift is None else (scale, shift):
+        if (
+            parameter.shape != (batch, hidden) or parameter.stride(1) != 1
+            or parameter.dtype != torch.bfloat16 or parameter.device != x.device
+        ):
+            raise RuntimeError("modulation parameters must have packed BF16 [B, D] rows on x's device")
+    if batch > 1 and shift is not None and shift.stride(0) != scale.stride(0):
+        raise RuntimeError("shift must match scale's row stride")
+
+    if (
+        HAS_TRITON and x.is_cuda and torch.version.hip is not None
+        and x.data_ptr() % 16 == 0
+    ):
+        output = torch.empty_like(x)
+        rows = 2
+        with torch.cuda.device(x.device):
+            _layernorm_modulate_kernel[(triton.cdiv(batch * tokens, rows),)](
+                output, x, scale, shift, tokens, batch * tokens,
+                scale.stride(0) if batch > 1 else hidden, eps,
+                D=hidden, ROWS=rows, HAS_SHIFT=shift is not None,
+                POST_OP="bf16_modulate", BF16_ATEN_M2=True,
+                num_warps=4, enable_fp_fusion=False,
+            )
+        return output
+
+    normalized = F.layer_norm(x, (hidden,), eps=eps)
+    modulated = normalized * (1 + scale.unsqueeze(1))
+    return modulated if shift is None else modulated + shift.unsqueeze(1)
+
+
 def fused_norm_scale_shift(
     x: torch.Tensor,
     weight: Optional[torch.Tensor],
@@ -310,6 +387,7 @@ def fused_norm_scale_shift(
             _layernorm_modulate_kernel[(triton.cdiv(batch * tokens, 2),)](
                 output, x, batch_scale, batch_shift, tokens, batch * tokens,
                 batch_scale.stride(0), eps, D=hidden, ROWS=2,
+                POST_OP="bf16_norm_fp32_modulate",
                 num_warps=4, enable_fp_fusion=False,
             )
         return output

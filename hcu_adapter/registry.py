@@ -48,6 +48,10 @@ _BOUND = {}
 # JIT entries below govern transformations of adapter-owned compiler inputs.
 # They do not authorize writing to the community source tree.
 TEXT_PATCH_ALLOWLIST = {
+    ("platform_detect", "    if (ntn_dev == kDLCUDA) {"),
+    # In-memory AST redirects of hardware metadata queries only. Exact modules
+    # are enumerated in lightop_metadata._TARGETS; source files stay untouched.
+    ("platform_detect", "AST: context-free HIP metadata queries in audited modules"),
     ("per_token_quant", "#elif defined(__gfx950__) || defined(__gfx1200__) || defined(__gfx1201__)"),
     ("per_token_quant", "reinterpret_cast<__nv_fp8x2_storage_t*>(&output_buf)"),
     ("per_token_quant", "__nv_cvt_float2_to_fp8x2(outputx2, __NV_SATFINITE, __NV_E4M3)"),
@@ -171,6 +175,8 @@ TEXT_PATCH_ALLOWLIST = {
         "  return r;\n"
         "}",
     ),
+    ("platform_detect", "template <bool kUsePDL>\n__global__ void concat_mla_absorb_q_kernel("),
+    ("platform_detect", "    LaunchKernel(grid_size, block_size, device.unwrap())\n        .enable_pdl(kUsePDL)("),
     # deepseek_v4/paged_mqa_metadata.cuh includes NVIDIA cub for BlockScan;
     # DTK ships hipCUB only (namespace cub mirrors the API, umbrella header
     # per the tree's own lora JIT convention) — DSV4-Flash decode graph
@@ -319,6 +325,67 @@ TEXT_PATCH_ALLOWLIST = {
     (
         "platform_detect",
         "    const auto [b0, b1] = cast<fp32x2_t>(b[i]);",
+    ),
+    # elementwise/grouped_gemma_rmsnorm.cuh + hc_combine*.cuh + rmsnorm.cuh:
+    # the whole elementwise JIT family structured-binds fp32x2_t (HIP float2,
+    # anonymous union) — same ABI fact as rope.cuh / dot_product.cuh above,
+    # rewritten to .x/.y member reads. grouped_gemma aborts scheduler init
+    # before weights load; hc_combine aborts decode CUDA-graph capture.
+    (
+        "rms_norm",
+        "      const auto [x, y] = cast<fp32x2_t>(input_vec[j][i]);",
+    ),
+    (
+        "rms_norm",
+        "      const auto [ix, iy] = cast<fp32x2_t>(input_vec[j][i]);",
+    ),
+    (
+        "rms_norm",
+        "      const auto [wx, wy] = cast<fp32x2_t>(weight_vec[j][i]);",
+    ),
+    (
+        "rms_norm",
+        "        const auto [nx, ny] = cast<fp32x2_t>(n_vec[j][i]);",
+    ),
+    (
+        "rms_norm",
+        "      const auto [rx, ry] = cast<fp32x2_t>(r_vec[i]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [rx, ry] = cast<fp32x2_t>(residual_values[i]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [x, y] = cast<fp32x2_t>(combined[i]);",
+    ),
+    (
+        "rms_norm",
+        "      const auto [x, y] = cast<fp32x2_t>(combined[i]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [x, y] = cast<fp32x2_t>(input_first[j]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [x, y] = cast<fp32x2_t>(input_second[j]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [ix, iy] = cast<fp32x2_t>(input_first[j]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [ix, iy] = cast<fp32x2_t>(input_second[j]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [x, y] = cast<fp32x2_t>(input_vec[j]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [ix, iy] = cast<fp32x2_t>(input_vec[j]);",
     ),
 }
 

@@ -16,7 +16,7 @@ Schema (hcu_adapter.yaml, first hit wins in discovery order):
     version: 1
     ops:
       silu_and_mul: triton      # triton | lightop | torch
-      rms_norm: aiter           # triton | aiter | torch
+      rms_norm: aiter           # triton | aiter | lightop | torch
       fused_add_rms_norm: triton  # triton | lightop | torch
       allreduce: aiter          # aiter | nccl (custom AR retired 2026-10-19)
       paged_mqa_logits: triton   # triton (DEFAULT, R-13 #4) | emu | vendor
@@ -156,6 +156,8 @@ BACKEND_CATALOG = {
             "aiter": {"status": "candidate",
                       "note": "aiter.rmsnorm_forward(x,w,eps,training) "
                               "-> (out, ..); plain rmsnorm only"},
+            "lightop": {"status": "candidate",
+                        "note": "Public BF16 plain RMSNorm; other dtypes/Gemma use Triton"},
             "torch": {"status": "production",
                       "note": "reference path"},
         },
@@ -212,6 +214,71 @@ BACKEND_CATALOG = {
                               "stock（arm 层即拒）"},
             "nccl": {"status": "production",
                      "note": "fallback (HCU_AITER_AR=0); graph-correct"},
+        },
+    },
+    "glm53_block_fp8_determinism": {
+        "vars": {"fixed": {
+            "HCU_ORDERED_TP8_BF16_REDUCE": "1",
+            "HCU_KDA_FIXED_SAFE_GATE_ANCHOR": "1",
+            "HCU_GLM53_FIXED_KDA_PROJECTION": "1",
+            "HCU_FIXED_BLOCK_FP8_DENSE": "1",
+            "HCU_DSA_ORDERED_SHORT_TOPK": "1",
+            "HCU_GLM53_FIXED_MHC_STATS": "1",
+            "HCU_GLM53_FIXED_EAGLE_PROJECTIONS": "1",
+            "HCU_GLM53_FIXED_DSA_MATMUL": "1",
+        }},
+        "summary": "GLM-5.3-Flash blockwise FP8 TP8 deterministic inference",
+        "backends": {
+            "fixed": {"status": "candidate",
+                      "note": "Opt in to the eight fixed paths in the two-node TP8 recipe"},
+        },
+    },
+    "kda_projection": {
+        "vars": {"fixed_tile": {"HCU_GLM53_FIXED_KDA_PROJECTION": "1"}},
+        "summary": "Batch-invariant unquantized GLM-5.3 KDA projections",
+        "backends": {
+            "fixed_tile": {"status": "candidate",
+                           "note": "Fixed BF16 Triton GEMM tile on HIP, opt-in"},
+        },
+    },
+    "dsa_short_topk": {
+        "vars": {"ordered": {"HCU_DSA_ORDERED_SHORT_TOPK": "1"}},
+        "summary": "Logical-order DSA kpool short prefill selection",
+        "backends": {
+            "ordered": {"status": "candidate",
+                        "note": "Emit all valid short-context indices in sequence order on HIP, opt-in"},
+        },
+    },
+    "glm_mhc_stats": {
+        "vars": {"fixed_stats": {"HCU_GLM53_FIXED_MHC_STATS": "1"}},
+        "summary": "Batch-invariant FP32 statistics for GLM mHC",
+        "backends": {
+            "fixed_stats": {"status": "candidate",
+                            "note": "Fixed IEEE FP32 tiles for the Torch mHC path on HIP, opt-in"},
+        },
+    },
+    "glm_eagle_projections": {
+        "vars": {"fixed": {"HCU_GLM53_FIXED_EAGLE_PROJECTIONS": "1"}},
+        "summary": "Batch-invariant GLM EAGLE normalization and EH/LM-head projections",
+        "backends": {
+            "fixed": {"status": "candidate",
+                      "note": "Row-wise FP32 RMS statistics and fixed BF16 projection tiles on HIP, opt-in"},
+        },
+    },
+    "glm53_lightop_experts": {
+        "vars": {"lightop": {"HCU_GLM53_LIGHTOP_BLOCK_FP8_MOE": "1"}},
+        "summary": "GLM-5.3-Flash E4M3 block-FP8 expert projections",
+        "backends": {
+            "lightop": {"status": "candidate",
+                        "note": "TP8/EP1 on gfx938 with original FP32 block scales and host routing"},
+        },
+    },
+    "glm_mla_matmul": {
+        "vars": {"fixed": {"HCU_GLM53_FIXED_DSA_MATMUL": "1"}},
+        "summary": "Batch-invariant zero-RoPE MLA matrix contractions",
+        "backends": {
+            "fixed": {"status": "candidate",
+                      "note": "Fixed BF16 projections and IEEE FP32 score/value tiles on HIP, opt-in"},
         },
     },
     "kda_prefill": {
@@ -352,6 +419,54 @@ BACKEND_CATALOG = {
                        "note": "gfx936 BF16 affine-free LN, D4096/5120, FP32 batch modulation; community Welford port"},
             "emu": {"status": "candidate",
                     "note": "Torch layer/RMS norm and general broadcast fallback"},
+        },
+    },
+    "diffusion_layernorm_modulate": {
+        "var": None,
+        "summary": "Diffusion BF16 LayerNorm modulation; HCU CUDA dispatch",
+        "backends": {
+            "triton": {"status": "candidate", "note": "HIP D divisible by 4, up to 8192; gfx936 width sweep"},
+            "emu": {"status": "candidate", "note": "Torch BF16 LayerNorm and modulation fallback"},
+        },
+    },
+    "diffusion_qknorm_complex_rope_cuda": {
+        "var": None,
+        "summary": "Single-tensor Q/K RMSNorm and complex RoPE",
+        "backends": {
+            "cpp": {"status": "candidate", "note": "HIP port of the Qwen-Image 2.1 plugin"},
+            "emu": {"status": "candidate", "note": "Torch fallback for unsupported layouts or dtypes"},
+        },
+    },
+    "diffusion_qknorm_complex_rope_pack_": {
+        "var": None,
+        "summary": "In-place Q plus prefix K/V packing with RMSNorm and complex RoPE",
+        "backends": {
+            "cpp": {"status": "candidate", "note": "HIP port of the Qwen-Image 2.1 plugin"},
+            "emu": {"status": "candidate", "note": "Torch fallback for unsupported layouts or dtypes"},
+        },
+    },
+    "diffusion_qknorm_complex_rope": {
+        "var": None,
+        "summary": "Q/K RMSNorm and complex RoPE on the Triton op entry",
+        "backends": {
+            "cpp": {"status": "candidate", "note": "HIP port of the Qwen-Image 2.1 plugin"},
+            "emu": {"status": "candidate", "note": "Torch fallback for unsupported layouts or dtypes"},
+        },
+    },
+    "diffusion_qknorm_complex_rope_kv": {
+        "var": None,
+        "summary": "K RMSNorm and complex RoPE with prefix K/V packing",
+        "backends": {
+            "cpp": {"status": "candidate", "note": "HIP port of the Qwen-Image 2.1 plugin"},
+            "emu": {"status": "candidate", "note": "Torch fallback for unsupported layouts or dtypes"},
+        },
+    },
+    "diffusion_fused_complex_rope": {
+        "var": None,
+        "summary": "Diffusion complex RoPE",
+        "backends": {
+            "cpp": {"status": "candidate", "note": "HIP port of the Qwen-Image 2.1 plugin"},
+            "emu": {"status": "candidate", "note": "Torch fallback for unsupported layouts or dtypes"},
         },
     },
     "flashinfer_rope": {
@@ -513,12 +628,12 @@ BACKEND_CATALOG = {
     },
     "triton_pdl": {
         "var": None,
-        "summary": "triton 编译期 PDL 指令剥离（行为还原：gfx936 无 "
-                   "griddepcontrol）",
+        "summary": "triton 编译期 PDL 关断（行为还原：gfx936 无 griddepcontrol）",
         "backends": {
             "strip": {"status": "production",
-                      "note": "make_amdgcn 输出剔除 griddepcontrol.* 两行，"
-                              "语义=PDL 关"},
+                      "note": "两层：前端 grid_dependency_* no-op（新 wheel 在 "
+                              "ConvertTritonHCUToLLVM 前就失败）+ make_amdgcn "
+                              "剔除 griddepcontrol.* 两行；语义=PDL 关"},
         },
     },
     "triton_libdevice": {
@@ -644,6 +759,29 @@ BACKEND_CATALOG = {
                               "gemm1_clamp_limit at the vendor boundary"},
         },
     },
+    "flashmla_kv_indices": {
+        "var": None,
+        "summary": "FlashMLA static-pool page-table import compatibility",
+        "backends": {
+            "triton": {
+                "status": "candidate",
+                "note": "Reuse SGLang's existing page64 kernel with optional starts "
+                        "and explicit strides; no host tensor reads or new index math.",
+            },
+        },
+    },
+    "w4a8_contiguous_gemm": {
+        "var": None,
+        "summary": "DTK W4A8 HIPC code-object ABI compatibility",
+        "backends": {
+            "dtk": {
+                "status": "candidate",
+                "note": "Optional gfx936 COV5 extension for pinned DeepGEMM b061ec; "
+                        "preserves INT8 activations, native wrapper and cached aliases. "
+                        "Explicit WASP1006 requests are rejected; full P/D pending.",
+            },
+        },
+    },
     "w4a16_moe": {
         "var": "HCU_W4A16_MOE_IMPL",
         "summary": "W4A16 fused MoE experts (moe_wna16 AWQ/GPTQ-int4 line)",
@@ -730,6 +868,14 @@ def _candidate_paths():
     from . import hcu_env
 
     env, _ = hcu_env.resolve("HCU_CONFIG")
+    if env.startswith("builtin:"):
+        name = env.removeprefix("builtin:")
+        if not name.endswith(".yaml") or os.path.basename(name) != name:
+            raise HcuConfigError(f"Invalid built-in launch config: {env}")
+        path = os.path.join(os.path.dirname(__file__), "launch_configs", name)
+        if not os.path.isfile(path):
+            raise HcuConfigError(f"Missing built-in launch config: {env}")
+        return [path]
     if env:
         out.append(env)
     for base in (os.getcwd(), os.path.dirname(
@@ -759,8 +905,21 @@ def _validate(doc, path):
     if "runtime" in doc:
         raise HcuConfigError("Move DeepInfer runtime settings into hosts.deepinfer")
     hosts = doc.get("hosts", {})
-    if not isinstance(hosts, dict) or set(hosts) - {"deepinfer"}:
-        raise HcuConfigError("Only hosts.deepinfer runtime settings are currently supported")
+    if not isinstance(hosts, dict) or set(hosts) - {"deepinfer", "sglang"}:
+        raise HcuConfigError("Unknown adapter host settings")
+    if "sglang" in hosts:
+        from .glm53_env_rules import LAUNCH_ENV_KEYS
+
+        options = hosts["sglang"]
+        if not isinstance(options, dict):
+            raise HcuConfigError("SGLang host settings must be a mapping")
+        if options.keys() - {"env"}:
+            raise HcuConfigError("Use hosts.sglang.env for SGLang launch settings")
+        env = options.get("env", {})
+        if not isinstance(env, dict) or env.keys() - LAUNCH_ENV_KEYS:
+            raise HcuConfigError("Unknown setting in hosts.sglang.env")
+        if any(type(value) not in (str, int) for value in env.values()):
+            raise HcuConfigError("hosts.sglang.env settings require strings or integers")
     if "deepinfer" in hosts:
         options = hosts["deepinfer"]
         allowed = {"artifacts", "physical_device_count", "allow_cuda_graph", "tilelang_backend", "grouped_gemm_backend"}

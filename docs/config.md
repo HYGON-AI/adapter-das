@@ -97,6 +97,8 @@ CLI 向导（`tools/hcu_config_wizard.py`）是其命令行形态；`--autotune`
 目录/配方是代码快照，BACKEND_CATALOG 或 cookbook 变更后需同步（纯函数段
 在文件内 `/*==PURE-BEGIN*/ ... /*==PURE-END*/` 标记之间）。
 
+GLM-5.3 发布脚本通过 `HCU_CONFIG=builtin:文件名.yaml` 指定镜像内置配方，见[环境变量手册](env-vars.md)。
+
 ### HY3 release compatibility (2026-11-23)
 
 Explicit `HCU_FA_IMPL=vendor` retains FA3 with `fp8_e5m2` on supported HCU

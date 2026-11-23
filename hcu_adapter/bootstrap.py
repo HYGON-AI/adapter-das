@@ -169,9 +169,14 @@ def install() -> None:
         _installed_pid = pid
         return
 
+    launcher_args = list(original_argv)[-len(sys.argv)-1:]
+    module_launch = sys.argv[:1] == ["-m"] and launcher_args == [
+        "-m", "sglang.launch_server", *sys.argv[1:]
+    ]
+    cli_launch = bool(sys.argv) and PurePath(sys.argv[0]).name == "sglang" and sys.argv[1:2] == ["serve"]
     try:
         host, source = _detect_host(
-            argv=sys.argv,
+            argv=["sglang", *sys.argv[1:]] if module_launch else sys.argv,
             loaded_modules=_loaded_module_names(),
             available=_available_hosts(),
             environment=os.environ,
@@ -188,6 +193,21 @@ def install() -> None:
     if host == "sglang":
         from hcu_adapter.sglang_spawn_device import select_inherited_device
 
+        plugins = os.environ.get("SGLANG_PLUGINS")
+        plugin_names = {name.strip() for name in (plugins or "").split(",")}
+        if (module_launch or cli_launch) and original_argv:
+            from hcu_adapter.glm53_launch import apply_official_defaults
+
+            try:
+                apply_official_defaults(sys.argv[2:] if cli_launch else sys.argv[1:], original_argv)
+            except (OSError, ValueError, RuntimeError) as exc:
+                # sitecustomize would otherwise print the error and continue
+                # launching a matching checkpoint without its required defaults.
+                raise SystemExit(f"HCU launch configuration: {exc}") from exc
+        if "hcu" in plugin_names and importlib.util.find_spec("hcu_sglang") is not None:
+            from hcu_sglang.compat.aiter import bootstrap_aiter_compat
+
+            bootstrap_aiter_compat()
         select_inherited_device()
 
     _installed_pid = pid

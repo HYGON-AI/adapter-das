@@ -68,6 +68,16 @@ def install() -> None:
             from hcu_adapter import hcu_env as _he
         except Exception:
             _he = None
+        # Optional code-object repair must precede DeepGEMM/SGLang aliases.
+        try:
+            from hcu_adapter import deepgemm_cov5
+
+            deepgemm_cov5.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: requested DeepGEMM COV5 repair not installed",
+                exc_info=True,
+            )
         # deep_gemm name availability (DSV4 family): sglang.srt.models.deepseek_v4
         # (and _dspark) import deep_gemm at module level, and the FIRST registry
         # scan can happen as early as the sections below importing sglang.srt.
@@ -116,6 +126,14 @@ def install() -> None:
         except Exception:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: diffusion norm CUDA dispatch not registered", exc_info=True
+            )
+        try:
+            from hcu_adapter import diffusion_rope
+
+            diffusion_rope.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: diffusion RoPE CUDA dispatch not registered", exc_info=True
             )
         # TP init-broadcast payload fix (torch2.11 dlpack readonly BufferError);
         # runtime binding retains imported aliases without source writes;
@@ -2644,15 +2662,8 @@ def install() -> None:
                 "HCU adapter: moe_c w4a16 bridge not installed", exc_info=True
             )
 
-        # 10.8. CT W4A8 MoE scheme route (2026-10-26, nmz26 dsv41f
-        #      Channel-INT4-w4a8): DAS-converted checkpoints carry regex-only
-        #      config_groups, so target_scheme_map has no "Linear" bucket and
-        #      CompressedTensorsW4AFP8MoE.__init__ dies on KeyError('Linear')
-        #      at model build (weights never load). Route the int4-group face
-        #      to the upstream WNA16TritonMoE ROCm arm (act quant ignored --
-        #      upstream's own nvfp4 w4a4->w4a16 degradation pattern), or
-        #      heal-only pass-through for future stock-scheme work.
-        #      Knob: HCU_W4A8_MOE = w4a16 (default) | heal | 0.
+        # Keep the release default for existing deployments. The GLM-5.3
+        # W4A8 recipes explicitly preserve checkpoint activation quantization.
         try:
             from hcu_adapter import ct_w4a8_moe as _cw4a8
 
@@ -3056,6 +3067,16 @@ def install() -> None:
                     exc_info=True,
                 )
 
+        try:
+            from hcu_adapter.bridges import sglang_glm53_determinism
+
+            sglang_glm53_determinism.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: GLM-5.3-Flash deterministic paths not installed",
+                exc_info=True,
+            )
+
         # DSV4 CT-int8 q/kv scales must use the existing fused loader arm.
         # Extend its endswith arguments at runtime after operator/vendor setup.
         try:
@@ -3093,6 +3114,15 @@ def install() -> None:
 
         # Import speculative scheduling only after operator/vendor setup.
         # Private metadata allocation preserves community source and aliases.
+        try:
+            from hcu_adapter import eagle_hcu_sampling
+
+            eagle_hcu_sampling.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: native HCU MTP sampling policy not installed", exc_info=True,
+            )
+
         try:
             from hcu_adapter import spec_h2d_pin
 

@@ -187,6 +187,8 @@ def test_non_device_or_disabled_capture_uses_original(monkeypatch, capture):
     monkeypatch.setenv(bridge._GRAPH_ENV, '0')
     module = _make_module()
     assert bridge.install(module)
+    assert module.QuantFP8.forward_cuda._hcu_token_fp8_backend == "lightop"
+    assert module.QuantFP8.forward_cuda._hcu_token_fp8_graph_enabled is False
     monkeypatch.setattr(bridge, '_device_ok', lambda x: capture)
     monkeypatch.setattr(torch.cuda, 'is_current_stream_capturing', lambda: capture)
     x = torch.ones(2, 8, dtype=torch.bfloat16)
@@ -204,6 +206,8 @@ def test_default_and_explicit_graph_enable_use_lightop(monkeypatch, setting):
         monkeypatch.setenv(bridge._GRAPH_ENV, setting)
     module = _make_module()
     assert bridge.install(module)
+    assert module.QuantFP8.forward_cuda._hcu_token_fp8_backend == "lightop"
+    assert module.QuantFP8.forward_cuda._hcu_token_fp8_graph_enabled is True
     monkeypatch.setattr(torch.cuda, 'is_current_stream_capturing', lambda: True)
     x = torch.ones(2, 8, dtype=torch.bfloat16)
     quantized, scales = module.QuantFP8.forward_cuda(_instance(), x)

@@ -21,6 +21,60 @@
 正式选择走配置文件；运行时每算子实际谁在跑，看启动日志 `HCU adapter runtime:`
 行或 `HCU_ADAPTER_DUMP`（规约见 [governance.md](governance.md) §4）。
 
+## GLM-5.3 Channel-FP8 八节点 P/D Decode
+
+在含本配方的镜像中，使用 `python3 -m hcu_adapter.glm53_fp8_decode`，后接原有
+`hcu_sglang` 的全部启动参数。入口匹配本地 compressed-tensors Channel-FP8
+模型、8 节点、TP32 / attention DP32 / EP32、Mooncake Decode 和 DeepEP
+low_latency，解析环境之后执行镜像内的 `python3 -m hcu_sglang`。
+IFB、Prefill、W4A8 和普通启动入口继续使用各自的配置。
+
+按节点在当前目录放置 `hcu_adapter.yaml`，或沿用 `HCU_CONFIG` 指向的文件。
+下面用示例值说明哪些字段需要按机器填写。BLAS 调优文件和库目录应填写镜像内
+可读的实际路径。容器已注入的设备可见性优先。P/D 传输网卡由 CLI
+`--disaggregation-ib-device` 指定，可与集合通信使用不同网面。
+
+```yaml
+version: 1
+hosts:
+  sglang:
+    glm53_fp8_decode_dp32:
+      HIP_VISIBLE_DEVICES: "0,1,2,3"
+      NCCL_SOCKET_IFNAME: ibp129s0
+      NCCL_IB_HCA: shca_0,shca_1,shca_2,shca_4
+      HIPBLASLT_TENSILE_LIBPATH: /opt/glm53/blas/lib/hipblaslt/library_gfx938
+      HIPBLASLT_TUNING_OVERRIDE_FILE: /opt/glm53/tuning/hipblaslt.config
+      ROCBLAS_TENSILE_LIBPATH: /opt/glm53/tuning/library_gpu6
+```
+
+配方按 **显式 env > 配置文件 > 自动规则 > 配方默认值** 解析，在启动日志打印
+每个生效值和来源。上面六项无配方默认值。自动规则将 `GLOO_SOCKET_IFNAME`
+继承自 `NCCL_SOCKET_IFNAME`，`ROCSHMEM_ALLOWED_IBV_DEVICES` 继承自
+`NCCL_IB_HCA`，`MC_TE_FILTERS` 和 `MC_ALLOWED_IBV_DEVICES` 取 P/D 的 CLI 设备列表。
+下面是这一配方的固定默认值，均可在同一 YAML 节点覆盖。
+
+| 默认值 | 环境变量 |
+|---|---|
+| `1` | `SPT_NOENV`、`HF_HUB_OFFLINE`、`TRANSFORMERS_OFFLINE`、`SGLANG_SCHEDULER_SKIP_ALL_GATHER`、`SGLANG_NCCL_ALL_GATHER_IN_OVERLAP_SCHEDULER_SYNC_BATCH`、`MC_ENABLE_DEST_DEVICE_AFFINITY`、`ROCSHMEM_DISABLE_HDP_FLUSH`、`ROCSHMEM_IPC_MNVL`、`SGLANG_MOE_COPY_WEIGHT_VIEWS_BEFORE_H2D`、`SGLANG_USE_DEEPGEMM_MOE`、`SGLANG_USE_FP8_W8A8_MOE`、`SGLANG_HCU_GLM_CT_BF16_ROUTER`、`SGLANG_USE_LIGHTOP`、`SGLANG_GLM_OPT_DECODE`、`SGLANG_GLM_HCU_GEMM`、`SGLANG_HCU_USE_LIGHTOP_ROPE`、`SGLANG_ENABLE_HCU_CONCAT_MLA_ABSORB_Q`、`SGLANG_DSA_HCU_LIGHTOP_MASK_TOPK`、`SGLANG_DSA_FUSE_TOPK`、`ALLREDUCE_STREAM_WITH_COMPUTE`、`HIP_KERNEL_EVENT_SYSTENFENCE`、`HIP_GRAPH_ACCUMULATE_DISPATCH`、`HIP_GRAPH_USE_CMD_CACHE` |
+| `sglang` | `HCU_ADAPTER_HOST` |
+| `hcu` | `SGLANG_PLUGINS` |
+| `none` | `VLLM_PLUGINS` |
+| `python` | `SGLANG_UNIFIED_RADIX_TREE_CORE_BACKEND` |
+| `0` | `SGLANG_ROCM_USE_MULTI_STREAM`、`NCCL_IB_DISABLE`、`DEEPEP_ENABLE_LL_LAYERED_OPT`、`SGLANG_OPT_USE_TOPK_V2`、`HIP_BUFFER_EXTRA_SIZE` |
+| `120` | `SGLANG_UVICORN_WORKER_HEALTHCHECK_TIMEOUT` |
+| `1200` | `SGLANG_DISAGGREGATION_BOOTSTRAP_TIMEOUT` |
+| `288` | `ROCSHMEM_GDA_NUM_QPS_DEFAULT_CTX` |
+| `32` | `ROCSHMEM_IPC_MNVL_NPES` |
+| `gda` | `ROCSHMEM_BACKEND` |
+| `shca` | `ROCSHMEM_GDA_PROVIDER` |
+| `256` | `SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK` |
+| `3` | `LIGHTOP_SPARSE_MQA_GROUP6_ROWS_PER_CTA`、`GPU_MAX_HW_QUEUES` |
+| `glibc.rtld.optional_static_tls=0x40000` | `GLIBC_TUNABLES` |
+| `100` | `HIP_KERNEL_BATCH_CEILING` |
+| `16` | `GPU_FORCE_BLIT_COPY_SIZE` |
+| `8388608` | `HSA_KERNARG_POOL_SIZE` |
+| `131072` | `ROC_AQL_QUEUE_SIZE` |
+
 ## 全量变量表
 
 | 变量 | 默认 | 自动规则 | 说明 |

@@ -157,6 +157,11 @@ def install() -> None:
     if _installed_pid == pid:
         return
     original_argv = getattr(sys, "orig_argv", ())
+    # The recipe launcher resolves the child environment before the first HIP import.
+    if sys.argv[:1] == ["-m"] and list(original_argv)[-len(sys.argv)-1:] == [
+        "-m", "hcu_adapter.glm53_fp8_decode", *sys.argv[1:]
+    ]:
+        return
     if sys.argv == ["-c"] and "-c" in original_argv:
         index = original_argv.index("-c") + 1
         if index < len(original_argv) and re.fullmatch(

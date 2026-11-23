@@ -770,8 +770,19 @@ def _validate(doc, path):
     if "runtime" in doc:
         raise HcuConfigError("Move DeepInfer runtime settings into hosts.deepinfer")
     hosts = doc.get("hosts", {})
-    if not isinstance(hosts, dict) or set(hosts) - {"deepinfer"}:
-        raise HcuConfigError("Only hosts.deepinfer runtime settings are currently supported")
+    if not isinstance(hosts, dict) or set(hosts) - {"deepinfer", "sglang"}:
+        raise HcuConfigError("Unknown adapter host settings")
+    if "sglang" in hosts:
+        from .glm53_fp8_decode import CONFIG_KEYS
+
+        options = hosts["sglang"]
+        if not isinstance(options, dict) or set(options) - {"glm53_fp8_decode_dp32"}:
+            raise HcuConfigError("Unknown SGLang host setting")
+        profile = options.get("glm53_fp8_decode_dp32", {})
+        if not isinstance(profile, dict) or set(profile) - CONFIG_KEYS:
+            raise HcuConfigError("Unknown GLM-5.3 FP8 Decode profile setting")
+        if any(type(value) not in (str, int) for value in profile.values()):
+            raise HcuConfigError("GLM-5.3 FP8 Decode settings require strings or integers")
     if "deepinfer" in hosts:
         options = hosts["deepinfer"]
         allowed = {"artifacts", "physical_device_count", "allow_cuda_graph", "tilelang_backend", "grouped_gemm_backend"}

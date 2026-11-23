@@ -1,6 +1,6 @@
 # 算子档位矩阵（自动生成，勿手改）
 
-> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-17）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
+> 生成：`python tools/gen_tier_matrix.py`（最近 2026-11-23）；事实源 = `BACKEND_CATALOG`（hcu_adapter/hcu_config.py）。
 > L0 `impl-naming` 做新鲜度校验改表须随 catalog 同 commit（governance §3b）。
 > 文件命名导航规则见 governance §3b；缺档 = 该行空白——那是实现排期的直接输入。
 
@@ -191,6 +191,72 @@ Diffusion norm + scale/shift; HCU CUDA-dispatch kernel
 |---|---|
 | triton | candidate gfx936 BF16 affine-free LN, D4096/51 |
 | emu | candidate Torch layer/RMS norm and general bro |
+
+路由变量：（auto）
+
+## diffusion_layernorm_modulate
+
+Diffusion BF16 LayerNorm modulation; HCU CUDA dispatch
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate HIP D divisible by 4, up to 8192; gf |
+| emu | candidate Torch BF16 LayerNorm and modulation  |
+
+路由变量：（auto）
+
+## diffusion_qknorm_complex_rope_cuda
+
+Single-tensor Q/K RMSNorm and complex RoPE
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
+## diffusion_qknorm_complex_rope_pack_
+
+In-place Q plus prefix K/V packing with RMSNorm and complex RoPE
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
+## diffusion_qknorm_complex_rope
+
+Q/K RMSNorm and complex RoPE on the Triton op entry
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
+## diffusion_qknorm_complex_rope_kv
+
+K RMSNorm and complex RoPE with prefix K/V packing
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
+## diffusion_fused_complex_rope
+
+Diffusion complex RoPE
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
 
 路由变量：（auto）
 

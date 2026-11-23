@@ -33,6 +33,8 @@ LOG = logging.getLogger("hcu.adapter")
 
 # canonical name -> (what gets blocked, opt-in env that re-enables it)
 SWITCHES = {
+    "prefill_graph_driver": ("HIP stream queries for breakable prefill graphs", None),
+    "nextn_idle_metadata": ("Missing idle NEXTN KV metadata default", None),
     "gdn_verify": ("SGLang GDN AITER verify route (startup-only upstream fallback)",
                    "HCU_LINEAR_ATTN_GDN_VERIFY"),
     "mamba_state_scatter": (

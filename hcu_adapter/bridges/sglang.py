@@ -4,6 +4,22 @@
 """Legacy sglang compatibility chain behind an explicit install boundary."""
 
 
+def _install_idle_verify_metadata(verify_type):
+    from hcu_adapter import registry
+    from hcu_adapter.kill_switch import op_disabled
+
+    if op_disabled("nextn_idle_metadata") or hasattr(verify_type, "kv_indptr"):
+        return False
+    registry.register(
+        "platform_detect", "spec-idle-kv-metadata",
+        target="sglang.srt.speculative.eagle_info.EagleVerifyInput.kv_indptr",
+        mechanism=registry.MECH_REBIND,
+        detail="missing optional decode metadata defaults to None",
+    )
+    verify_type.kv_indptr = None
+    return True
+
+
 def install() -> None:
     """Install the existing sglang bridge sequence without changing its order."""
     """HCU compatibility bridges for the upstream sglang stack.
@@ -350,6 +366,15 @@ def install() -> None:
             logging.getLogger("hcu.adapter").warning(
                 "hcu adapter: triton pdl stripper not installed", exc_info=True
             )
+        try:
+            from hcu_adapter import prefill_bcg_gate
+
+            prefill_bcg_gate.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: HIP prefill graph query not installed", exc_info=True,
+            )
+
         # KDA prefill + causal_conv1d router (2026-10-16): vendored sglang-das
         # hcu triton kernels (hcu_adapter/fla_hcu/) — parity-gated
         # replacements for the gfx938-broken stock kernels (chunk_kda wrong Aqk;
@@ -1832,7 +1857,7 @@ def install() -> None:
                 if "use_fp8" not in _ll_params and "quant_type" in _ll_params:
                     import sys as _sys
 
-                    def _ll_dispatch_v0521(
+                    def _ll_dispatch_upstream(
                         self,
                         x,
                         topk_idx,
@@ -1848,6 +1873,7 @@ def install() -> None:
                         x_scales=None,
                         round_scale=False,
                         use_ue8m0=False,
+                        quant_group_size=None,
                         async_finish=False,
                         return_recv_hook=False,
                         **unmapped,
@@ -1881,7 +1907,11 @@ def install() -> None:
                                 num_max_dispatch_tokens_per_rank,
                                 num_experts,
                                 quant_type=3 if use_ue8m0 else 2,
-                                quant_group_size=128 if use_ue8m0 else 0,
+                                quant_group_size=(
+                                    (128 if use_ue8m0 else 0)
+                                    if quant_group_size is None
+                                    else quant_group_size
+                                ),
                                 fp8_round_scale=bool(round_scale),
                                 async_finish=async_finish,
                                 return_recv_hook=return_recv_hook,
@@ -1907,6 +1937,20 @@ def install() -> None:
                             return_recv_hook=return_recv_hook,
                             **({"x_scales": x_scales} if x_scales is not None else {}),
                         )
+
+                    def _ll_dispatch_v0521(self, x, topk_idx, *args, **kwargs):
+                        if "quant_type" in kwargs or "topk_weight" in kwargs or (
+                            args and isinstance(args[0], torch.Tensor)
+                        ):
+                            return _ll_orig(self, x, topk_idx, *args, **kwargs)
+                        if kwargs.get("topk_weights") is None:
+                            kwargs["topk_weights"] = _sys._getframe(1).f_locals.get(
+                                "topk_weights"
+                            )
+                        return _ll_dispatch_upstream(self, x, topk_idx, *args, **kwargs)
+
+                    _ll_dispatch_v0521._hcu_accepts_quant_type = True
+                    _ll_dispatch_v0521._hcu_quant_type_dispatch = _ll_orig
 
                     _dep.Buffer.low_latency_dispatch = _ll_dispatch_v0521
                     logging.getLogger("hcu.adapter").info(
@@ -3032,6 +3076,19 @@ def install() -> None:
         except Exception:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: FP4 expert runtime loader not installed", exc_info=True,
+            )
+
+        try:
+            if torch.version.hip is not None:
+                from sglang.srt.speculative.eagle_info import EagleVerifyInput
+
+                if _install_idle_verify_metadata(EagleVerifyInput):
+                    logging.getLogger("hcu.adapter").warning(
+                        "HCU adapter: absent idle verify KV metadata defaults to None"
+                    )
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: idle verify metadata not installed", exc_info=True,
             )
 
         # Import speculative scheduling only after operator/vendor setup.

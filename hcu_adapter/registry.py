@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import sys
+from contextlib import contextmanager
 
 LOG = logging.getLogger("hcu.adapter")
 
@@ -383,6 +384,25 @@ def register(op, impl, target, mechanism, role=ROLE_ACTIVE, source=None,
     if role == ROLE_REF:
         # refs never serve traffic; nag loudly if registered from a bridge
         LOG.debug("registry: ref impl for %s recorded from %s", op, src)
+
+
+@contextmanager
+def registration_transaction():
+    """Roll back a group of registrations if serial startup installation fails.
+
+    Prepare bindings first, register inside this context, then publish them
+    after the last successful registration. This protects registry bookkeeping;
+    it does not undo arbitrary mutations to host modules.
+    """
+    records_before, bound_before = dict(_RECORDS), dict(_BOUND)
+    try:
+        yield
+    except BaseException:
+        _RECORDS.clear()
+        _RECORDS.update(records_before)
+        _BOUND.clear()
+        _BOUND.update(bound_before)
+        raise
 
 
 def _caller():

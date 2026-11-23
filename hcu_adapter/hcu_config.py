@@ -59,6 +59,20 @@ class HcuConfigError(RuntimeError):
 # backends   selectable backend -> {status, note}
 
 BACKEND_CATALOG = {
+    "cuda_graph": {
+        "var": None,
+        "summary": "HIP driver guard for breakable prefill graph capture",
+        "backends": {
+            "prefill-bcg-driver-truth": {
+                "status": "candidate",
+                "note": "Preserves prefill graphs and queries stream state through HIP; "
+                        "HCU_DISABLE_OPS=prefill_graph_driver leaves the current binding unchanged. "
+                        "Registration/dispatch contracts covered; model qualification "
+                        "and hardware-specific graph support remain separate.",
+            },
+        },
+    },
+
     "mamba_state_scatter": {
         "var": None,
         "summary": "SGLang Mamba verify-state copy launch geometry",

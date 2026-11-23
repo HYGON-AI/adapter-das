@@ -265,3 +265,40 @@ adapter环境重跑通过；不把前次collection error记为skip或通过。L0
 完整评测输出：`/home/scripts/acc_test/nmz_DeepSeek-V4.1-Flash-Channel-FP8/20261112_125007/humaneval`。
 容器运行证据：`/tmp/hcu-humaneval-clamp-fixed.kojfa_ba`；诊断对照：
 `/tmp/hcu-humaneval-nmz18-resume.vwcy4A`。
+
+## HY3 release/sglang_v0.5.22 backport (2026-11-23)
+
+Based on release `bcec3e0`, port the missing HY3 changes from main PR #149
+(`8490a6b`): retain native DeepEP INT8 dispatch, supply missing idle NEXTN
+`kv_indptr=None`, query breakable-graph stream state through HIP, and retain
+explicit vendor FA3 with E5M2 on gfx928/gfx936/gfx938. The vendor FA kernel and
+KV-layout default are unchanged. The matching Plugin release backport is required
+for HY3 model hooks and public pair32 DeepGEMM calls.
+
+The DeepEP compatibility wrapper also accepts an explicit `quant_group_size`.
+When omitted, this release keeps PR #129's rule: `128` for UE8M0 and `0`
+otherwise. Release PR #102 already provides deferred AR/RMSNorm setup; that
+implementation and its host resolution are preserved.
+
+Validation: L0 GREEN (31 warnings for existing bare environment reads),
+updated tier matrix and whitespace checks passed. On Python 3.12 / PyTorch
+2.11.0 with official SGLang `baa9befa381511cd4d56f83980951e5a45fffc6d`,
+`HCU_ADAPTER_HOST=none`, GPUs visible, and
+`HCU_TEST_SGLANG_TREE` pointing at that community Git checkout:
+
+```bash
+python3 -m pytest -q -rs tests/adapter/test_deepep_dispatch_scale.py \
+  tests/adapter/test_prefill_bcg_gate.py \
+  tests/adapter/test_fa_dense_dispatch.py tests/adapter/test_spec_h2d_pin.py
+```
+
+44 tests passed, no skips, plus 6 subtests. The matching Plugin backport passed
+43 targeted tests. These cover dispatch, binding publication, optional idle
+metadata and HY3 input/layout contracts; they do not qualify full-model output,
+dataset accuracy or performance for the release pair. Existing main-branch
+results are historical evidence only.
+
+The new Graph catalog row renders in the configuration page. Both the original
+release page and this candidate still encounter an existing missing UI default
+for `mamba_state_scatter`; full UI validation is incomplete. No model service
+was started or stopped during these checks.

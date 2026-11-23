@@ -208,6 +208,7 @@
 /*==PURE-BEGIN*/
 // ---- BACKEND_CATALOG snapshot (hcu_config.py, 2026-10-14). default = first prod entry.
 const CATALOG = {
+  "cuda_graph": {"var": null, "summary": "HIP stream queries for breakable prefill graphs", "backends": {"prefill-bcg-driver-truth": {"s": "candidate", "n": "Preserves graph capture; HCU_DISABLE_OPS=prefill_graph_driver keeps original binding. Model validation remains separate."}}},
   "mamba_state_scatter": {"var": null, "summary": "SGLang Mamba verify-state copy launch geometry", "backends": {"triton": {"s": "candidate", "n": "gfx936/gfx938 FP32 entries >=1024; flattened grid preserves source-row mapping; gfx938 bitwise/Graph/spawn and TP2 MTP checked. Startup fallback: HCU_DISABLE_OPS=mamba_state_scatter."}}},
   "qsa_scatter": {"var": null, "summary": "QSA state and compressed-key row stores on HCU", "backends": {"triton": {"s": "candidate", "n": "No host sync; duplicate destination zero is a reserved dump slot"}}},
   "mapped_host_view": {"var": null, "summary": "DTK mapped CPU allocation exposed as a device tensor", "backends": {"dtk": {"s": "candidate", "n": "INT8/BF16/FP8 live-ID Graph replay passed on gfx936; caller retains host allocation"}}},
@@ -360,7 +361,7 @@ const CATALOG = {
   "tile_kernels.import_surface": {"var": null, "summary": "tile_kernels.import_surface", "backends": {"stub": {"s": "candidate", "n": "Pinned production imports; only separately registered numerical providers execute"}}},
   "deepinfer._C": {"var": null, "summary": "deepinfer._C", "backends": {"hip_staged": {"s": "candidate", "n": "Pinned source build; external GCC13 runtime path; no e2e qualification"}}}
 };
-const OP_DEFAULT = {linear_attn_gdn_verify:"auto", silu_and_mul:"triton", rms_norm:"triton", allreduce:"aiter",
+const OP_DEFAULT = {cuda_graph:"prefill-bcg-driver-truth", linear_attn_gdn_verify:"auto", silu_and_mul:"triton", rms_norm:"triton", allreduce:"aiter",
   paged_mqa_logits:"emu", rotary_embedding:"triton", moe_gate:"triton",
   fused_moe:"triton", per_token_quant:"aiter(auto)", platform_detect:"cuda",
   flash_attention:"emu", sampling:"torch", linear_attn_gdn:"triton",

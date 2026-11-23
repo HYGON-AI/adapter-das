@@ -319,6 +319,67 @@ TEXT_PATCH_ALLOWLIST = {
         "platform_detect",
         "    const auto [b0, b1] = cast<fp32x2_t>(b[i]);",
     ),
+    # elementwise/grouped_gemma_rmsnorm.cuh + hc_combine*.cuh + rmsnorm.cuh:
+    # the whole elementwise JIT family structured-binds fp32x2_t (HIP float2,
+    # anonymous union) — same ABI fact as rope.cuh / dot_product.cuh above,
+    # rewritten to .x/.y member reads. grouped_gemma aborts scheduler init
+    # before weights load; hc_combine aborts decode CUDA-graph capture.
+    (
+        "rms_norm",
+        "      const auto [x, y] = cast<fp32x2_t>(input_vec[j][i]);",
+    ),
+    (
+        "rms_norm",
+        "      const auto [ix, iy] = cast<fp32x2_t>(input_vec[j][i]);",
+    ),
+    (
+        "rms_norm",
+        "      const auto [wx, wy] = cast<fp32x2_t>(weight_vec[j][i]);",
+    ),
+    (
+        "rms_norm",
+        "        const auto [nx, ny] = cast<fp32x2_t>(n_vec[j][i]);",
+    ),
+    (
+        "rms_norm",
+        "      const auto [rx, ry] = cast<fp32x2_t>(r_vec[i]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [rx, ry] = cast<fp32x2_t>(residual_values[i]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [x, y] = cast<fp32x2_t>(combined[i]);",
+    ),
+    (
+        "rms_norm",
+        "      const auto [x, y] = cast<fp32x2_t>(combined[i]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [x, y] = cast<fp32x2_t>(input_first[j]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [x, y] = cast<fp32x2_t>(input_second[j]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [ix, iy] = cast<fp32x2_t>(input_first[j]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [ix, iy] = cast<fp32x2_t>(input_second[j]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [x, y] = cast<fp32x2_t>(input_vec[j]);",
+    ),
+    (
+        "rms_norm",
+        "    const auto [ix, iy] = cast<fp32x2_t>(input_vec[j]);",
+    ),
 }
 
 

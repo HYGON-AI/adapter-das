@@ -444,11 +444,11 @@ TP init 广播 payload（行为还原：torch2.11 dlpack 只读 BufferError）
 
 ## triton_pdl
 
-triton 编译期 PDL 指令剥离（行为还原：gfx936 无 griddepcontrol）
+triton 编译期 PDL 关断（行为还原：gfx936 无 griddepcontrol）
 
 | 档位 | 状态 / 备注 |
 |---|---|
-| strip | production make_amdgcn 输出剔除 griddepcontrol.* 两行 |
+| strip | production 两层：前端 grid_dependency_* no-op（新 whee |
 
 路由变量：（auto）
 

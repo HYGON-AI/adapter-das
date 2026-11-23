@@ -27,6 +27,7 @@ _LOCK = threading.RLock()
 _TRANSFORMS = (
     "jit_rope", "jit_store_cache", "jit_ptgq", "jit_dpskmeta",
     "jit_quant_fp8", "jit_warp", "jit_concat_mla", "jit_dot_product",
+    "jit_qwen4",
 )
 _MARKER = "_hcu_jit_input_binding"
 _DISPATCH = "_hcu_jit_input_dispatch"
@@ -75,6 +76,23 @@ def _verify(bundle, expected):
         raise RuntimeError(f"jit_sources: invalid compiler bundle {bundle}: {exc}") from exc
 
 
+def _check_records(records):
+    """Governance gate: every recorded transformation must be reviewed.
+
+    Applied both when publishing a fresh bundle and when replaying a cached one,
+    so a bundle produced by an earlier revision cannot bypass review.
+    """
+    from . import hcu_config, registry
+
+    for args, kwargs in records:
+        if (args[0] not in hcu_config.BACKEND_CATALOG
+                or (args[0], kwargs["detail"]) not in registry.TEXT_PATCH_ALLOWLIST):
+            raise RuntimeError(
+                "jit_sources: unreviewed compiler transformation: "
+                f"op={args[0]!r} detail={str(kwargs['detail'])[:80]!r}"
+            )
+
+
 def prepare(root, cache_root=None):
     """Snapshot actual compiler assets and publish all transformations atomically.
 
@@ -102,7 +120,13 @@ def prepare(root, cache_root=None):
     bundle = cache / key
     cache.mkdir(parents=True, exist_ok=True)
     if bundle.exists():
-        return bundle, _verify(bundle, key)
+        # A warm bundle must still clear the governance gate: the cache key is a
+        # hash of the transform SOURCE, not of what it registers, so a bundle
+        # written by an earlier (buggy or pre-review) revision would otherwise be
+        # replayed forever without ever re-running the allowlist check.
+        manifest = _verify(bundle, key)
+        _check_records(manifest["records"])
+        return bundle, manifest
     stage = Path(tempfile.mkdtemp(prefix=".staging-", dir=cache))
     records = []
 
@@ -120,11 +144,7 @@ def prepare(root, cache_root=None):
         for module in modules:
             module._apply(stage, record)
         # Check allowlists/ops before publishing or binding a compiler entry.
-        from . import registry, hcu_config
-        for args, kwargs in records:
-            if (args[0] not in hcu_config.BACKEND_CATALOG
-                    or (args[0], kwargs["detail"]) not in registry.TEXT_PATCH_ALLOWLIST):
-                raise RuntimeError("jit_sources: unreviewed compiler transformation")
+        _check_records(records)
         forwarders = {}
         for name, lines in jit_compat._FORWARDS.items():
             target = stage / "cuda-headers" / name

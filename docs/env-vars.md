@@ -23,10 +23,10 @@
 
 ## GLM-5.3 W4A8 和 Channel-FP8 多配方入口
 
-用 `python3 -m hcu_adapter.glm53_launch` 后接原有服务参数。入口读取本地
+用官方命令 `python3 -m sglang.launch_server` 后接原有服务参数。在安装 adapter 和 plugin 的 HCU 镜像中，adapter 启动时读取本地
 checkpoint 的 `config.json`，按量化、角色、并行参数与 HiSparse 开关选择下表
-的一项。不匹配时启动前报错。W4A8 配方使用 compressed-tensors 权重与
-`HCU_W4A8_MOE=native`。原有八节点 FP8 Decode 入口见下一节。
+的一项。匹配时自动补齐优化项及插件白名单；其余拓扑沿用服务自身的环境。W4A8 配方使用 compressed-tensors 权重与
+`HCU_W4A8_MOE=native`。八节点 FP8 Decode 配置见下一节。
 
 | YAML 节点（在 `hosts.sglang` 下） | 拓扑 | 节点配置 |
 |---|---|---|
@@ -65,10 +65,9 @@ GLOO 和 ROCSHMEM 分别继承 socket 网卡与集合通信 IB 网卡，Mooncake
 
 ## GLM-5.3 Channel-FP8 八节点 P/D Decode
 
-在含本配方的镜像中，使用 `python3 -m hcu_adapter.glm53_fp8_decode`，后接原有
-`hcu_sglang` 的全部启动参数。入口匹配本地 compressed-tensors Channel-FP8
+在含本配方的镜像中，使用官方 `python3 -m sglang.launch_server`，后接原有服务参数。入口匹配本地 compressed-tensors Channel-FP8
 模型、8 节点、TP32 / attention DP32 / EP32、Mooncake Decode 和 DeepEP
-low_latency，解析环境之后执行镜像内的 `python3 -m hcu_sglang`。
+low_latency，普通和 HiSparse Decode 共用此环境配方。
 其他 GLM-5.3 配方见上一节。
 
 按节点在当前目录放置 `hcu_adapter.yaml`，或沿用 `HCU_CONFIG` 指向的文件。

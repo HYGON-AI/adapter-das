@@ -10,8 +10,9 @@ import sys
 from pathlib import Path
 
 from . import hcu_config
+from . import glm53_fp8_decode as dp32
 from .glm53_fp8_decode import _channel_fp8, launch_environment
-from .glm53_profiles import PROFILES
+from .glm53_profiles import PROFILES, Profile
 
 PARALLEL_SIZES = (
     "nnodes", "tp-size", "pp-size", "ep-size", "dp-size", "attn-dp-size",
@@ -41,9 +42,9 @@ def checkpoint_family(path):
     return "w4a8" if found_experts else None
 
 
-def select_profile(argv):
+def select_profile(argv, *, optional=False):
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
-    parser.add_argument("--model-path", required=True, type=Path)
+    parser.add_argument("--model-path", required=not optional, type=Path)
     parser.add_argument("--disaggregation-ib-device")
     for option in PARALLEL_SIZES:
         parser.add_argument("--" + option, default="1")
@@ -53,7 +54,10 @@ def select_profile(argv):
         parser.add_argument("--" + option, action="store_true")
     args, _ = parser.parse_known_args(argv)
     settings = vars(args).copy()
-    family = checkpoint_family(settings.pop("model_path"))
+    model_path = settings.pop("model_path")
+    if optional and (not model_path or not (model_path / "config.json").is_file()):
+        return None
+    family = checkpoint_family(model_path)
     devices = settings.pop("disaggregation_ib_device")
     topology = {key: value for key, value in settings.items() if value not in (None, False, "1")}
     for name, profile in PROFILES.items():
@@ -61,12 +65,19 @@ def select_profile(argv):
             if args.disaggregation_mode and not devices:
                 parser.error("P/D profiles require --disaggregation-ib-device for this node")
             return name, profile, devices
+    dp32_topology = PROFILES["glm53_fp8_decode_dp8"].topology.copy()
+    dp32_topology.update(nnodes="8", tp_size="32", ep_size="32", attn_dp_size="32")
+    if family == "fp8" and {k: v for k, v in topology.items() if k != "enable_hisparse"} == dp32_topology:
+        if not devices:
+            parser.error("DP32 Decode requires --disaggregation-ib-device")
+        return "glm53_fp8_decode_dp32", Profile(dp32.DEFAULTS, dp32.SITE_KEYS, dp32.DERIVED_KEYS, dp32_topology), devices
+    if optional:
+        return None
     parser.error("unsupported GLM-5.3 checkpoint, role or parallel configuration")
 
 
-def main():
-    argv = sys.argv[1:]
-    name, profile, devices = select_profile(argv)
+def profile_environment(selection):
+    name, profile, devices = selection
     config = hcu_config.load()
     configured = {**config["overrides"], **config["hosts"].get("sglang", {}).get(name, {})}
     env, sources = launch_environment(
@@ -78,6 +89,29 @@ def main():
     print(name + ": " + " ".join(
         f"{k}={env[k]}({source})" for k, source in sorted(sources.items())
     ), file=sys.stderr, flush=True)
+    return env
+
+
+def apply_official_defaults(argv, original):
+    # exec keeps the PID and makes loader and device defaults visible from
+    # process creation. Consume the marker before SGLang spawns any workers.
+    marker = "_HCU_GLM53_REEXEC_PID"
+    if os.environ.pop(marker, None) == str(os.getpid()):
+        return
+    if "--help" in argv or "-h" in argv:
+        return
+    selection = select_profile(argv, optional=True)
+    if selection is None:
+        return
+    env = profile_environment(selection)
+    if env != os.environ:
+        env[marker] = str(os.getpid())
+        os.execve(sys.executable, [sys.executable, *original[1:]], env)
+
+
+def main():
+    argv = sys.argv[1:]
+    env = profile_environment(select_profile(argv))
     # Preserve interpreter options such as -u on the new service process.
     original = getattr(sys, "orig_argv", ())
     interpreter_args = original[1:original.index("-m")] if "-m" in original else []

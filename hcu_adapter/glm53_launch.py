@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Select a GLM-5.3 launch profile from the checkpoint and server arguments."""
+"""Apply configured GLM-5.3 launch settings before SGLang starts its workers."""
 
 import argparse
 import json
@@ -10,12 +10,7 @@ import sys
 from pathlib import Path
 
 from . import hcu_config, hcu_env
-from .glm53_profiles import PROFILES, preset_env
-
-PARALLEL_SIZES = (
-    "nnodes", "tp-size", "pp-size", "ep-size", "dp-size", "attn-dp-size",
-    "attn-cp-size", "dcp-size",
-)
+from .glm53_env_rules import LAUNCH_ENV_KEYS, resolve_environment
 
 
 def _channel_fp8(group):
@@ -57,32 +52,12 @@ def parse_options(argv):
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     parser.add_argument("--model-path", type=Path)
     parser.add_argument("--disaggregation-ib-device")
-    for option in PARALLEL_SIZES:
-        parser.add_argument("--" + option, default="1")
-    for option in ("quantization", "disaggregation-mode", "disaggregation-transfer-backend", "moe-a2a-backend", "deepep-mode"):
-        parser.add_argument("--" + option)
-    for option in ("enable-prefill-cp", "enable-dp-attention", "enable-hisparse"):
-        parser.add_argument("--" + option, action="store_true")
+    parser.add_argument("--ep-size", default="1")
+    parser.add_argument("--disaggregation-mode")
+    parser.add_argument("--disaggregation-transfer-backend")
+    parser.add_argument("--moe-a2a-backend")
     args, _ = parser.parse_known_args(argv)
     return args
-
-
-def matching_profile(args, family):
-    if family is None or args.quantization not in (None, "compressed-tensors"):
-        return None
-    settings = vars(args).copy()
-    settings.pop("model_path")
-    settings.pop("disaggregation_ib_device")
-    # These checkpoints declare compressed-tensors in config.json. An explicit
-    # equivalent CLI flag must select the same preset as the inferred value.
-    settings["quantization"] = "compressed-tensors" if family == "w4a8" else None
-    topology = {key: value for key, value in settings.items() if value not in (None, False, "1")}
-    if family == "fp8" and args.disaggregation_mode == "decode" and args.attn_dp_size == "32":
-        topology.pop("enable_hisparse", None)
-    for name, profile in PROFILES.items():
-        if name.startswith(f"glm53_{family}_") and profile.topology == topology:
-            return name, profile
-    return None
 
 
 def apply_official_defaults(argv, original):
@@ -93,9 +68,6 @@ def apply_official_defaults(argv, original):
         return
     if "--help" in argv or "-h" in argv:
         return
-    from .glm53_env_rules import resolve_environment
-    from .glm53_profiles import LAUNCH_ENV_KEYS
-
     args = parse_options(argv)
     config = hcu_config.load()
     settings = config["hosts"].get("sglang", {})
@@ -106,17 +78,6 @@ def apply_official_defaults(argv, original):
     if hcu_allowed and args.model_path and (args.model_path / "config.json").is_file():
         family = checkpoint_family(args.model_path)
     preset, _ = hcu_env.resolve("HCU_CONFIG")
-    # A plain YAML already specifies its settings. Only named override sections
-    # and automatic selection need to look up the server topology.
-    use_auto = not preset and config["path"] is None
-    selected = matching_profile(args, family) if use_auto or settings.keys() - {"env"} else None
-    auto_preset = None
-    if selected is not None:
-        name, profile = selected
-        if use_auto:
-            auto_preset = "builtin:" + profile.filename
-            configured.update(preset_env(profile.filename))
-        configured.update(settings.get(name, {}))
     if preset.startswith("builtin:glm53-"):
         expected_family = preset.split("-", 2)[1]
         if family != expected_family:
@@ -124,10 +85,6 @@ def apply_official_defaults(argv, original):
     env, sources = resolve_environment(args, family, os.environ, configured, LAUNCH_ENV_KEYS)
     if family == "w4a8" and env["HCU_W4A8_MOE"] != "native":
         raise SystemExit("GLM-5.3 W4A8 requires native MoE; check HCU_W4A8_MOE")
-    if auto_preset is not None:
-        # Workers and the restarted interpreter discover the identical file.
-        env["HCU_CONFIG"] = auto_preset
-        print(f"HCU SGLang config: {auto_preset} (auto)", file=sys.stderr, flush=True)
     if sources:
         print("HCU SGLang env: " + " ".join(
             f"{key}={env[key]}({source})" for key, source in sorted(sources.items())

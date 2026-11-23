@@ -23,21 +23,17 @@
 
 ## GLM-5.3 的镜像启动配置
 
-使用官方入口 `python3 -m sglang.launch_server`。对于下表的本地 GLM-5.3
-compressed-tensors checkpoint，启动时按量化、角色、并行参数及 HiSparse 开关
-自动选择 wheel 中的 YAML。飞书的发布脚本显式指定对应文件，已有的
-`HCU_CONFIG` 优先。以普通 FP8 IFB DP8/EP8 为例：
+发布脚本通过 `HCU_CONFIG` 指定配方，使用官方入口 `python3 -m sglang.launch_server`。
+wheel 内置的 GLM-5.3 配方见下表。已有的 `HCU_CONFIG` 优先。以普通 FP8 IFB DP8/EP8 为例：
 
 ```bash
 export HCU_CONFIG="${HCU_CONFIG:-builtin:glm53-fp8-ifb-dp8.yaml}"
 ```
 
 该脚本使用 full Decode Graph，每个 attention DP rank 最大 Graph BS 为 4，
-全局 `--max-running-requests 32`。直接用官方入口且未指定配置时，仍支持上述自动选择。
-显式 `HCU_CONFIG` 或正常发现的 `hcu_adapter.yaml/yml/json` 优先于自动选择；
-其他模型和未收录的拓扑沿用原有配置机制。启动日志打印自动选中的文件名。
-各文件的 `hosts.sglang.env` 直接列出该场景的优化值。
-同一份配置可以配合不同的角色参数、节点数或 HiSparse 参数使用。
+全局 `--max-running-requests 32`。未设置 `HCU_CONFIG` 时沿用 adapter 原有的
+配置文件查找顺序；没有部署配置时使用各组件的默认值。GLM 配方由脚本显式选择。
+每份配方在 `hosts.sglang.env` 下列出该场景的设置。
 
 | 文件 | 适用的启动脚本 |
 |---|---|

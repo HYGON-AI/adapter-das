@@ -886,23 +886,18 @@ def _validate(doc, path):
     if not isinstance(hosts, dict) or set(hosts) - {"deepinfer", "sglang"}:
         raise HcuConfigError("Unknown adapter host settings")
     if "sglang" in hosts:
-        from .glm53_profiles import LAUNCH_ENV_KEYS, PROFILES
+        from .glm53_env_rules import LAUNCH_ENV_KEYS
 
         options = hosts["sglang"]
         if not isinstance(options, dict):
             raise HcuConfigError("SGLang host settings must be a mapping")
-        for name, profile in options.items():
-            if name == "env":
-                allowed = LAUNCH_ENV_KEYS
-            elif name in PROFILES:
-                item = PROFILES[name]
-                allowed = set(item.defaults).union(item.site, item.derived)
-            else:
-                raise HcuConfigError("Unknown SGLang host setting")
-            if not isinstance(profile, dict) or set(profile) - allowed:
-                raise HcuConfigError(f"Unknown setting for {name}")
-            if any(type(value) not in (str, int) for value in profile.values()):
-                raise HcuConfigError(f"{name} settings require strings or integers")
+        if options.keys() - {"env"}:
+            raise HcuConfigError("Use hosts.sglang.env for SGLang launch settings")
+        env = options.get("env", {})
+        if not isinstance(env, dict) or env.keys() - LAUNCH_ENV_KEYS:
+            raise HcuConfigError("Unknown setting in hosts.sglang.env")
+        if any(type(value) not in (str, int) for value in env.values()):
+            raise HcuConfigError("hosts.sglang.env settings require strings or integers")
     if "deepinfer" in hosts:
         options = hosts["deepinfer"]
         allowed = {"artifacts", "physical_device_count", "allow_cuda_graph", "tilelang_backend", "grouped_gemm_backend"}

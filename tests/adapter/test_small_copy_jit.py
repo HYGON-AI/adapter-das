@@ -179,3 +179,54 @@ def test_incomplete_vendor_options_refuse_before_registration(installation, miss
     assert not hasattr(kernel, "_hcu_small_copy_standard_jit")
     assert registry._RECORDS == {"prior": {"op": "prior"}}
     assert registry._BOUND == {"prior.target": "prior"}
+
+
+def test_bootstrap_step_degrades_on_vendor_abi_rejection(monkeypatch, caplog):
+    """A vendor-ABI refusal (TypeError) inside the small_copy bootstrap step
+    must degrade to a warning and let the later fixes still install.
+
+    Bot P2 (2026-11-23): the step used to catch only ImportError, so the
+    pre-registration refusals raised by install() aborted the remaining
+    bootstrap fixes (dsa top-k v2 fusion and the rest)."""
+    import logging
+    import sys
+
+    from hcu_adapter.bridges import sglang_bootstrap_fixes
+
+    def neutralize(parent, name):
+        target = getattr(parent, name)
+        monkeypatch.setattr(target, "install", lambda: None)
+        return target
+
+    # Earlier steps become no-ops so the chain reaches small_copy cleanly.
+    from hcu_adapter.infra import dist_bc, kv_fix, watchdog_cold
+    from hcu_adapter.features.jit import jit_build_log, jit_fp8_ffi, jit_sources
+
+    for module in (dist_bc, watchdog_cold, kv_fix, jit_sources, jit_build_log, jit_fp8_ffi):
+        monkeypatch.setattr(module, "install", lambda: None)
+    # jit_eh_norm (bridges._sglang) needs the sglang tree; without it the
+    # step already takes its own except-Exception path, so no mock needed.
+
+    def refuse():
+        raise TypeError("cannot preserve Triton JIT options: incomplete vendor ABI")
+
+    monkeypatch.setattr(small_copy_jit, "install", refuse)
+
+    # The step after small_copy must still run.
+    later = []
+    import hcu_adapter.features.dsa as dsa_pkg
+
+    monkeypatch.setattr(
+        dsa_pkg, "dsa_topk_v2",
+        types.SimpleNamespace(install=lambda: later.append(1)), raising=False,
+    )
+    # The final step imports sglang; keep it failing safely on ImportError.
+    monkeypatch.setitem(sys.modules, "sglang.srt.models.registry", None)
+
+    caplog.set_level(logging.WARNING, logger="hcu.adapter")
+    sglang_bootstrap_fixes.install()  # must not raise
+
+    assert later == [1]
+    assert any(
+        "small_copy JIT fix not installed" in rec.message for rec in caplog.records
+    )

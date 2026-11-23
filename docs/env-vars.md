@@ -248,3 +248,18 @@ trace 族在拍存在时不可用于功量归因。
 | `HCU_NATIVE_FLASHMLA` | `0` | DeepInfer native FlashMLA 路径开关 |
 
 `HCU_MOE_ALIGN_FUSED`：默认 `2048`，上游已有的 MoE 对齐融合阈值；`0` 关闭，小于等于阈值的 top-k lanes 使用融合实现。此处补齐原有变量的文档登记，不改变默认值。
+
+### GLM-5.3-Flash blockwise FP8 TP8 确定性
+
+下列开关默认均为 `0`。两节点 gfx938 TP8 复现见 [启动与验收示例](../examples/glm5.3-flash-blockfp8/README.md)。
+
+| 开关 | 启用范围 |
+|---|---|
+| `HCU_ORDERED_TP8_BF16_REDUCE` | 正常 TP 与 attention TP 的 8 rank BF16 原地归约。配合 `--disable-custom-all-reduce`。 |
+| `HCU_KDA_FIXED_SAFE_GATE_ANCHOR` | 下界位于 −5 到 0 的 KDA safe-gate，固定基准行及前缀扫描分块。 |
+| `HCU_GLM53_FIXED_KDA_PROJECTION` | GLM-5.3-Flash 未量化 KDA 的 BF16 投影。 |
+| `HCU_FIXED_BLOCK_FP8_DENSE` | E4M3、128×128 权重块与 FP32 scale 的 dense GEMM。 |
+| `HCU_DSA_ORDERED_SHORT_TOPK` | 未融合 k-pool 短序列 prefill，按逻辑位置输出完整选择。 |
+| `HCU_GLM53_FIXED_MHC_STATS` | 未融合 GLM mHC 的固定 FP32 混合统计。 |
+| `HCU_GLM53_FIXED_EAGLE_PROJECTIONS` | GLM EAGLE 首轮 EH RMSNorm 和 BF16 LM head。 |
+| `HCU_GLM53_FIXED_DSA_MATMUL` | 零 RoPE MLA 的固定 BF16 吸收投影，以及固定 IEEE FP32 打分和 value 收缩。 |

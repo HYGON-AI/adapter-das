@@ -548,6 +548,38 @@ REGISTRY = {
                  "stock=官方 v0.5.21 内核（gfx938 Aqk 全错，gate 测试红常驻）。"
                  "旧键 HCU_KDA_PREFILL_EMU=1 等价本键 =emu",
     },
+    "HCU_KDA_FIXED_SAFE_GATE_ANCHOR": {
+        "env": "HCU_KDA_FIXED_SAFE_GATE_ANCHOR", "default": "0",
+        "about": "Pin the safe-gate KDA diagonal anchor and the validated 64x128 gate cumsum launch for lower bounds from -5 to 0.",
+    },
+    "HCU_FIXED_BLOCK_FP8_DENSE": {
+        "env": "HCU_FIXED_BLOCK_FP8_DENSE", "default": "0",
+        "about": "Use fixed GEMM tiles for dense E4M3 with 128x128 weight blocks and FP32 scales on HIP.",
+    },
+    "HCU_DSA_ORDERED_SHORT_TOPK": {
+        "env": "HCU_DSA_ORDERED_SHORT_TOPK", "default": "0",
+        "about": "Emit the full unfused DSA kpool prefill shortlist in logical token order.",
+    },
+    "HCU_GLM53_FIXED_MHC_STATS": {
+        "env": "HCU_GLM53_FIXED_MHC_STATS", "default": "0",
+        "about": "Use fixed FP32 mix statistics for the unfused GLM mHC boundary on HIP.",
+    },
+    "HCU_GLM53_FIXED_EAGLE_PROJECTIONS": {
+        "env": "HCU_GLM53_FIXED_EAGLE_PROJECTIONS", "default": "0",
+        "about": "Use row-wise EH RMSNorm and fixed BF16 LM-head tiles for GLM EAGLE on HIP.",
+    },
+    "HCU_GLM53_FIXED_DSA_MATMUL": {
+        "env": "HCU_GLM53_FIXED_DSA_MATMUL", "default": "0",
+        "about": "Use fixed BF16 absorption and IEEE FP32 attention tiles in zero-RoPE MLA.",
+    },
+    "HCU_GLM53_FIXED_KDA_PROJECTION": {
+        "env": "HCU_GLM53_FIXED_KDA_PROJECTION", "default": "0",
+        "about": "Use fixed GEMM tiles for unquantized BF16 fused GLM-5.3 KDA projections.",
+    },
+    "HCU_ORDERED_TP8_BF16_REDUCE": {
+        "env": "HCU_ORDERED_TP8_BF16_REDUCE", "default": "0",
+        "about": "Use a fixed accumulation order for in-place BF16 reductions on 8-rank TP groups. Requires disabled custom all-reduce.",
+    },
     "HCU_CONV1D_IMPL": {
         "env": "HCU_CONV1D_IMPL", "default": "fork",
         "about": "KDA causal_conv1d_fn（prefill varlen）+ causal_conv1d_update"

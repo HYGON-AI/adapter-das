@@ -5,19 +5,23 @@
 
 import ctypes
 from functools import lru_cache
+from pathlib import Path
 
 
 @lru_cache(maxsize=1)
 def _runtime():
     # Use the runtime already loaded by torch, rather than a second DTK install.
-    from pathlib import Path
-
     for line in Path('/proc/self/maps').read_text().splitlines():
         path = line.split()[-1]
         if path.startswith('/') and any(
             name in path for name in ('/libamdhip64.so', '/libgalaxyhip.so')
         ):
             runtime = ctypes.CDLL(path)
+            if hasattr(runtime, 'hipInit'):
+                # Early metadata queries may precede torch device initialization.
+                runtime.hipInit.argtypes = [ctypes.c_uint]
+                runtime.hipInit.restype = ctypes.c_int
+                _check(runtime.hipInit(0), 'hipInit')
             runtime.hipGetDevice.argtypes = [ctypes.POINTER(ctypes.c_int)]
             runtime.hipGetDevice.restype = ctypes.c_int
             runtime.hipDeviceGetAttribute.argtypes = [
@@ -79,8 +83,6 @@ def _device_index(device):
 
 @lru_cache(maxsize=None)
 def _architecture_for_index(device):
-    import amdsmi
-
     runtime = _runtime()
     query = runtime.hipDeviceGetPCIBusId
     query.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
@@ -88,6 +90,29 @@ def _architecture_for_index(device):
     bdf = ctypes.create_string_buffer(32)
     _check(query(bdf, len(bdf), device), "hipDeviceGetPCIBusId")
     address = bdf.value.decode().lower()
+    try:
+        return _smi_architecture(address)
+    except Exception as smi_error:
+        domain, bus, slot_fn = address.split(":")
+        slot, function = slot_fn.split(".")
+        location = (int(bus, 16) << 8) | (int(slot, 16) << 3) | int(function, 16)
+        for path in Path("/sys/class/kfd/kfd/topology/nodes").glob("*/properties"):
+            props = dict(line.split(maxsplit=1) for line in path.read_text().splitlines() if line.strip())
+            if (int(props.get("domain", -1)), int(props.get("location_id", -1))) != (
+                int(domain, 16), location
+            ):
+                continue
+            version = int(props.get("gfx_target_version", 0))
+            if version > 0:
+                major, rest = divmod(version, 10000)
+                minor, stepping = divmod(rest, 100)
+                return f"gfx{major}{minor:x}{stepping:x}"
+        raise RuntimeError(f"No SMI or KFD architecture for HIP device {address}") from smi_error
+
+
+def _smi_architecture(address):
+    import amdsmi
+
     amdsmi.amdsmi_init()
     for handle in amdsmi.amdsmi_get_processor_handles():
         if amdsmi.amdsmi_get_gpu_device_bdf(handle).lower() == address:

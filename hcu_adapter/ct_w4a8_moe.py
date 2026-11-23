@@ -3,10 +3,9 @@
 
 """Optional compatibility routes for compressed-tensors MoE.
 
-The default native route preserves the checkpoint's activation quantization.
+The explicit native route preserves the checkpoint's activation quantization.
 It does not supply a missing W4A8 kernel: unsupported schemes fail upstream.
-Legacy W4A16 conversion is available only when explicitly requested and must
-not be used for W4A8 validation. Dense INT8 groups are never converted.
+The release default remains the legacy W4A16 conversion. Dense INT8 groups are never converted.
 """
 
 import logging

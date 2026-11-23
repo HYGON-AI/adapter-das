@@ -254,11 +254,11 @@ REGISTRY = {
                  "分组 int4/bf16 不动；=0 还原 stock",
     },
     "HCU_W4A8_MOE": {
-        "env": "HCU_W4A8_MOE", "default": "native",
+        "env": "HCU_W4A8_MOE", "default": "w4a16",
         "about": "CT MoE routing: native preserves checkpoint activation quantization "
                  "and delegates to the installed scheme. Missing W4A8 support must "
-                 "fail rather than silently run W4A16. Legacy w4a16 and heal routes "
-                 "require explicit selection. 0 disables this bridge.",
+                 "fail rather than silently run W4A16. The release default is w4a16 for legacy deployments. "
+                 "GLM-5.3 W4A8 requires explicit native. 0 disables this bridge.",
     },
     "HCU_DSV4_WQKV_SCALE": {
         "env": "HCU_DSV4_WQKV_SCALE", "default": "1",

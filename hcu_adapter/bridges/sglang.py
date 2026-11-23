@@ -2610,8 +2610,8 @@ def install() -> None:
                 "HCU adapter: moe_c w4a16 bridge not installed", exc_info=True
             )
 
-        # Preserve CT activation quantization by default. Legacy compatibility
-        # routes are explicit opt-ins; native does not hide missing kernels.
+        # Keep the release default for existing deployments. The GLM-5.3
+        # W4A8 recipes explicitly preserve checkpoint activation quantization.
         try:
             from hcu_adapter import ct_w4a8_moe as _cw4a8
 

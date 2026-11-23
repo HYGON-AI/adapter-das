@@ -100,6 +100,99 @@ gpu = pytest.mark.skipif(not torch.cuda.is_available(), reason="requires HCU")
 
 
 @gpu
+@pytest.mark.parametrize("hidden,batch,tokens,with_shift", [
+    (4096, 1, 4096, False), (4096, 1, 4096, True),
+    (4096, 2, 17, False), (4096, 2, 17, True),
+    (4, 2, 65, True), (128, 1, 129, False), (1028, 2, 65, True),
+    (2240, 2, 65, False), (8188, 2, 65, True), (8192, 1, 129, False),
+])
+@pytest.mark.parametrize("seed", [73, 74])
+def test_bf16_layernorm_modulate_matches_torch(hidden, batch, tokens, with_shift, seed):
+    if not getattr(torch.cuda.get_device_properties(0), "gcnArchName", "").startswith("gfx936"):
+        pytest.skip("requires gfx936")
+    torch.manual_seed(seed)
+    x = torch.randn(batch, tokens, hidden, device="cuda", dtype=torch.bfloat16)
+    packed = torch.randn(batch, 4 * hidden, device=x.device, dtype=x.dtype)
+    scale, shift = packed.chunk(4, dim=-1)[:2]
+    if not with_shift:
+        shift = None
+    saved = x.clone()
+    expected = F.layer_norm(x, (hidden,), eps=1e-6) * (1 + scale[:, None])
+    if shift is not None:
+        expected = expected + shift[:, None]
+    with patch.object(implementation.F, "layer_norm", side_effect=AssertionError("Triton path missed")):
+        result = implementation.fused_layernorm_modulate(x, scale, shift, 1e-6)
+    assert torch.equal(result, expected)
+    assert result.data_ptr() != x.data_ptr()
+    assert torch.equal(x, saved)
+
+
+@gpu
+@pytest.mark.parametrize("hidden", [4096, 5120])
+@pytest.mark.parametrize("post_op,has_shift", [
+    ("bf16_modulate", True), ("bf16_modulate", False),
+    ("fp32_modulate", True), ("fp32_affine", True),
+    ("bf16_norm_fp32_modulate", True),
+])
+def test_post_op_rounding_and_graph(hidden, post_op, has_shift):
+    """Isolate post-op rounding from the separately tested Welford reduction."""
+    import triton
+
+    torch.manual_seed(173)
+    x = torch.randn(2, 17, hidden, device="cuda", dtype=torch.bfloat16)
+    scale, shift = torch.randn(2, 1, hidden, device="cuda"), torch.randn(2, 1, hidden, device="cuda")
+    output = torch.empty_like(x)
+    raw_norm = torch.empty(x.shape, device="cuda", dtype=torch.float32)
+    zero = torch.zeros_like(scale)
+
+    def launch(dst, sc, sh, mode, include_shift=True):
+        implementation._layernorm_modulate_kernel[(triton.cdiv(34, 2),)](
+            dst, x, sc, sh, 17, 34, sc.stride(0), 1e-6,
+            D=hidden, ROWS=2, POST_OP=mode, HAS_SHIFT=include_shift,
+            num_warps=4, enable_fp_fusion=False,
+        )
+
+    def reference():
+        # FP32 output + identity modulation exposes exactly the same norm
+        # intermediate. This test checks post-ops, not PyTorch norm equivalence.
+        launch(raw_norm, zero, zero, "fp32_modulate")
+        if post_op == "bf16_modulate":
+            value = raw_norm.bfloat16().float()
+            multiplier = (1 + scale).bfloat16().float()
+            value = (value * multiplier).bfloat16().float()
+            if has_shift:
+                value = value + shift
+        elif post_op == "fp32_affine":
+            # FP64 computes the FP32 product/add with one final FP32 rounding
+            # for these bounded random operands, independently of Triton FMA.
+            value = (raw_norm.double() * scale.double() + shift.double()).float()
+        else:
+            value = raw_norm
+            if post_op == "bf16_norm_fp32_modulate":
+                value = value.bfloat16().float()
+                multiplier = 1 + scale
+                value = (value.double() * multiplier.double() + shift.double()).float()
+            else:
+                value = value * (1 + scale) + shift
+        return value.bfloat16()
+
+    # None verifies HAS_SHIFT=False does not even load the shift pointer.
+    shift_arg = shift if has_shift else None
+    launch(output, scale, shift_arg, post_op, has_shift)
+    assert torch.equal(output, reference())
+    torch.cuda.synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        launch(output, scale, shift_arg, post_op, has_shift)
+    for seed in (174, 175):
+        torch.manual_seed(seed)
+        x.normal_(); scale.normal_(); shift.normal_()
+        expected = reference()
+        graph.replay()
+        assert torch.equal(output, expected)
+
+
+@gpu
 @pytest.mark.parametrize("hidden", [4096, 5120])
 @pytest.mark.parametrize("tokens", [0, 1, 17, 129, 513])
 def test_triton_numerics(hidden, tokens):

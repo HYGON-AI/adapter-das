@@ -149,11 +149,12 @@ hcu_adapter = "hcu_adapter.bridges.vllm:hcu_runtime_plugin"
 [tool.setuptools]
 py-modules = ["sitecustomize"]
 
-[tool.setuptools.package-data]
-hcu_adapter = ["launch_configs/*.yaml"]
-
 [tool.setuptools.packages.find]
 include = ["hcu_adapter*", "sgl_kernel*"]
+
+[tool.setuptools.package-data]
+hcu_adapter = ["launch_configs/*.yaml"]
+sgl_kernel = ["diffusion_rope_csrc/*.cuh"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -4,207 +4,33 @@
 """Environment defaults for the supported GLM-5.3 release launch recipes."""
 
 from dataclasses import dataclass
+from pathlib import Path
 
-COMMON = {
-    "ALLREDUCE_STREAM_WITH_COMPUTE": "1",
-    "GLIBC_TUNABLES": "glibc.rtld.optional_static_tls=0x40000",
-    "GPU_FORCE_BLIT_COPY_SIZE": "16",
-    "HCU_ADAPTER_HOST": "sglang",
-    "HIP_KERNEL_BATCH_CEILING": "100",
-    "HIP_KERNEL_EVENT_SYSTENFENCE": "1",
-    "HSA_KERNARG_POOL_SIZE": "8388608",
-    "ROC_AQL_QUEUE_SIZE": "131072",
-    "SGLANG_OPT_USE_TOPK_V2": "0",
-    "SGLANG_PLUGINS": "hcu",
-    "SGLANG_USE_LIGHTOP": "1",
-}
 
-W4A8 = {
-    **COMMON,
-    "HCU_SLIMQUANT": "0",
-    "HCU_W4A8_MOE": "native",
-    "HIP_GRAPH_ACCUMULATE_DISPATCH": "1",
-    "SGLANG_ENABLE_HCU_CONCAT_MLA_ABSORB_Q": "1",
-    "SGLANG_HCU_W8A8_USE_LIGHTOP": "1",
-    "SGLANG_ROCM_USE_AITER_MOE": "0",
-    "SGLANG_UVICORN_WORKER_HEALTHCHECK_TIMEOUT": "120",
-}
+def preset_env(filename):
+    from .hcu_config import _parse_file
 
-W4A8_PD = {
-    **W4A8,
-    "HCU_DEEPEP_BRIDGE": "0",
-    "HCU_FUSED_ADD_RMS_IMPL": "lightop",
-    "HCU_RMS_NORM_IMPL": "lightop",
-    "HF_HUB_OFFLINE": "1",
-    "MC_ENABLE_DEST_DEVICE_AFFINITY": "1",
-    "MC_GID_INDEX": "0",
-    "NCCL_IB_DISABLE": "0",
-    "NCCL_IB_GID_INDEX": "0",
-    "NCCL_NET_PLUGIN": "shca",
-    "NCCL_PLUGIN_P2P": "ib",
-    "OMP_NUM_THREADS": "1",
-    "ROCSHMEM_GDR_DISABLE_XDP": "0",
-    "ROCSHMEM_IB_GID_INDEX": "0",
-    "SGLANG_DISAGGREGATION_ALL_CP_RANKS_TRANSFER": "1",
-    "SGLANG_DISAGGREGATION_BOOTSTRAP_TIMEOUT": "1200",
-    "SGLANG_DSA_FUSE_TOPK": "1",
-    "SGLANG_DSA_HCU_INT8_INDEX_K_CACHE": "1",
-    "SGLANG_HCU_GLM_CT_BF16_ROUTER": "1",
-    "SGLANG_HCU_USE_LIGHTOP_ROPE": "1",
-    "SGLANG_LIGHTOP_TOPK": "1",
-    "SGLANG_ROCM_USE_MULTI_STREAM": "0",
-    "SGLANG_USE_AITER": "0",
-    "SGLANG_USE_DEEPGEMM_MOE": "1",
-    "TRANSFORMERS_OFFLINE": "1",
-}
-
-W4A8_PREFILL_CP8 = {
-    **W4A8_PD,
-    "HIP_GRAPH_USE_CMD_CACHE": "0",
-    "SGLANG_DEQUANT_K_CACHE_BLOCK_T": "16",
-    "SGLANG_DSA_HCU_REUSE_SORTED_TOPK": "1",
-    "SGLANG_DSA_MQA_SPLIT_BY_SEQ": "1",
-    "SGLANG_ENABLE_CP_V2": "1",
-    "SGLANG_HCU_LAYER_SPLIT_SYNC_PREFETCH": "0",
-    "SGLANG_NSA_MQA_LOGITS_MEMORY_BUDGET_GB": "2",
-    "SGLANG_USE_LIGHTOP_W4A8_MARLIN_MOE": "0",
-    "SGLANG_USE_W4A8_CONTIGUOUS_HIPC": "1",
-}
-
-W4A8_DECODE_DP16 = {
-    **W4A8_PD,
-    "DEEPEP_ENABLE_LL_LAYERED_OPT": "1",
-    "GPU_MAX_HW_QUEUES": "3",
-    "HIP_GRAPH_USE_CMD_CACHE": "1",
-    "LIGHTOP_SPARSE_MQA_GROUP6_ROWS_PER_CTA": "3",
-    "ROCSHMEM_BACKEND": "gda",
-    "ROCSHMEM_GDA_PROVIDER": "shca",
-    "SGLANG_DSA_HCU_LIGHTOP_MASK_TOPK": "1",
-    "SGLANG_SCHEDULER_SKIP_ALL_GATHER": "1",
-}
-
-W4A8_IFB_TP8 = {
-    **W4A8,
-    "HIP_GRAPH_USE_CMD_CACHE": "1",
-    "LIGHTOP_SPARSE_MQA_GROUP6_ROWS_PER_CTA": "3",
-    "NCCL_IB_DISABLE": "1",
-    "SGLANG_DEQUANT_K_CACHE_BLOCK_T": "16",
-    "SGLANG_DSA_HCU_LIGHTOP_MASK_TOPK": "1",
-    "SGLANG_DSA_MQA_SPLIT_BY_SEQ": "1",
-    "SGLANG_NSA_MQA_LOGITS_MEMORY_BUDGET_GB": "2",
-    "SGLANG_USE_LIGHTOP_W4A8_MARLIN_MOE": "1",
-    "SGLANG_W4A8_TPMOE_BACKEND": "lightop",
-}
-
-FP8 = {
-    **COMMON,
-    "NCCL_IB_DISABLE": "0",
-    "ROCSHMEM_DISABLE_HDP_FLUSH": "1",
-    "ROCSHMEM_GDA_NUM_QPS_DEFAULT_CTX": "288",
-    "SGLANG_DISAGGREGATION_BOOTSTRAP_TIMEOUT": "1200",
-    "SGLANG_HCU_USE_LIGHTOP_ROPE": "1",
-    "SGLANG_MOE_COPY_WEIGHT_VIEWS_BEFORE_H2D": "1",
-    "SGLANG_USE_DEEPGEMM_MOE": "1",
-    "SGLANG_USE_FP8_W8A8_MOE": "1",
-    "VLLM_PLUGINS": "none",
-}
-
-FP8_CP8 = {
-    **FP8,
-    "DEEP_EP_NORMAL_MNVL": "1",
-    "HF_HUB_OFFLINE": "1",
-    "LIGHTOP_MQA_LOGITS_BETA": "1",
-    "SGLANG_DEQUANT_K_CACHE_BLOCK_T": "16",
-    "SGLANG_DSA_FUSE_TOPK": "1",
-    "SGLANG_DSA_HCU_REUSE_SORTED_TOPK": "1",
-    "SGLANG_DSA_MQA_SPLIT_BY_SEQ": "1",
-    "SGLANG_ENABLE_CP_V2": "1",
-    "SGLANG_GLM_OPT_PREFILL": "1",
-    "SGLANG_GLM_PREFILL_SHARED_OVERLAP": "1",
-    "SGLANG_HCU_GLM53_FP8_K1_AUTO_BUILD": "1",
-    "SGLANG_NSA_MQA_LOGITS_MEMORY_BUDGET_GB": "2",
-    "TRANSFORMERS_OFFLINE": "1",
-}
-
-FP8_IFB_CP8 = {
-    **FP8_CP8,
-    "SGLANG_ENABLE_LOGPROB_CHUNK": "1",
-    "SGLANG_LOGPROB_CHUNK_SIZE": "2048",
-}
-
-FP8_PREFILL_CP8 = {
-    **FP8_CP8,
-    "SGLANG_UNIFIED_RADIX_TREE_CORE_BACKEND": "python",
-}
-
-FP8_ATTENTION_DP = {
-    **FP8,
-    "DEEPEP_ENABLE_LL_LAYERED_OPT": "0",
-    "GPU_MAX_HW_QUEUES": "3",
-    "HIP_BUFFER_EXTRA_SIZE": "0",
-    "HIP_GRAPH_ACCUMULATE_DISPATCH": "1",
-    "HIP_GRAPH_USE_CMD_CACHE": "1",
-    "LIGHTOP_SPARSE_MQA_GROUP6_ROWS_PER_CTA": "3",
-    "ROCSHMEM_BACKEND": "gda",
-    "ROCSHMEM_GDA_PROVIDER": "shca",
-    "ROCSHMEM_IPC_MNVL": "1",
-    "ROCSHMEM_IPC_MNVL_NPES": "32",
-    "SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK": "256",
-    "SGLANG_DSA_HCU_LIGHTOP_MASK_TOPK": "1",
-    "SGLANG_ENABLE_HCU_CONCAT_MLA_ABSORB_Q": "1",
-    "SGLANG_GLM_HCU_GEMM": "1",
-    "SGLANG_GLM_OPT_DECODE": "1",
-    "SGLANG_HCU_GLM_CT_BF16_ROUTER": "1",
-    "SGLANG_NCCL_ALL_GATHER_IN_OVERLAP_SCHEDULER_SYNC_BATCH": "1",
-    "SGLANG_ROCM_USE_MULTI_STREAM": "0",
-    "SGLANG_UNIFIED_RADIX_TREE_CORE_BACKEND": "python",
-    "SGLANG_UVICORN_WORKER_HEALTHCHECK_TIMEOUT": "120",
-    "SPT_NOENV": "1",
-}
-
-FP8_IFB_DP8 = {
-    **FP8_ATTENTION_DP,
-    "DEEP_EP_NORMAL_MNVL": "1",
-    "HF_HUB_OFFLINE": "1",
-    "SGLANG_DSA_FUSE_TOPK": "1",
-    "SGLANG_SCHEDULER_SKIP_ALL_GATHER": "0",
-    "SGLANG_SIMULATE_ACC_LEN": "-1",
-    "TRANSFORMERS_OFFLINE": "1",
-}
-
-FP8_IFB_DCP4 = {
-    **FP8_ATTENTION_DP,
-    "DEEP_EP_NORMAL_MNVL": "1",
-    "HF_HUB_OFFLINE": "1",
-    "SGLANG_DSA_FUSE_TOPK": "0",
-    "SGLANG_SCHEDULER_SKIP_ALL_GATHER": "0",
-    "TRANSFORMERS_OFFLINE": "1",
-}
-
-FP8_IFB_HISPARSE = {
-    **FP8_ATTENTION_DP,
-    "DEEP_EP_NORMAL_MNVL": "1",
-    "HF_HUB_OFFLINE": "1",
-    "SGLANG_DSA_FUSE_TOPK": "1",
-    "SGLANG_SCHEDULER_SKIP_ALL_GATHER": "0",
-    "TRANSFORMERS_OFFLINE": "1",
-}
-
-FP8_DECODE_DP8 = {
-    **FP8_ATTENTION_DP,
-    "MC_ENABLE_DEST_DEVICE_AFFINITY": "1",
-    "SGLANG_DSA_FUSE_TOPK": "1",
-    "SGLANG_SCHEDULER_SKIP_ALL_GATHER": "1",
-}
-
+    return _parse_file(str(Path(__file__).with_name("launch_configs") / filename))["hosts"]["sglang"]["env"]
 
 
 @dataclass(frozen=True)
 class Profile:
-    defaults: dict
+    filename: str
     site: tuple
     derived: tuple
     topology: dict
+    offline: bool = False
+    simulate_disabled: bool = False
+
+    @property
+    def defaults(self):
+        # Compatibility launchers also exported these legacy policy values.
+        values = preset_env(self.filename)
+        if self.offline:
+            values.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
+        if self.simulate_disabled:
+            values["SGLANG_SIMULATE_ACC_LEN"] = "-1"
+        return values
 
 
 W4_SITE = ("NCCL_SOCKET_IFNAME", "NCCL_IB_HCA", "NO_PROXY")
@@ -215,14 +41,14 @@ COLLECTIVES = ("GLOO_SOCKET_IFNAME", "ROCSHMEM_ALLOWED_IBV_DEVICES")
 
 PROFILES = {
     "glm53_w4a8_ifb_tp8": Profile(
-        defaults=W4A8_IFB_TP8, site=W4_SITE, derived=('GLOO_SOCKET_IFNAME', 'no_proxy'),
+        filename="glm53-w4a8-ifb-tp8.yaml", site=W4_SITE, derived=('GLOO_SOCKET_IFNAME', 'no_proxy'),
         topology={
             "tp_size": '8',
             "quantization": 'compressed-tensors',
         },
     ),
     "glm53_w4a8_prefill_cp8": Profile(
-        defaults=W4A8_PREFILL_CP8, site=W4_SITE, derived=(*COLLECTIVES, 'MC_TE_FILTERS', 'no_proxy'),
+        filename="glm53-w4a8-prefill.yaml", offline=True, site=W4_SITE, derived=(*COLLECTIVES, 'MC_TE_FILTERS', 'no_proxy'),
         topology={
             "nnodes": '2',
             "tp_size": '8',
@@ -238,7 +64,7 @@ PROFILES = {
         },
     ),
     "glm53_w4a8_decode_dp16": Profile(
-        defaults=W4A8_DECODE_DP16, site=W4_SITE, derived=(*COLLECTIVES, 'MC_TE_FILTERS', 'no_proxy'),
+        filename="glm53-w4a8-decode.yaml", offline=True, site=W4_SITE, derived=(*COLLECTIVES, 'MC_TE_FILTERS', 'no_proxy'),
         topology={
             "nnodes": '2',
             "tp_size": '16',
@@ -253,7 +79,7 @@ PROFILES = {
         },
     ),
     "glm53_fp8_ifb_cp8": Profile(
-        defaults=FP8_IFB_CP8, site=FP8_SITE, derived=COLLECTIVES,
+        filename="glm53-fp8-ifb-cp8.yaml", offline=True, site=FP8_SITE, derived=COLLECTIVES,
         topology={
             "nnodes": '2',
             "tp_size": '8',
@@ -265,7 +91,7 @@ PROFILES = {
         },
     ),
     "glm53_fp8_ifb_dp8": Profile(
-        defaults=FP8_IFB_DP8, site=FP8_BLAS_SITE, derived=COLLECTIVES,
+        filename="glm53-fp8-ifb-dp8.yaml", offline=True, simulate_disabled=True, site=FP8_BLAS_SITE, derived=COLLECTIVES,
         topology={
             "nnodes": '2',
             "tp_size": '8',
@@ -276,7 +102,7 @@ PROFILES = {
         },
     ),
     "glm53_fp8_ifb_dcp4": Profile(
-        defaults=FP8_IFB_DCP4, site=FP8_BLAS_SITE, derived=COLLECTIVES,
+        filename="glm53-fp8-ifb-dcp4.yaml", offline=True, site=FP8_BLAS_SITE, derived=COLLECTIVES,
         topology={
             "nnodes": '2',
             "tp_size": '8',
@@ -288,7 +114,7 @@ PROFILES = {
         },
     ),
     "glm53_fp8_ifb_hisparse": Profile(
-        defaults=FP8_IFB_HISPARSE, site=FP8_BLAS_SITE, derived=COLLECTIVES,
+        filename="glm53-fp8-ifb-dp8.yaml", offline=True, site=FP8_BLAS_SITE, derived=COLLECTIVES,
         topology={
             "nnodes": '2',
             "tp_size": '8',
@@ -300,7 +126,7 @@ PROFILES = {
         },
     ),
     "glm53_fp8_prefill_cp8": Profile(
-        defaults=FP8_PREFILL_CP8, site=FP8_SITE, derived=COLLECTIVES,
+        filename="glm53-fp8-prefill-cp8.yaml", offline=True, site=FP8_SITE, derived=COLLECTIVES,
         topology={
             "nnodes": '2',
             "tp_size": '8',
@@ -314,7 +140,7 @@ PROFILES = {
         },
     ),
     "glm53_fp8_decode_dp8": Profile(
-        defaults=FP8_DECODE_DP8, site=FP8_BLAS_SITE, derived=(*COLLECTIVES, 'MC_ALLOWED_IBV_DEVICES', 'MC_TE_FILTERS'),
+        filename="glm53-fp8-decode.yaml", site=FP8_BLAS_SITE, derived=(*COLLECTIVES, 'MC_ALLOWED_IBV_DEVICES', 'MC_TE_FILTERS'),
         topology={
             "nnodes": '2',
             "tp_size": '8',
@@ -329,6 +155,98 @@ PROFILES = {
 }
 
 # Supported deployment overrides, independent of the compatibility launchers.
-LAUNCH_ENV_KEYS = frozenset().union(
-    *(set(p.defaults).union(p.site, p.derived) for p in PROFILES.values())
-)
+LAUNCH_ENV_KEYS = frozenset("""
+ALLREDUCE_STREAM_WITH_COMPUTE
+DEEPEP_ENABLE_LL_LAYERED_OPT
+DEEP_EP_NORMAL_MNVL
+GLIBC_TUNABLES
+GLOO_SOCKET_IFNAME
+GPU_FORCE_BLIT_COPY_SIZE
+GPU_MAX_HW_QUEUES
+HCU_ADAPTER_HOST
+HCU_DEEPEP_BRIDGE
+HCU_FUSED_ADD_RMS_IMPL
+HCU_RMS_NORM_IMPL
+HCU_SLIMQUANT
+HCU_W4A8_MOE
+HF_HUB_OFFLINE
+HIPBLASLT_TENSILE_LIBPATH
+HIPBLASLT_TUNING_OVERRIDE_FILE
+HIP_BUFFER_EXTRA_SIZE
+HIP_GRAPH_ACCUMULATE_DISPATCH
+HIP_GRAPH_USE_CMD_CACHE
+HIP_KERNEL_BATCH_CEILING
+HIP_KERNEL_EVENT_SYSTENFENCE
+HIP_VISIBLE_DEVICES
+HSA_KERNARG_POOL_SIZE
+LIGHTOP_MQA_LOGITS_BETA
+LIGHTOP_SPARSE_MQA_GROUP6_ROWS_PER_CTA
+MC_ALLOWED_IBV_DEVICES
+MC_ENABLE_DEST_DEVICE_AFFINITY
+MC_GID_INDEX
+MC_TE_FILTERS
+NCCL_IB_DISABLE
+NCCL_IB_GID_INDEX
+NCCL_IB_HCA
+NCCL_NET_PLUGIN
+NCCL_PLUGIN_P2P
+NCCL_SOCKET_IFNAME
+NO_PROXY
+OMP_NUM_THREADS
+ROCBLAS_TENSILE_LIBPATH
+ROCSHMEM_ALLOWED_IBV_DEVICES
+ROCSHMEM_BACKEND
+ROCSHMEM_DISABLE_HDP_FLUSH
+ROCSHMEM_GDA_NUM_QPS_DEFAULT_CTX
+ROCSHMEM_GDA_PROVIDER
+ROCSHMEM_GDR_DISABLE_XDP
+ROCSHMEM_IB_GID_INDEX
+ROCSHMEM_IPC_MNVL
+ROCSHMEM_IPC_MNVL_NPES
+ROC_AQL_QUEUE_SIZE
+SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK
+SGLANG_DEQUANT_K_CACHE_BLOCK_T
+SGLANG_DISAGGREGATION_ALL_CP_RANKS_TRANSFER
+SGLANG_DISAGGREGATION_BOOTSTRAP_TIMEOUT
+SGLANG_DSA_FUSE_TOPK
+SGLANG_DSA_HCU_INT8_INDEX_K_CACHE
+SGLANG_DSA_HCU_LIGHTOP_MASK_TOPK
+SGLANG_DSA_HCU_REUSE_SORTED_TOPK
+SGLANG_DSA_MQA_SPLIT_BY_SEQ
+SGLANG_ENABLE_CP_V2
+SGLANG_ENABLE_HCU_CONCAT_MLA_ABSORB_Q
+SGLANG_ENABLE_LOGPROB_CHUNK
+SGLANG_GLM_HCU_GEMM
+SGLANG_GLM_OPT_DECODE
+SGLANG_GLM_OPT_PREFILL
+SGLANG_GLM_PREFILL_SHARED_OVERLAP
+SGLANG_HCU_GLM53_FP8_K1_AUTO_BUILD
+SGLANG_HCU_GLM_CT_BF16_ROUTER
+SGLANG_HCU_LAYER_SPLIT_SYNC_PREFETCH
+SGLANG_HCU_USE_LIGHTOP_ROPE
+SGLANG_HCU_W8A8_USE_LIGHTOP
+SGLANG_LIGHTOP_TOPK
+SGLANG_LOGPROB_CHUNK_SIZE
+SGLANG_MOE_COPY_WEIGHT_VIEWS_BEFORE_H2D
+SGLANG_NCCL_ALL_GATHER_IN_OVERLAP_SCHEDULER_SYNC_BATCH
+SGLANG_NSA_MQA_LOGITS_MEMORY_BUDGET_GB
+SGLANG_OPT_USE_TOPK_V2
+SGLANG_PLUGINS
+SGLANG_ROCM_USE_AITER_MOE
+SGLANG_ROCM_USE_MULTI_STREAM
+SGLANG_SCHEDULER_SKIP_ALL_GATHER
+SGLANG_SIMULATE_ACC_LEN
+SGLANG_UNIFIED_RADIX_TREE_CORE_BACKEND
+SGLANG_USE_AITER
+SGLANG_USE_DEEPGEMM_MOE
+SGLANG_USE_FP8_W8A8_MOE
+SGLANG_USE_LIGHTOP
+SGLANG_USE_LIGHTOP_W4A8_MARLIN_MOE
+SGLANG_USE_W4A8_CONTIGUOUS_HIPC
+SGLANG_UVICORN_WORKER_HEALTHCHECK_TIMEOUT
+SGLANG_W4A8_TPMOE_BACKEND
+SPT_NOENV
+TRANSFORMERS_OFFLINE
+VLLM_PLUGINS
+no_proxy
+""".split())

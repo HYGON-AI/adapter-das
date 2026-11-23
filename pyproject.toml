@@ -24,6 +24,7 @@ dependencies = [
 # docs/image-dtk2610.md §2.
 # Install: pip install "$(ls /wheels/sgl_kernel-*.whl)[sglang-runtime]"
 sglang-runtime = [
+    "PyYAML>=6",
     # 服务框架与调度
     "aiohttp",
     "fastapi",
@@ -147,6 +148,9 @@ hcu_adapter = "hcu_adapter.bridges.vllm:hcu_runtime_plugin"
 
 [tool.setuptools]
 py-modules = ["sitecustomize"]
+
+[tool.setuptools.package-data]
+hcu_adapter = ["launch_configs/*.yaml"]
 
 [tool.setuptools.packages.find]
 include = ["hcu_adapter*", "sgl_kernel*"]

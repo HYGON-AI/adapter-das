@@ -9,56 +9,6 @@ import os
 import sys
 from pathlib import Path
 
-# Set these in the child environment before glibc, HIP or SGLang starts.
-DEFAULTS = {
-    "SPT_NOENV": "1",
-    "HCU_ADAPTER_HOST": "sglang",
-    "SGLANG_PLUGINS": "hcu",
-    "VLLM_PLUGINS": "none",
-    "HF_HUB_OFFLINE": "1",
-    "TRANSFORMERS_OFFLINE": "1",
-    "SGLANG_UNIFIED_RADIX_TREE_CORE_BACKEND": "python",
-    "SGLANG_ROCM_USE_MULTI_STREAM": "0",
-    "SGLANG_SCHEDULER_SKIP_ALL_GATHER": "1",
-    "SGLANG_NCCL_ALL_GATHER_IN_OVERLAP_SCHEDULER_SYNC_BATCH": "1",
-    "SGLANG_UVICORN_WORKER_HEALTHCHECK_TIMEOUT": "120",
-    "NCCL_IB_DISABLE": "0",
-    "MC_ENABLE_DEST_DEVICE_AFFINITY": "1",
-    "SGLANG_DISAGGREGATION_BOOTSTRAP_TIMEOUT": "1200",
-    "ROCSHMEM_DISABLE_HDP_FLUSH": "1",
-    "ROCSHMEM_GDA_NUM_QPS_DEFAULT_CTX": "288",
-    "ROCSHMEM_IPC_MNVL": "1",
-    "ROCSHMEM_IPC_MNVL_NPES": "32",
-    "ROCSHMEM_BACKEND": "gda",
-    "ROCSHMEM_GDA_PROVIDER": "shca",
-    "DEEPEP_ENABLE_LL_LAYERED_OPT": "0",
-    "SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK": "256",
-    "SGLANG_MOE_COPY_WEIGHT_VIEWS_BEFORE_H2D": "1",
-    "SGLANG_USE_DEEPGEMM_MOE": "1",
-    "SGLANG_USE_FP8_W8A8_MOE": "1",
-    "SGLANG_HCU_GLM_CT_BF16_ROUTER": "1",
-    "SGLANG_USE_LIGHTOP": "1",
-    "SGLANG_GLM_OPT_DECODE": "1",
-    "SGLANG_GLM_HCU_GEMM": "1",
-    "SGLANG_HCU_USE_LIGHTOP_ROPE": "1",
-    "SGLANG_OPT_USE_TOPK_V2": "0",
-    "SGLANG_ENABLE_HCU_CONCAT_MLA_ABSORB_Q": "1",
-    "SGLANG_DSA_HCU_LIGHTOP_MASK_TOPK": "1",
-    "SGLANG_DSA_FUSE_TOPK": "1",
-    "LIGHTOP_SPARSE_MQA_GROUP6_ROWS_PER_CTA": "3",
-    "ALLREDUCE_STREAM_WITH_COMPUTE": "1",
-    "HIP_KERNEL_EVENT_SYSTENFENCE": "1",
-    "GLIBC_TUNABLES": "glibc.rtld.optional_static_tls=0x40000",
-    "HIP_KERNEL_BATCH_CEILING": "100",
-    "GPU_FORCE_BLIT_COPY_SIZE": "16",
-    "HSA_KERNARG_POOL_SIZE": "8388608",
-    "ROC_AQL_QUEUE_SIZE": "131072",
-    "HIP_BUFFER_EXTRA_SIZE": "0",
-    "HIP_GRAPH_ACCUMULATE_DISPATCH": "1",
-    "HIP_GRAPH_USE_CMD_CACHE": "1",
-    "GPU_MAX_HW_QUEUES": "3",
-}
-
 SITE_KEYS = (
     "HIPBLASLT_TENSILE_LIBPATH",
     "HIPBLASLT_TUNING_OVERRIDE_FILE",
@@ -71,7 +21,10 @@ DERIVED_KEYS = (
     "GLOO_SOCKET_IFNAME", "ROCSHMEM_ALLOWED_IBV_DEVICES",
     "MC_ALLOWED_IBV_DEVICES", "MC_TE_FILTERS",
 )
-CONFIG_KEYS = set(DEFAULTS).union(SITE_KEYS, DERIVED_KEYS)
+def legacy_defaults():
+    from .glm53_profiles import preset_env
+
+    return {**preset_env("glm53-fp8-decode.yaml"), "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
 
 
 def launch_options(argv):
@@ -112,7 +65,7 @@ def _channel_fp8(group):
     )
 
 
-def launch_environment(inherited, configured, pd_devices, *, defaults=DEFAULTS, site=SITE_KEYS, derived=DERIVED_KEYS):
+def launch_environment(inherited, configured, pd_devices, *, defaults=None, site=SITE_KEYS, derived=DERIVED_KEYS):
     env = inherited.copy()
     sources = {}
 
@@ -128,6 +81,8 @@ def launch_environment(inherited, configured, pd_devices, *, defaults=DEFAULTS, 
 
     for key in site:
         assign(key)
+    if defaults is None:
+        defaults = legacy_defaults()
     for key, value in defaults.items():
         assign(key, value)
     automatic = {

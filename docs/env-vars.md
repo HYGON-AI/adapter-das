@@ -21,45 +21,36 @@
 正式选择走配置文件；运行时每算子实际谁在跑，看启动日志 `HCU adapter runtime:`
 行或 `HCU_ADAPTER_DUMP`（规约见 [governance.md](governance.md) §4）。
 
-## 官方 SGLang 启动时的 GLM-5.3 环境变量
+## GLM-5.3 的镜像启动配置
 
-在安装本版 adapter 和 HCU plugin 的镜像中，使用
-`python3 -m sglang.launch_server` 和正常的 SGLang 参数。每个变量分别按
-**显式环境变量 > 配置文件 > 自动规则 > 默认值** 取值。启动日志逐项标注
-`explicit`、`config`、`auto`、`default`。未由 adapter 管理取值的项
-保留运行库自身的默认行为。
+使用官方入口 `python3 -m sglang.launch_server`。飞书脚本通过
+`HCU_CONFIG=builtin:文件名.yaml` 选择随 adapter wheel 安装的配置。
+各文件的 `hosts.sglang.env` 直接列出该场景的优化值。
+同一份配置可以配合不同的角色参数、节点数或 HiSparse 参数使用。
 
-部署覆盖可写在当前目录的 `hcu_adapter.yaml`，或使用 `HCU_CONFIG`
-指定文件。通用配置节点为 `hosts.sglang.env`，不需要选配方名。例如：
-
-```yaml
-version: 1
-hosts:
-  sglang:
-    env:
-      NCCL_SOCKET_IFNAME: bond1
-      NCCL_IB_HCA: shca_0,shca_1,shca_2,shca_3
-      SGLANG_DSA_FUSE_TOPK: 0
-```
-
-若同时显式导出 `SGLANG_DSA_FUSE_TOPK=1`，生效值为 1。删除这条 export
-后，YAML 的 0 生效。两处都删除后，才由模型、DCP 等运行条件推导。
-既有 `ops` 配置及旧版按角色命名的 YAML 覆盖可继续使用。同一字段在配置文件
-内优先取兼容的角色覆盖，然后取 `hosts.sglang.env`，最后取 `ops`。
-
-| 变量 | 生效依据 |
+| 文件 | 适用的启动脚本 |
 |---|---|
-| `SGLANG_PLUGINS`、`SGLANG_USE_LIGHTOP` | 已识别的 GLM-5.3 Channel-FP8 / W4A8 使用 HCU 插件和 LightOp 默认值 |
-| `HCU_W4A8_MOE` | 本地 GLM-5.3 compressed-tensors INT4 专家及动态 per-token INT8 激活选择 native；显式要求降为 W4A16 时终止启动 |
-| `SGLANG_USE_FP8_W8A8_MOE` | GLM-5.3 Channel-FP8 权重及激活契约 |
-| `SGLANG_W4A8_TPMOE_BACKEND` | W4A8 的 TP8 / EP1 路径 |
-| `GLOO_SOCKET_IFNAME`、`ROCSHMEM_ALLOWED_IBV_DEVICES` | 分别从生效的 socket 网卡及 DeepEP 集合通信 IB 网卡推导 |
-| Mooncake 过滤器 | 根据 P/D 角色和本节点的 `--disaggregation-ib-device` 推导 |
-| 可见设备、BLAS 文件和库路径、网络代理、离线加载策略 | 由部署方或镜像提供 |
+| `glm53-w4a8-ifb-tp8.yaml` | W4A8 IFB TP8/EP1 |
+| `glm53-w4a8-prefill.yaml` | W4A8 Prefill PP2/CP8/EP8 |
+| `glm53-w4a8-decode.yaml` | W4A8 Decode DP16/EP16 |
+| `glm53-fp8-ifb-cp8.yaml` | FP8 IFB CP8/EP8 |
+| `glm53-fp8-prefill-cp8.yaml` | FP8 Prefill CP8/EP8 |
+| `glm53-fp8-ifb-dp8.yaml` | FP8 IFB DP8/EP8，普通或 HiSparse |
+| `glm53-fp8-ifb-dcp4.yaml` | FP8 IFB DCP4/attention DP2/EP8 |
+| `glm53-fp8-decode.yaml` | FP8 Decode DP8/EP8、DP32/EP32、DP32/EP32 HiSparse |
 
-[逐项自动条件和默认值](../hcu_adapter/glm53_env_rules.py)。
-不同节点数可共用同一份配置。TP、EP、CP 或传输后端会影响依赖它们的变量。
-普通 DP32 Decode 和 HiSparse Decode 都使用官方入口及各自原有的服务参数。
+查看[镜像内置 YAML](../hcu_adapter/launch_configs)。显式 env 优先于 YAML。
+例如 YAML 中 `SGLANG_DSA_FUSE_TOPK: "1"`，临时导出
+`SGLANG_DSA_FUSE_TOPK=0` 后，进程使用 0。长期定制可复制所选 YAML，
+编辑后通过 `HCU_CONFIG=/path/to/your.yaml` 指定。自定义文件是完整配置。
+启动日志将镜像内置值和自定义文件值标为 `config`，环境覆盖标为 `explicit`。
+
+节点的 socket 网卡、集合通信 IB 网卡、设备可见性、代理和 BLAS 路径由部署方
+提供。未覆盖时，GLOO 继承 socket 网卡，DeepEP 的 ROCSHMEM 继承集合通信
+IB 网卡；需要的 Mooncake 过滤器取本节点的 `--disaggregation-ib-device`。
+W4A8 复用 `NO_PROXY` 作为 `no_proxy`。这些派生值标为 `auto`。
+W4A8 使用同一份 compressed-tensors 权重，显式要求 W4A16 时启动报错。
+未配置的其他设置沿用所属运行库的默认行为。
 
 ## 全量变量表
 

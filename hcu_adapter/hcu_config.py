@@ -741,6 +741,14 @@ def _candidate_paths():
     from . import hcu_env
 
     env, _ = hcu_env.resolve("HCU_CONFIG")
+    if env.startswith("builtin:"):
+        name = env.removeprefix("builtin:")
+        if not name.endswith(".yaml") or os.path.basename(name) != name:
+            raise HcuConfigError(f"Invalid built-in launch config: {env}")
+        path = os.path.join(os.path.dirname(__file__), "launch_configs", name)
+        if not os.path.isfile(path):
+            raise HcuConfigError(f"Missing built-in launch config: {env}")
+        return [path]
     if env:
         out.append(env)
     for base in (os.getcwd(), os.path.dirname(
@@ -773,19 +781,23 @@ def _validate(doc, path):
     if not isinstance(hosts, dict) or set(hosts) - {"deepinfer", "sglang"}:
         raise HcuConfigError("Unknown adapter host settings")
     if "sglang" in hosts:
-        from .glm53_fp8_decode import CONFIG_KEYS
-
+        from . import glm53_fp8_decode as dp32
         from .glm53_profiles import LAUNCH_ENV_KEYS, PROFILES
 
-        allowed = {name: set(item.defaults).union(item.site, item.derived)
-                   for name, item in PROFILES.items()}
-        allowed["glm53_fp8_decode_dp32"] = CONFIG_KEYS
-        allowed["env"] = LAUNCH_ENV_KEYS
         options = hosts["sglang"]
-        if not isinstance(options, dict) or set(options) - allowed.keys():
-            raise HcuConfigError("Unknown SGLang host setting")
+        if not isinstance(options, dict):
+            raise HcuConfigError("SGLang host settings must be a mapping")
         for name, profile in options.items():
-            if not isinstance(profile, dict) or set(profile) - allowed[name]:
+            if name == "env":
+                allowed = LAUNCH_ENV_KEYS
+            elif name == "glm53_fp8_decode_dp32":
+                allowed = set(dp32.legacy_defaults()).union(dp32.SITE_KEYS, dp32.DERIVED_KEYS)
+            elif name in PROFILES:
+                item = PROFILES[name]
+                allowed = set(item.defaults).union(item.site, item.derived)
+            else:
+                raise HcuConfigError("Unknown SGLang host setting")
+            if not isinstance(profile, dict) or set(profile) - allowed:
                 raise HcuConfigError(f"Unknown setting for {name}")
             if any(type(value) not in (str, int) for value in profile.values()):
                 raise HcuConfigError(f"{name} settings require strings or integers")

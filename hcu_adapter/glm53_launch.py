@@ -9,7 +9,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import hcu_config
+from . import hcu_config, hcu_env
 from . import glm53_fp8_decode as dp32
 from .glm53_fp8_decode import _channel_fp8, launch_environment
 from .glm53_profiles import PROFILES, Profile
@@ -78,7 +78,7 @@ def select_profile(argv, *, optional=False):
     if family == "fp8" and {k: v for k, v in topology.items() if k != "enable_hisparse"} == dp32_topology:
         if not devices:
             parser.error("DP32 Decode requires --disaggregation-ib-device")
-        return "glm53_fp8_decode_dp32", Profile(dp32.DEFAULTS, dp32.SITE_KEYS, dp32.DERIVED_KEYS, dp32_topology), devices
+        return "glm53_fp8_decode_dp32", Profile("glm53-fp8-decode.yaml", dp32.SITE_KEYS, dp32.DERIVED_KEYS, dp32_topology, offline=True), devices
     if optional:
         return None
     parser.error("unsupported GLM-5.3 checkpoint, role or parallel configuration")
@@ -126,6 +126,11 @@ def apply_official_defaults(argv, original):
     hcu_allowed = plugins is None or "hcu" in {p.strip() for p in str(plugins).split(",")}
     if hcu_allowed and args.model_path and (args.model_path / "config.json").is_file():
         family = checkpoint_family(args.model_path)
+    preset, _ = hcu_env.resolve("HCU_CONFIG")
+    if preset.startswith("builtin:glm53-"):
+        expected_family = preset.split("-", 2)[1]
+        if family != expected_family:
+            raise SystemExit(f"{preset} requires a local GLM-5.3 {expected_family} checkpoint and HCU plugin")
     env, sources = resolve_environment(args, family, os.environ, configured, LAUNCH_ENV_KEYS)
     if family == "w4a8" and env["HCU_W4A8_MOE"] != "native":
         raise SystemExit("GLM-5.3 W4A8 requires native MoE; check HCU_W4A8_MOE")

@@ -2,6 +2,11 @@
 
 使用官方 SGLang 0.5.22（历史节点提交 `baa9befa`）以及 HYGON adapter 和 plugin 的 `release/sglang_v0.5.22`。以下参数来自 DTK26.10 四节点配方。历史组合及其验证范围见 [adapter #67](https://github.com/HYGON-AI/adapter-das/pull/67) 和 [plugin #38](https://github.com/HYGON-AI/sglang-plugin-das/pull/38)。
 
+使用已安装 adapter 和 plugin 的镜像时，P、D 两端分别选
+`glm53-w4a8-prefill.yaml` 和 `glm53-w4a8-decode.yaml`，使用官方入口
+`python3 -m sglang.launch_server`。文件定位和外部 `HCU_CONFIG` 覆盖方式见
+[镜像启动配置](../../../docs/env-vars.md#glm-53-的镜像启动配置)。本目录的脚本用于源码环境复现。
+
 每节点 8 卡。prefill 使用两节点 PP2/TP8/CP8/EP8、DeepEP normal，
 decode 使用另两节点 TP16/DP16/EP16、DeepEP low_latency、EAGLE 5/1/6、
 decode graph max batch 16。decode 的两节点规模是本任务的配置，

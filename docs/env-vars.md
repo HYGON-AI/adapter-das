@@ -25,7 +25,15 @@
 
 使用官方入口 `python3 -m sglang.launch_server`。对于下表的本地 GLM-5.3
 compressed-tensors checkpoint，启动时按量化、角色、并行参数及 HiSparse 开关
-自动选择 wheel 中的 YAML，飞书脚本无需设置 `HCU_CONFIG`。
+自动选择 wheel 中的 YAML。飞书的发布脚本显式指定对应文件，已有的
+`HCU_CONFIG` 优先。以普通 FP8 IFB DP8/EP8 为例：
+
+```bash
+export HCU_CONFIG="${HCU_CONFIG:-$(python3 -c 'from importlib.resources import files; print(files("hcu_adapter") / "launch_configs")')/glm53-fp8-ifb-dp8.yaml}"
+```
+
+该脚本使用 full Decode Graph，每个 attention DP rank 最大 Graph BS 为 4，
+全局 `--max-running-requests 32`。直接用官方入口且未指定配置时，仍支持上述自动选择。
 显式 `HCU_CONFIG` 或正常发现的 `hcu_adapter.yaml/yml/json` 优先于自动选择；
 其他模型和未收录的拓扑沿用原有配置机制。启动日志打印自动选中的文件名。
 各文件的 `hosts.sglang.env` 直接列出该场景的优化值。
@@ -48,7 +56,7 @@ compressed-tensors checkpoint，启动时按量化、角色、并行参数及 Hi
 编辑后通过 `HCU_CONFIG=/path/to/your.yaml` 指定。自定义文件是完整配置。
 启动日志将镜像内置值和自定义文件值标为 `config`，环境覆盖标为 `explicit`。
 
-FP8 IFB CP8 的 YAML 设置 `SGLANG_HCU_LIGHTOP_PAGED_MQA_NATIVE_SCHEDULE=1`，由 LightOp 自行调度 paged MQA。显式设置为 `0` 可恢复传入调度表。其他配置未指定此项时沿用 `SGLANG_HCU_GLM53_FP8_DECODE_NATIVE_OPS` 的原有行为。
+FP8 IFB CP8、DP8（含 HiSparse）和 DCP4 的 YAML 设置 `SGLANG_HCU_LIGHTOP_PAGED_MQA_NATIVE_SCHEDULE=1`，由 LightOp 自行调度 paged MQA。显式设置为 `0` 可恢复传入调度表。其他配置未指定此项时沿用 `SGLANG_HCU_GLM53_FP8_DECODE_NATIVE_OPS` 的原有行为。
 
 节点的 socket 网卡、集合通信 IB 网卡、设备可见性、代理和 BLAS 路径由部署方
 提供。未覆盖时，GLOO 继承 socket 网卡，DeepEP 的 ROCSHMEM 继承集合通信

@@ -265,5 +265,6 @@ When the preset XML GPU count matches the visible count, the guard also compares
 | `HCU_FIXED_BLOCK_FP8_DENSE` | E4M3、128×128 权重块与 FP32 scale 的 dense GEMM。 |
 | `HCU_DSA_ORDERED_SHORT_TOPK` | 未融合 k-pool 短序列 prefill，按逻辑位置输出完整选择。 |
 | `HCU_GLM53_FIXED_MHC_STATS` | 未融合 GLM mHC 的固定 FP32 混合统计。 |
-| `HCU_GLM53_FIXED_EAGLE_PROJECTIONS` | GLM EAGLE 首轮 EH RMSNorm 和 BF16 LM head。 |
+| `HCU_GLM53_FIXED_EAGLE_PROJECTIONS` | GLM EAGLE 的 EH RMSNorm、BF16 EH 投影和 LM head。 |
 | `HCU_GLM53_FIXED_DSA_MATMUL` | 零 RoPE MLA 的固定 BF16 吸收投影，以及固定 IEEE FP32 打分和 value 收缩。 |
+| `HCU_GLM53_LIGHTOP_BLOCK_FP8_MOE` | gfx938 TP8/EP1 288/289 专家的 LightOp blockwise FP8 实验档。 |

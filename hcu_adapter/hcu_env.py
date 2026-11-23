@@ -566,7 +566,11 @@ REGISTRY = {
     },
     "HCU_GLM53_FIXED_EAGLE_PROJECTIONS": {
         "env": "HCU_GLM53_FIXED_EAGLE_PROJECTIONS", "default": "0",
-        "about": "Use row-wise EH RMSNorm and fixed BF16 LM-head tiles for GLM EAGLE on HIP.",
+        "about": "Use row-wise EH RMSNorm and fixed BF16 EH/LM-head tiles for GLM EAGLE on HIP.",
+    },
+    "HCU_GLM53_LIGHTOP_BLOCK_FP8_MOE": {
+        "env": "HCU_GLM53_LIGHTOP_BLOCK_FP8_MOE", "default": "0",
+        "about": "Opt into LightOp blockwise E4M3 expert GEMMs for GLM-5.3-Flash TP8.",
     },
     "HCU_GLM53_FIXED_DSA_MATMUL": {
         "env": "HCU_GLM53_FIXED_DSA_MATMUL", "default": "0",

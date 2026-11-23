@@ -16,6 +16,10 @@ def performance(baseline, candidate):
     by_case = {}
     for case, first in baseline.items():
         second = candidate[case]
+        if first.get('request_mode', 'concurrent') != second.get('request_mode', 'concurrent'):
+            raise ValueError(f'Request modes differ for {case}')
+        if first['output_tokens_per_request'] != second['output_tokens_per_request']:
+            raise ValueError(f'Output token budgets differ for {case}')
         a_cache = [row['cached_tokens'] for row in first['rounds']]
         b_cache = [row['cached_tokens'] for row in second['rounds']]
         metrics = {}

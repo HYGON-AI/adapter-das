@@ -176,11 +176,21 @@ Batch-invariant FP32 statistics for GLM mHC
 
 ## glm_eagle_projections
 
-Batch-invariant GLM EAGLE normalization and LM-head projections
+Batch-invariant GLM EAGLE normalization and EH/LM-head projections
 
 | 档位 | 状态 / 备注 |
 |---|---|
 | fixed | candidate Row-wise FP32 RMS statistics and fix |
+
+路由变量：`1`
+
+## glm53_lightop_experts
+
+GLM-5.3-Flash E4M3 block-FP8 expert projections
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| lightop | candidate TP8/EP1 on gfx938 with original FP32 |
 
 路由变量：`1`
 

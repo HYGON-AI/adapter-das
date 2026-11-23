@@ -243,10 +243,18 @@ BACKEND_CATALOG = {
     },
     "glm_eagle_projections": {
         "vars": {"fixed": {"HCU_GLM53_FIXED_EAGLE_PROJECTIONS": "1"}},
-        "summary": "Batch-invariant GLM EAGLE normalization and LM-head projections",
+        "summary": "Batch-invariant GLM EAGLE normalization and EH/LM-head projections",
         "backends": {
             "fixed": {"status": "candidate",
                       "note": "Row-wise FP32 RMS statistics and fixed BF16 projection tiles on HIP, opt-in"},
+        },
+    },
+    "glm53_lightop_experts": {
+        "vars": {"lightop": {"HCU_GLM53_LIGHTOP_BLOCK_FP8_MOE": "1"}},
+        "summary": "GLM-5.3-Flash E4M3 block-FP8 expert projections",
+        "backends": {
+            "lightop": {"status": "candidate",
+                        "note": "TP8/EP1 on gfx938 with original FP32 block scales and host routing"},
         },
     },
     "glm_mla_matmul": {

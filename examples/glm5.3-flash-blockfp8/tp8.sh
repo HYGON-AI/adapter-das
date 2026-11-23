@@ -3,6 +3,19 @@
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
+example_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+case "${DETERMINISTIC:-1}" in
+    1) HCU_CONFIG=${HCU_CONFIG:-"$example_dir/hcu_adapter.yaml"} ;;
+    0) HCU_CONFIG=${HCU_CONFIG:-"$example_dir/hcu_adapter.baseline.yaml"} ;;
+    *) printf 'DETERMINISTIC must be 0 or 1\n' >&2; exit 2 ;;
+esac
+if [[ ! -r "$HCU_CONFIG" ]]; then
+    printf 'Adapter configuration is not readable: %s\n' "$HCU_CONFIG" >&2
+    exit 2
+fi
+export HCU_CONFIG
+HCU_CONFIG="$(cd -- "$(dirname -- "$HCU_CONFIG")" && pwd -P)/$(basename -- "$HCU_CONFIG")"
+
 if (( $# > 0 )); then
     if (( $# < 4 || $# > 5 )); then
         printf 'Usage: %s MODEL_PATH SGLANG_CHECKOUT DIST_INIT_ADDR NODE_RANK [ADAPTER_CHECKOUT]\n' "${0##*/}" >&2
@@ -21,18 +34,6 @@ case "$NODE_RANK" in
     0|1) ;;
     *) printf 'NODE_RANK must be 0 or 1\n' >&2; exit 2 ;;
 esac
-example_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-case "${DETERMINISTIC:-1}" in
-    1) default_config="$example_dir/hcu_adapter.yaml" ;;
-    0) default_config="$example_dir/hcu_adapter.baseline.yaml" ;;
-    *) printf 'DETERMINISTIC must be 0 or 1\n' >&2; exit 2 ;;
-esac
-config="${HCU_CONFIG:-$default_config}"
-if [[ ! -r "$config" ]]; then
-    printf 'Adapter configuration is not readable: %s\n' "$config" >&2
-    exit 2
-fi
-config="$(cd -- "$(dirname -- "$config")" && pwd -P)/$(basename -- "$config")"
 if [[ -n "${ADAPTER_CHECKOUT:-}" ]]; then
     adapter_dir="$(cd -- "$ADAPTER_CHECKOUT" && pwd -P)"
 else
@@ -48,14 +49,22 @@ if [[ ! -r "$SGLANG_CHECKOUT/python/sglang/launch_server.py" || ! -r "$MODEL_PAT
     exit 2
 fi
 iface="${NCCL_SOCKET_IFNAME:-eth0}"
+# Preserve the explicit MOE_BACKEND invocation for existing callers.
+case "${MOE_BACKEND:-auto}" in
+    auto) ;;
+    triton) export HCU_FUSED_MOE_IMPL=triton HCU_GLM53_LIGHTOP_BLOCK_FP8_MOE=0 ;;
+    lightop) export HCU_FUSED_MOE_IMPL=triton HCU_GLM53_LIGHTOP_BLOCK_FP8_MOE=1 ;;
+    *) printf 'MOE_BACKEND must be auto, triton, or lightop\n' >&2; exit 2 ;;
+esac
 # Use the unfused mHC pre/post path for both arms in the gfx938 fixture.
-exec env HCU_CONFIG="$config" HCU_ADAPTER_HOST=sglang SGLANG_PLUGINS=none \
+export HCU_ADAPTER_HOST=sglang SGLANG_PLUGINS=none \
     PYTHONPATH="$SGLANG_CHECKOUT/python:$adapter_dir${PYTHONPATH:+:$PYTHONPATH}" \
     NCCL_IB_DISABLE="${NCCL_IB_DISABLE:-1}" NCCL_SOCKET_IFNAME="$iface" \
     GLOO_SOCKET_IFNAME="${GLOO_SOCKET_IFNAME:-$iface}" \
     SGLANG_OPT_USE_TILELANG_MHC_PRE="${SGLANG_OPT_USE_TILELANG_MHC_PRE:-false}" \
-    SGLANG_OPT_USE_TILELANG_MHC_POST="${SGLANG_OPT_USE_TILELANG_MHC_POST:-false}" \
-    python3 -u -m sglang.launch_server \
+    SGLANG_OPT_USE_TILELANG_MHC_POST="${SGLANG_OPT_USE_TILELANG_MHC_POST:-false}"
+
+exec python3 -u -m sglang.launch_server \
     --model-path "$MODEL_PATH" --served-model-name glm53-flash-blockfp8 \
     --host "${BIND_HOST:-127.0.0.1}" --port "${PORT:-25832}" \
     --tp-size 8 --nnodes 2 --node-rank "$NODE_RANK" --dist-init-addr "$DIST_INIT_ADDR" \

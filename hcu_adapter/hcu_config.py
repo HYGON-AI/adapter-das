@@ -340,6 +340,54 @@ BACKEND_CATALOG = {
                     "note": "Torch layer/RMS norm and general broadcast fallback"},
         },
     },
+    "diffusion_layernorm_modulate": {
+        "var": None,
+        "summary": "Diffusion BF16 LayerNorm modulation; HCU CUDA dispatch",
+        "backends": {
+            "triton": {"status": "candidate", "note": "HIP D divisible by 4, up to 8192; gfx936 width sweep"},
+            "emu": {"status": "candidate", "note": "Torch BF16 LayerNorm and modulation fallback"},
+        },
+    },
+    "diffusion_qknorm_complex_rope_cuda": {
+        "var": None,
+        "summary": "Single-tensor Q/K RMSNorm and complex RoPE",
+        "backends": {
+            "cpp": {"status": "candidate", "note": "HIP port of the Qwen-Image 2.1 plugin"},
+            "emu": {"status": "candidate", "note": "Torch fallback for unsupported layouts or dtypes"},
+        },
+    },
+    "diffusion_qknorm_complex_rope_pack_": {
+        "var": None,
+        "summary": "In-place Q plus prefix K/V packing with RMSNorm and complex RoPE",
+        "backends": {
+            "cpp": {"status": "candidate", "note": "HIP port of the Qwen-Image 2.1 plugin"},
+            "emu": {"status": "candidate", "note": "Torch fallback for unsupported layouts or dtypes"},
+        },
+    },
+    "diffusion_qknorm_complex_rope": {
+        "var": None,
+        "summary": "Q/K RMSNorm and complex RoPE on the Triton op entry",
+        "backends": {
+            "cpp": {"status": "candidate", "note": "HIP port of the Qwen-Image 2.1 plugin"},
+            "emu": {"status": "candidate", "note": "Torch fallback for unsupported layouts or dtypes"},
+        },
+    },
+    "diffusion_qknorm_complex_rope_kv": {
+        "var": None,
+        "summary": "K RMSNorm and complex RoPE with prefix K/V packing",
+        "backends": {
+            "cpp": {"status": "candidate", "note": "HIP port of the Qwen-Image 2.1 plugin"},
+            "emu": {"status": "candidate", "note": "Torch fallback for unsupported layouts or dtypes"},
+        },
+    },
+    "diffusion_fused_complex_rope": {
+        "var": None,
+        "summary": "Diffusion complex RoPE",
+        "backends": {
+            "cpp": {"status": "candidate", "note": "HIP port of the Qwen-Image 2.1 plugin"},
+            "emu": {"status": "candidate", "note": "Torch fallback for unsupported layouts or dtypes"},
+        },
+    },
     "flashinfer_rope": {
         "var": None,
         "summary": "FlashInfer cached Q/K RoPE ABI; sgl_kernel in-place Triton",

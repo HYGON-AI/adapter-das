@@ -289,3 +289,18 @@ trace 族在拍存在时不可用于功量归因。
 ### Same-count foreign PCI topology guard (2026-11-20)
 
 When the preset XML GPU count matches the visible count, the guard also compares GPU PCI addresses with the host DRM render-device addresses. Known XML GPU addresses absent from the host clear NCCL_TOPO_FILE so RCCL discovers sysfs topology. Unknown addresses remain conservative; the explicit HCU_NCCL_TOPO_GUARD=0 override is preserved. This covers S9 gfx938 with an eight-GPU image preset from a different machine. Regression: tests/adapter/test_nccl_topology_pci.py; combined with existing environment guards, 18 CPU tests passed. Full-model verification is recorded separately.
+
+### GLM-5.3-Flash blockwise FP8 TP8 确定性
+
+下列开关默认均为 `0`。部署配置的 `ops` 下设置 `glm53_block_fp8_determinism: fixed` 可一起启用。两节点 gfx938 TP8 复现见 [启动与验收示例](../examples/glm5.3-flash-blockfp8/README.md)。
+
+| 开关 | 启用范围 |
+|---|---|
+| `HCU_ORDERED_TP8_BF16_REDUCE` | 正常 TP 与 attention TP 的 8 rank BF16 原地归约。配合 `--disable-custom-all-reduce`。 |
+| `HCU_KDA_FIXED_SAFE_GATE_ANCHOR` | 下界位于 −5 到 0 的 KDA safe-gate，固定基准行及前缀扫描分块。 |
+| `HCU_GLM53_FIXED_KDA_PROJECTION` | GLM-5.3-Flash 未量化 KDA 的 BF16 投影。 |
+| `HCU_FIXED_BLOCK_FP8_DENSE` | E4M3、128×128 权重块与 FP32 scale 的 dense GEMM。 |
+| `HCU_DSA_ORDERED_SHORT_TOPK` | 未融合 k-pool 短序列 prefill，按逻辑位置输出完整选择。 |
+| `HCU_GLM53_FIXED_MHC_STATS` | 未融合 GLM mHC 的固定 FP32 混合统计。 |
+| `HCU_GLM53_FIXED_EAGLE_PROJECTIONS` | GLM EAGLE 首轮 EH RMSNorm 和 BF16 LM head。 |
+| `HCU_GLM53_FIXED_DSA_MATMUL` | 零 RoPE MLA 的固定 BF16 吸收投影，以及固定 IEEE FP32 打分和 value 收缩。 |

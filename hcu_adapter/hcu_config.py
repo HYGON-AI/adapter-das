@@ -202,6 +202,63 @@ BACKEND_CATALOG = {
                      "note": "fallback (HCU_AITER_AR=0); graph-correct"},
         },
     },
+    "glm53_block_fp8_determinism": {
+        "vars": {"fixed": {
+            "HCU_ORDERED_TP8_BF16_REDUCE": "1",
+            "HCU_KDA_FIXED_SAFE_GATE_ANCHOR": "1",
+            "HCU_GLM53_FIXED_KDA_PROJECTION": "1",
+            "HCU_FIXED_BLOCK_FP8_DENSE": "1",
+            "HCU_DSA_ORDERED_SHORT_TOPK": "1",
+            "HCU_GLM53_FIXED_MHC_STATS": "1",
+            "HCU_GLM53_FIXED_EAGLE_PROJECTIONS": "1",
+            "HCU_GLM53_FIXED_DSA_MATMUL": "1",
+        }},
+        "summary": "GLM-5.3-Flash blockwise FP8 TP8 deterministic inference",
+        "backends": {
+            "fixed": {"status": "candidate",
+                      "note": "Opt in to the eight fixed paths in the two-node TP8 recipe"},
+        },
+    },
+    "kda_projection": {
+        "vars": {"fixed_tile": {"HCU_GLM53_FIXED_KDA_PROJECTION": "1"}},
+        "summary": "Batch-invariant unquantized GLM-5.3 KDA projections",
+        "backends": {
+            "fixed_tile": {"status": "candidate",
+                           "note": "Fixed BF16 Triton GEMM tile on HIP, opt-in"},
+        },
+    },
+    "dsa_short_topk": {
+        "vars": {"ordered": {"HCU_DSA_ORDERED_SHORT_TOPK": "1"}},
+        "summary": "Logical-order DSA kpool short prefill selection",
+        "backends": {
+            "ordered": {"status": "candidate",
+                        "note": "Emit all valid short-context indices in sequence order on HIP, opt-in"},
+        },
+    },
+    "glm_mhc_stats": {
+        "vars": {"fixed_stats": {"HCU_GLM53_FIXED_MHC_STATS": "1"}},
+        "summary": "Batch-invariant FP32 statistics for GLM mHC",
+        "backends": {
+            "fixed_stats": {"status": "candidate",
+                            "note": "Fixed IEEE FP32 tiles for the Torch mHC path on HIP, opt-in"},
+        },
+    },
+    "glm_eagle_projections": {
+        "vars": {"fixed": {"HCU_GLM53_FIXED_EAGLE_PROJECTIONS": "1"}},
+        "summary": "Batch-invariant GLM EAGLE normalization and LM-head projections",
+        "backends": {
+            "fixed": {"status": "candidate",
+                      "note": "Row-wise FP32 RMS statistics and fixed BF16 projection tiles on HIP, opt-in"},
+        },
+    },
+    "glm_mla_matmul": {
+        "vars": {"fixed": {"HCU_GLM53_FIXED_DSA_MATMUL": "1"}},
+        "summary": "Batch-invariant zero-RoPE MLA matrix contractions",
+        "backends": {
+            "fixed": {"status": "candidate",
+                      "note": "Fixed BF16 projections and IEEE FP32 score/value tiles on HIP, opt-in"},
+        },
+    },
     "kda_prefill": {
         "vars": {"fork": {"HCU_KDA_PREFILL_IMPL": "fork"},
                  "emu": {"HCU_KDA_PREFILL_IMPL": "emu"},

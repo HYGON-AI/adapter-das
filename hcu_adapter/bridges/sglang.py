@@ -3023,6 +3023,16 @@ def install() -> None:
                     exc_info=True,
                 )
 
+        try:
+            from hcu_adapter.bridges import sglang_glm53_determinism
+
+            sglang_glm53_determinism.install(_he)
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: GLM-5.3-Flash deterministic paths not installed",
+                exc_info=True,
+            )
+
         # DSV4 CT-int8 q/kv scales must use the existing fused loader arm.
         # Extend its endswith arguments at runtime after operator/vendor setup.
         try:

@@ -16,6 +16,7 @@ the invariants that historically broke us (see docs/ci.md):
     5. every var referenced by BACKEND_CATALOG exists in REGISTRY
     6. every sgl_kernel module routing glue imports resolves to a file
     7. hcu_adapter.example.yaml op keys are real catalog ops
+    8. GLM-5.3 deterministic opt-ins keep defaults and disabled routes
 
   SOFT (warnings; --strict turns them into failures for local dev)
     - registered HCU_* vars read via bare os.environ outside hcu_env.py
@@ -425,6 +426,23 @@ def check_impl_naming(r):
         r.fail("impl-naming", f"tier-matrix check crashed: {exc}")
 
 
+def check_glm53_opt_in_contracts(r):
+    """Keep the switch and installer contracts in the dependency-free PR gate."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "unittest", "tests/adapter/test_glm53_determinism_config.py"],
+            cwd=ROOT, env=dict(os.environ, HCU_ADAPTER_HOST="none"),
+            capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        r.fail("glm53-opt-in", str(exc))
+        return
+    if result.returncode != 0:
+        r.fail("glm53-opt-in", (result.stdout + result.stderr).strip())
+
+
 # ---------------------------------------------------------------------------
 
 def main():
@@ -450,6 +468,7 @@ def main():
     check_text_patch_allowlist(r)
     check_registry_ops_in_catalog(r)
     check_impl_naming(r)
+    check_glm53_opt_in_contracts(r)
 
     print(f"l0 gate: scanned {n_py} py / {n_sh} sh / {n_sec} text files")
     for w in r.warns:

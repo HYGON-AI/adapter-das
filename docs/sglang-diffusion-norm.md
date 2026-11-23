@@ -2,8 +2,9 @@
 
 ## 范围与接入
 
-适配社区已有的 `sglang::fused_norm_scale_shift` 与
-`sglang::fused_scale_residual_norm_scale_shift`。SGLang bridge 调用
+适配社区已有的 `sglang::fused_norm_scale_shift`、
+`sglang::fused_scale_residual_norm_scale_shift` 和
+`sglang::triton_fused_layernorm_modulate`。SGLang bridge 调用
 `hcu_adapter.diffusion_norm.install`，仅 HIP 环境注册 CUDA dispatch 实现，
 保留 `torch.library.Library` 生命周期。模型 forward_cuda、custom op 对象、
 schema、fake handler 及缓存别名均保留；不修改社区源码。
@@ -14,6 +15,52 @@ schema、fake handler 及缓存别名均保留；不修改社区源码。
 LayerNorm/RMSNorm、独立广播参数、batch/token/frame 布局和缺省参数。
 HIP contiguous 输入走 Triton；CPU、无 Triton、非连续输入走 Torch。
 hidden 维度沿接口要求为 256 的倍数且不超过 8192；实际 GPU 验证为 gfx936。
+
+## LayerNorm kernel 的 POST_OP 语义
+
+`sglang::triton_fused_layernorm_modulate` 保留上游的 schema 和 fake impl，
+通过 adapter 覆盖 CUDA dispatch。Qwen-Image 2.1 的 BF16 `scale`、
+可选 `shift` 和 batch stride 由独立 launcher 传给共享 Triton kernel。
+对满足向量化对齐要求的 HIP 输入尝试融合，D 沿用上游范围（4 的倍数，
+不超过 8192）。局部 Welford m2 的每组
+四次更新按 gfx936 上实测的 BF16 ATen 指令顺序执行，前两次使用 FMA，
+后两次分别乘、加。其他输入走同契约的 PyTorch 计算。上游的逐元素一致
+门控决定模型是否采用融合输出。
+
+`norm_scale_shift_triton.py::_layernorm_modulate_kernel` 保留社区 kernel 的
+编译期 `POST_OP`，默认 `bf16_modulate`：
+
+| POST_OP | 归一化之后的计算 |
+|---|---|
+| `bf16_modulate` | 归一化结果、`1 + scale`、两者乘积分别舍入到 BF16，再加 shift |
+| `fp32_modulate` | FP32 `y * (1 + scale) + shift`，禁隐式 FMA |
+| `fp32_affine` | FP32 `tl.fma(y, scale, shift)`，scale 表示 weight |
+| `bf16_norm_fp32_modulate` | Wan：归一化结果舍入到 BF16，FP32 计算 `1 + scale`，再显式 `tl.fma(y, 1 + scale, shift)` |
+
+`HAS_SHIFT=False` 与社区一样只作用于 `bf16_modulate`，该分支不读取 shift。
+Wan 的现有公开 custom-op 接口不变，调用方显式选择第四种模式。该模式的
+modulation 显式使用 FMA，对齐社区 modulation kernel；全局仍禁隐式 FMA，
+其他 POST_OP 模式的舍入位置不变。输出按目标张量 dtype 存储；当前 Wan 分配 BF16 输出。
+这里保留的是后处理语义，不承诺 HCU 归约与 NVIDIA 或本机 Torch 逐位一致。
+FP8 量化及其输出接口尚未迁移，不能将此 kernel 当成完整的 FP8 替代实现。
+
+`test_post_op_rounding_and_graph` 用恒等 FP32 后处理暴露相同的归一化中间值，
+再用独立 Torch 运算验证各模式的精确输出；归约精度由原数值测试单独验证。
+覆盖 4096/5120 hidden、无 shift、奇数 token 及变输入 Graph replay。
+
+## Qwen-Image 2.1 的 Q/K RMSNorm 与 complex RoPE
+
+从 `sglang-hygon-plugin` 复用 HIP JIT kernel，源码见
+`sgl_kernel/diffusion_rope_csrc/`。Adapter 为社区已有的纯 RoPE、单张量
+RMSNorm + RoPE（两个入口）、K/V pack 和完整 Q/K pack 注册 CUDA dispatch。
+保持原有 schema、fake impl 和模型的逐元素检查。已有的单张量和 pack
+实现共用同一设备数值函数。
+
+HIP 融合的 Q/K 路径使用 BF16、head dim 128、每个 head 连续的布局。
+允许 token 方向的 stride，支持投影直接写入 K/V 输出的情况。
+完整 pack 原地修改 Q 和 K/V 输出，`k_src=None` 表示就地处理 K，
+`v_src=None` 表示保留目标 V 区域，只写前缀。其它受支持的布局和精度
+使用独立 Torch 表达式。
 
 ## 残差算子的契约与精度边界
 

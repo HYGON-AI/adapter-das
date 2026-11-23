@@ -18,7 +18,8 @@ def install_ordered_tp_reduce():
         return
 
     @wraps(original)
-    def ordered_tp_reduce(self, input_):
+    def ordered_tp_reduce(self, input_) -> None:
+        """Mutate input in place. The public all_reduce returns the tensor."""
         if (
             not input_.is_cuda
             or input_.dtype != torch.bfloat16

@@ -125,7 +125,8 @@ def cpu_host(monkeypatch):
     return SimpleNamespace(module=module, load=load, emulate=emulate, tl=tl)
 
 
-def test_tp8_reduce_executes_rank_order_and_keeps_fallback(cpu_host, monkeypatch):
+@pytest.mark.parametrize("contiguous", [True, False])
+def test_tp8_reduce_executes_rank_order_and_keeps_fallback(cpu_host, monkeypatch, contiguous):
     kernel_name = "hcu_adapter.kernels.ordered_tp_sum_triton"
     kernel = cpu_host.load(kernel_name)
     launch = cpu_host.emulate(kernel._sum_bf16_tp8, 2)
@@ -137,8 +138,11 @@ def test_tp8_reduce_executes_rank_order_and_keeps_fallback(cpu_host, monkeypatch
     class Group:
         world_size = 8
 
-        def _all_reduce_in_place(self, value):
-            return value
+        def __init__(self):
+            self.fallback_inputs = []
+
+        def _all_reduce_in_place(self, value) -> None:
+            self.fallback_inputs.append(value)
 
         def _all_gather_into_tensor(self, output, _input):
             output = output.view_as(shards)
@@ -153,7 +157,9 @@ def test_tp8_reduce_executes_rank_order_and_keeps_fallback(cpu_host, monkeypatch
     sglang_allreduce.install_ordered_tp_reduce()
     assert Group._all_reduce_in_place is hook
 
-    out = torch.zeros((3, 91), dtype=torch.bfloat16).T.as_subclass(_HipTensor)
+    out = torch.zeros((3, 91), dtype=torch.bfloat16).as_subclass(_HipTensor)
+    if not contiguous:
+        out = out.T
     shards = torch.zeros((8, out.numel()), dtype=out.dtype)
     shards[0].fill_(256)
     shards[1].fill_(1)
@@ -169,10 +175,15 @@ def test_tp8_reduce_executes_rank_order_and_keeps_fallback(cpu_host, monkeypatch
 
     cpu = torch.zeros(1, dtype=torch.bfloat16)
     fp32 = out.float()
-    assert tp._all_reduce_in_place(cpu) is cpu
-    assert tp._all_reduce_in_place(fp32) is fp32
-    assert other._all_reduce_in_place(out) is out
+    assert tp._all_reduce_in_place(cpu) is None
+    assert tp._all_reduce_in_place(fp32) is None
+    assert other._all_reduce_in_place(out) is None
     assert tp._all_reduce_in_place(out[:0]) is None
+    assert len(tp.fallback_inputs) == 2
+    assert tp.fallback_inputs[0] is cpu
+    assert tp.fallback_inputs[1] is fp32
+    assert len(other.fallback_inputs) == 1
+    assert other.fallback_inputs[0] is out
     assert len(launch.calls) == 1
 
 

@@ -53,6 +53,10 @@ import re
 
 LOG = logging.getLogger("hcu.adapter")
 
+# stamped into every replacement; presence in the SOURCE text as read means an
+# earlier run already patched this file (see _apply_file)
+_HCU_MARKER = "HCU: float2 not decomposable"
+
 # file -> ((needle, replacement), ...)
 _PATCHES = {
     "elementwise/grouped_gemma_rmsnorm.cuh": (
@@ -208,13 +212,21 @@ def _apply_file(path, relpath, pairs, register):
     if not path.exists():
         return 0, "absent"
 
-    text = path.read_text(encoding="utf-8")
+    original = path.read_text(encoding="utf-8")
+    # Idempotency must be judged on the text as READ, never on `text` while it
+    # is being rewritten: the replacements carry the HCU marker, so a needle
+    # that goes missing later in this same loop would otherwise see a marker
+    # this run just wrote and be skipped as "already patched" -- silently
+    # publishing a half-patched file instead of failing loud.
+    already_patched = _HCU_MARKER in original
+    text = original
     applied = 0
     for pattern, repl, needle in _compile(pairs):
         if pattern.search(text) is None:
-            # already patched (spawn'd child / second install): the replacement
-            # carries the "HCU:" marker, so its presence means this site is done
-            if "HCU: float2 not decomposable" in text:
+            if already_patched:
+                # second install / spawn'd child: the whole file was patched by
+                # an earlier run, so a needle absent now means its replacement
+                # is already in place.
                 continue
             raise RuntimeError(
                 f"jit_elementwise: needle missing in {relpath}: "

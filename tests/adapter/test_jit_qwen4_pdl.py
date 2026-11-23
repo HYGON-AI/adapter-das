@@ -226,6 +226,49 @@ def test_missing_needle_raises(tmp_path):
         jit_qwen4._apply(root, register)
 
 
+def test_missing_needle_after_a_successful_one_still_raises(tmp_path):
+    """A mid-loop miss must not be masked by markers this run just wrote.
+
+    Regression (external review): the idempotency check consulted the text as
+    it was being rewritten, and every replacement carries the HCU marker, so a
+    needle that disappeared upstream *after* the first replacement looked
+    "already patched" and was skipped -- publishing a half-patched file instead
+    of failing loud.
+    """
+    relpath = "elementwise/rmsnorm.cuh"
+    first = jit_qwen4._PATCHES[relpath][0][0]
+    body = first + "\n// upstream rewrote the remaining sites\n"
+    root = _tree(tmp_path, {relpath: body})
+    target = root / "csrc" / relpath
+
+    _, register = _recorder()
+    with pytest.raises(RuntimeError, match="needle missing"):
+        jit_qwen4._apply(root, register)
+
+    # nothing may be written when the file could not be fully patched
+    assert target.read_text() == body
+
+
+def test_fully_patched_file_is_skipped_silently(tmp_path):
+    """The genuinely idempotent case (spawn'd child / second install) is quiet."""
+    files = {}
+    for relpath, pairs in jit_qwen4._PATCHES.items():
+        files[relpath] = "\n".join(
+            line
+            for needle, _repl in pairs
+            for line in needle.splitlines()
+        ) + "\n"
+    root = _tree(tmp_path, files)
+
+    records, register = _recorder()
+    jit_qwen4._apply(root, register)  # first pass patches everything
+    assert records
+
+    calls = len(records)
+    jit_qwen4._apply(root, register)  # second pass must be silent, no raise
+    assert len(records) == calls
+
+
 def test_transform_registered_in_bundle_pipeline():
     from hcu_adapter import jit_sources
 

@@ -158,9 +158,10 @@ def install() -> None:
         return
     original_argv = getattr(sys, "orig_argv", ())
     # The recipe launcher resolves the child environment before the first HIP import.
-    if sys.argv[:1] == ["-m"] and list(original_argv)[-len(sys.argv)-1:] == [
-        "-m", "hcu_adapter.glm53_fp8_decode", *sys.argv[1:]
-    ]:
+    launcher_args = list(original_argv)[-len(sys.argv)-1:]
+    if (sys.argv[:1] == ["-m"] and len(launcher_args) >= 2 and launcher_args[0] == "-m"
+            and launcher_args[1] in {"hcu_adapter.glm53_fp8_decode", "hcu_adapter.glm53_launch"}
+            and launcher_args[2:] == sys.argv[1:]):
         return
     if sys.argv == ["-c"] and "-c" in original_argv:
         index = original_argv.index("-c") + 1

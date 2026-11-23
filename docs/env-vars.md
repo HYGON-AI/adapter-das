@@ -21,13 +21,55 @@
 正式选择走配置文件；运行时每算子实际谁在跑，看启动日志 `HCU adapter runtime:`
 行或 `HCU_ADAPTER_DUMP`（规约见 [governance.md](governance.md) §4）。
 
+## GLM-5.3 W4A8 和 Channel-FP8 多配方入口
+
+用 `python3 -m hcu_adapter.glm53_launch` 后接原有服务参数。入口读取本地
+checkpoint 的 `config.json`，按量化、角色、并行参数与 HiSparse 开关选择下表
+的一项。不匹配时启动前报错。W4A8 配方使用 compressed-tensors 权重与
+`HCU_W4A8_MOE=native`。原有八节点 FP8 Decode 入口见下一节。
+
+| YAML 节点（在 `hosts.sglang` 下） | 拓扑 | 节点配置 |
+|---|---|---|
+| `glm53_w4a8_ifb_tp8` | 单节点 TP8 / EP1 | 集合通信网卡、代理例外 |
+| `glm53_w4a8_prefill_cp8` | 两节点 TP8 / PP2 / CP8 / EP8 | 集合通信网卡、代理例外 |
+| `glm53_w4a8_decode_dp16` | 两节点 TP16 / DP16 / EP16 | 集合通信网卡、代理例外 |
+| `glm53_fp8_ifb_cp8` | 两节点 TP8 / CP8 / EP8 | 集合通信网卡、可见设备 |
+| `glm53_fp8_ifb_dp8` | 两节点 TP8 / attention DP8 / EP8 | 集合通信网卡、可见设备、BLAS 路径 |
+| `glm53_fp8_ifb_dcp4` | 两节点 TP8 / attention DP2 / DCP4 / EP8 | 集合通信网卡、可见设备、BLAS 路径 |
+| `glm53_fp8_ifb_hisparse` | 两节点 TP8 / attention DP8 / EP8，HiSparse | 集合通信网卡、可见设备、BLAS 路径 |
+| `glm53_fp8_prefill_cp8` | 两节点 TP8 / CP8 / EP8 | 集合通信网卡、可见设备 |
+| `glm53_fp8_decode_dp8` | 两节点 TP8 / attention DP8 / EP8 | 集合通信网卡、可见设备、BLAS 路径 |
+
+集合通信网卡填写 `NCCL_SOCKET_IFNAME` 和 `NCCL_IB_HCA`。可见设备为
+`HIP_VISIBLE_DEVICES`。BLAS 路径为 `HIPBLASLT_TENSILE_LIBPATH`、
+`HIPBLASLT_TUNING_OVERRIDE_FILE` 和 `ROCBLAS_TENSILE_LIBPATH`。
+W4A8 历史配置的 `NO_PROXY` 为 `*`，部署时按本站代理策略填写。示例：
+
+```yaml
+version: 1
+hosts:
+  sglang:
+    glm53_w4a8_prefill_cp8:
+      NCCL_SOCKET_IFNAME: bond1
+      NCCL_IB_HCA: shca_0,shca_1,shca_2,shca_3
+      NO_PROXY: "*"
+```
+
+显式环境变量优先，其次是本角色配置和可用的全局算子配置。配方需要时，
+GLOO 和 ROCSHMEM 分别继承 socket 网卡与集合通信 IB 网卡，Mooncake
+过滤器取本节点的 `--disaggregation-ib-device`，`no_proxy` 继承 `NO_PROXY`。
+其余项使用该角色的默认值。完整清单见
+[各角色默认值和支持的覆盖项](../hcu_adapter/glm53_profiles.py)。
+启动日志打印实际选择的配方以及每个生效值的来源。模型路径、角色 rank 0
+的 rendezvous 地址、本节点 rank、DeepEP 配置文件和 P/D 网卡仍通过原 CLI 指定。
+
 ## GLM-5.3 Channel-FP8 八节点 P/D Decode
 
 在含本配方的镜像中，使用 `python3 -m hcu_adapter.glm53_fp8_decode`，后接原有
 `hcu_sglang` 的全部启动参数。入口匹配本地 compressed-tensors Channel-FP8
 模型、8 节点、TP32 / attention DP32 / EP32、Mooncake Decode 和 DeepEP
 low_latency，解析环境之后执行镜像内的 `python3 -m hcu_sglang`。
-IFB、Prefill、W4A8 和普通启动入口继续使用各自的配置。
+其他 GLM-5.3 配方见上一节。
 
 按节点在当前目录放置 `hcu_adapter.yaml`，或沿用 `HCU_CONFIG` 指向的文件。
 下面用示例值说明哪些字段需要按机器填写。BLAS 调优文件和库目录应填写镜像内

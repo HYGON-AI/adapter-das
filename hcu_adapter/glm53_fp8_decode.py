@@ -112,7 +112,7 @@ def _channel_fp8(group):
     )
 
 
-def launch_environment(inherited, configured, pd_devices):
+def launch_environment(inherited, configured, pd_devices, *, defaults=DEFAULTS, site=SITE_KEYS, derived=DERIVED_KEYS):
     env = inherited.copy()
     sources = {}
 
@@ -126,14 +126,19 @@ def launch_environment(inherited, configured, pd_devices):
             env[key] = fallback
             sources[key] = source
 
-    for key in SITE_KEYS:
+    for key in site:
         assign(key)
-    for key, value in DEFAULTS.items():
+    for key, value in defaults.items():
         assign(key, value)
-    assign("GLOO_SOCKET_IFNAME", env.get("NCCL_SOCKET_IFNAME"), "auto")
-    assign("ROCSHMEM_ALLOWED_IBV_DEVICES", env.get("NCCL_IB_HCA"), "auto")
-    assign("MC_ALLOWED_IBV_DEVICES", pd_devices, "auto")
-    assign("MC_TE_FILTERS", pd_devices, "auto")
+    automatic = {
+        "GLOO_SOCKET_IFNAME": env.get("NCCL_SOCKET_IFNAME"),
+        "ROCSHMEM_ALLOWED_IBV_DEVICES": env.get("NCCL_IB_HCA"),
+        "MC_ALLOWED_IBV_DEVICES": pd_devices,
+        "MC_TE_FILTERS": pd_devices,
+        "no_proxy": env.get("NO_PROXY"),
+    }
+    for key in derived:
+        assign(key, automatic[key], "auto")
     return env, sources
 
 

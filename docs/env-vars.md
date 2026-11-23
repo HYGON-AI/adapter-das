@@ -23,8 +23,11 @@
 
 ## GLM-5.3 的镜像启动配置
 
-使用官方入口 `python3 -m sglang.launch_server`。飞书脚本通过
-`HCU_CONFIG=builtin:文件名.yaml` 选择随 adapter wheel 安装的配置。
+使用官方入口 `python3 -m sglang.launch_server`。对于下表的本地 GLM-5.3
+compressed-tensors checkpoint，启动时按量化、角色、并行参数及 HiSparse 开关
+自动选择 wheel 中的 YAML，飞书脚本无需设置 `HCU_CONFIG`。
+显式 `HCU_CONFIG` 或正常发现的 `hcu_adapter.yaml/yml/json` 优先于自动选择；
+其他模型和未收录的拓扑沿用原有配置机制。启动日志打印自动选中的文件名。
 各文件的 `hosts.sglang.env` 直接列出该场景的优化值。
 同一份配置可以配合不同的角色参数、节点数或 HiSparse 参数使用。
 

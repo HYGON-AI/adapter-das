@@ -97,4 +97,4 @@ CLI 向导（`tools/hcu_config_wizard.py`）是其命令行形态；`--autotune`
 目录/配方是代码快照，BACKEND_CATALOG 或 cookbook 变更后需同步（纯函数段
 在文件内 `/*==PURE-BEGIN*/ ... /*==PURE-END*/` 标记之间）。
 
-GLM-5.3 镜像内置文件可用 `HCU_CONFIG=builtin:文件名.yaml` 指定，见[环境变量手册](env-vars.md)。
+已收录的 GLM-5.3 拓扑在没有部署配置时自动选择镜像内置文件，也可用 `HCU_CONFIG=builtin:文件名.yaml` 指定，见[环境变量手册](env-vars.md)。

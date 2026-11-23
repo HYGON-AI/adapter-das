@@ -137,3 +137,9 @@ moe_align capture 崩（527ad97）。金索引法：docs/models.md 备注列 + c
 
 
 vLLM 0.33 mHC 行为适配候选：`docs/frameworks/vllm033-mhc.md`；数学委托官方 Torch，公开 OOT 注册归宿主桥，post/head 保留，完整四维及模型门禁未闭合。
+
+## MQA fallback 日志的适用范围
+
+MQA fallback 安装日志只描述实际 paged/ragged Torch 路径，不用于判断 GPU 架构或 FP8 矩阵能力。删除固定 gfx936 及无 FP8 矩阵单元的断言后，计算、provider 选择和默认配置不变；本修正不表示所有架构都完成数值/性能验证。
+
+2026-11-23 PR 拆分检查：独立日志修正分支通过L0与38项CPU算子测试。改动仅删除误导性日志字符串；未据此重新宣称全设备数值或性能支持。组合环境的节点门禁/triage仍有独立失败，详见配套PR验证说明。

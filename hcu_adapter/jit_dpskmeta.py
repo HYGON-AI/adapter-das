@@ -116,7 +116,21 @@ _MHC_ASM = (
     "      inverse = rsqrtf(mean);  // HCU: rsqrt.approx.ftz -> rsqrtf",
 )
 
+_SELF_HEAL_ABSENT = {
+    "deepseek_v4/hash_topk.cuh": {
+        "    if (ntn_dev == kDLCUDA) {": "const auto ntn_dev =",
+    },
+}
+
+
 _PATCHES = {
+    # anchor-baseline(②): baa9bef hash_topk.cuh contains the CPU/device scalar guard.
+    "deepseek_v4/hash_topk.cuh": [
+        (
+            "    if (ntn_dev == kDLCUDA) {",
+            "    if (ntn_dev == kDLGPU) {",
+        ),
+    ],
     "deepseek_v4/paged_mqa_metadata.cuh": [
         (
             "#include <cub/block/block_scan.cuh>",
@@ -460,21 +474,33 @@ def _apply(root, register):
             if old_repl in text:
                 text = text.replace(old_repl, original)
 
+        applied = []
         for needle, repl in needles:
             if repl in text:
+                applied.append(needle)
                 continue
             if needle not in text:
+                marker = _SELF_HEAL_ABSENT.get(relpath, {}).get(needle)
+                if marker is not None and marker not in text:
+                    LOG.info(
+                        "jit_dpskmeta: %s self-healed upstream (no %r left);"
+                        " needle skipped",
+                        relpath,
+                        marker,
+                    )
+                    continue
                 raise RuntimeError(
                     f"jit_dpskmeta: needle missing in {relpath}:"
                     f" {needle[:60]!r} -- upstream changed; re-derive"
                     " (governance §3)"
                 )
             text = text.replace(needle, repl)
+            applied.append(needle)
 
         _atomic_write(p, text)
 
         target = f"text:sglang/kernels/jit/csrc/{relpath}"
-        for needle, _ in needles:
+        for needle in applied:
             register(
                 "platform_detect",
                 "dtk-hipcc-portability",
@@ -485,7 +511,7 @@ def _apply(root, register):
         LOG.warning(
             "HCU adapter: JIT %s portability patch installed (%d needles)",
             relpath,
-            len(needles),
+            len(applied),
         )
 
 

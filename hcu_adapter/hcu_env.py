@@ -28,9 +28,11 @@ def arch_name():
 
         if not torch.cuda.is_available():
             return ""
-        return (
-            torch.cuda.get_device_properties(0).gcnArchName.split(":")[0]
-        )
+        if torch.version.hip and not torch.cuda.is_initialized():
+            from hcu_adapter.hip_metadata import architecture
+
+            return architecture(0)
+        return torch.cuda.get_device_properties(0).gcnArchName.split(":")[0]
     except Exception:
         return ""
 
@@ -252,19 +254,11 @@ REGISTRY = {
                  "分组 int4/bf16 不动；=0 还原 stock",
     },
     "HCU_W4A8_MOE": {
-        "env": "HCU_W4A8_MOE", "default": "w4a16",
-        "about": "CT W4A8 MoE scheme 路由（ct_w4a8_moe.py）：DAS 转换的 "
-                 "w4a8 检查点（如 DeepSeek-V4.1-Flash-Channel-INT4-w4a8）"
-                 "config_groups 全 regex targets，target_scheme_map 无 "
-                 "'Linear' 桶，上游 CompressedTensorsW4AFP8MoE.__init__ 构"
-                 "造期 KeyError('Linear')（v0522 w4a8_fp8_moe.py:87，模型建"
-                 "不过，nmz26 2026-10-26）。w4a16（默认）=wrap config "
-                 "__init__ 把 int4 组 input_activations 置 None → 上游自然"
-                 "走 _is_hip 的 WNA16TritonMoE 臂（box16 已验证，10.6 channel"
-                 " 改写收口），激活 int8 量化被忽略（bf16，数值更保真；上游"
-                 " nvfp4 w4a4→w4a16 同款降级模式）；heal=只作用域内补 "
-                 "'Linear' 桶保留 stock W4AFP8 语义（当前会响亮撞 CUTLASS "
-                 "W4A8 缺核，为将来 W4A8 HIP 内核备的路）；0=还原 stock",
+        "env": "HCU_W4A8_MOE", "default": "native",
+        "about": "CT MoE routing: native preserves checkpoint activation quantization "
+                 "and delegates to the installed scheme. Missing W4A8 support must "
+                 "fail rather than silently run W4A16. Legacy w4a16 and heal routes "
+                 "require explicit selection. 0 disables this bridge.",
     },
     "HCU_DSV4_WQKV_SCALE": {
         "env": "HCU_DSV4_WQKV_SCALE", "default": "1",
@@ -441,7 +435,8 @@ REGISTRY = {
     },
     "HCU_RMS_NORM_IMPL": {
         "env": "HCU_RMS_NORM_IMPL", "default": "triton",
-        "about": "rms_norm 后端档位：triton|aiter(rmsnorm_forward 桥)|torch；"
+        "about": "rms_norm 后端档位：triton|aiter(rmsnorm_forward 桥)|lightop|torch；"
+                 "lightop 仅覆盖 BF16 plain RMSNorm，其他 dtype 使用 triton；"
                  "仅管 plain rmsnorm，fused_add/gemma 变体见 "
                  "HCU_FUSED_ADD_RMS_IMPL",
     },
@@ -607,7 +602,7 @@ REGISTRY = {
 }
 
 
-def resolve(name):
+def resolve(name, *, evaluate_auto=True):
     """-> (value, source) where source in {'explicit','auto','default'}.
 
     The returned value is the EFFECTIVE setting as a string ('1'/'0'/''
@@ -632,6 +627,8 @@ def resolve(name):
     auto_hosts = spec.get("auto_hosts")
     active_host = os.environ.get("_HCU_ADAPTER_ACTIVE_HOST")
     if "auto" in spec and (auto_hosts is None or active_host in (None, "none") or active_host in auto_hosts):
+        if not evaluate_auto:
+            return "pending", "auto-deferred"
         try:
             v = spec["auto"]()
             if v is not None:
@@ -648,7 +645,7 @@ def enabled(name):
 
 
 def log_summary():
-    """Startup lines: config file in effect + every resolved var + source."""
+    """Report configuration without executing device-dependent auto rules."""
     from . import hcu_config as _cfg
 
     cfg_line = _cfg.summary_line()
@@ -656,7 +653,7 @@ def log_summary():
         LOG.warning(cfg_line)
     parts = []
     for name in REGISTRY:
-        v, src = resolve(name)
+        v, src = resolve(name, evaluate_auto=False)
         if v in ("", "0"):
             continue  # keep the line short: only non-default-effective vars
         parts.append(f"{name}={v}({src})")

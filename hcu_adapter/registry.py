@@ -47,6 +47,10 @@ _BOUND = {}
 # JIT entries below govern transformations of adapter-owned compiler inputs.
 # They do not authorize writing to the community source tree.
 TEXT_PATCH_ALLOWLIST = {
+    ("platform_detect", "    if (ntn_dev == kDLCUDA) {"),
+    # In-memory AST redirects of hardware metadata queries only. Exact modules
+    # are enumerated in lightop_metadata._TARGETS; source files stay untouched.
+    ("platform_detect", "AST: context-free HIP metadata queries in audited modules"),
     ("per_token_quant", "#elif defined(__gfx950__) || defined(__gfx1200__) || defined(__gfx1201__)"),
     ("per_token_quant", "reinterpret_cast<__nv_fp8x2_storage_t*>(&output_buf)"),
     ("per_token_quant", "__nv_cvt_float2_to_fp8x2(outputx2, __NV_SATFINITE, __NV_E4M3)"),
@@ -170,6 +174,8 @@ TEXT_PATCH_ALLOWLIST = {
         "  return r;\n"
         "}",
     ),
+    ("platform_detect", "template <bool kUsePDL>\n__global__ void concat_mla_absorb_q_kernel("),
+    ("platform_detect", "    LaunchKernel(grid_size, block_size, device.unwrap())\n        .enable_pdl(kUsePDL)("),
     # deepseek_v4/paged_mqa_metadata.cuh includes NVIDIA cub for BlockScan;
     # DTK ships hipCUB only (namespace cub mirrors the API, umbrella header
     # per the tree's own lora JIT convention) — DSV4-Flash decode graph

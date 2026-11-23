@@ -229,7 +229,7 @@ def _apply_file(path, relpath, pairs, register):
         register(
             "rms_norm",
             "gfx93x-hipcc-portability",
-            target=f"text:sglang/kernels/jit/{relpath}",
+            target=f"text:sglang/kernels/jit/csrc/{relpath}",
             mechanism=_reg.MECH_TEXT,
             detail=needle.splitlines()[0],
         )

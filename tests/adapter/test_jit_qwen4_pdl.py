@@ -178,28 +178,34 @@ def test_patch_rewrites_every_site(tmp_path):
     for args, kwargs in records:
         assert args[0] == "rms_norm"
         assert kwargs["mechanism"] == registry.MECH_TEXT
-        assert kwargs["target"].startswith("text:sglang/kernels/jit/")
+        assert kwargs["target"].startswith("text:sglang/kernels/jit/csrc/")
 
 
 def test_patch_is_idempotent(tmp_path):
-    src = "/public/home/yaoht/sglang/github/sglang/python/sglang/kernels/jit"
-    import pathlib
+    """Second install must be a no-op.
 
-    if not pathlib.Path(src).is_dir():
-        pytest.skip("community sglang tree not mounted")
-    files = {
-        relpath: (pathlib.Path(src) / "csrc" / relpath).read_text()
-        for relpath in _COVERED
-    }
+    Synthetic bodies built from the needles themselves, so this runs in every
+    environment: the contract is about _apply's idempotency, not about the
+    community tree's contents.
+    """
+    files = {}
+    for relpath, pairs in jit_qwen4._PATCHES.items():
+        files[relpath] = "\n".join(
+            line
+            for needle, _repl in pairs
+            for line in needle.splitlines()
+        ) + "\n"
     root = _tree(tmp_path, files)
+
     records, register = _recorder()
     jit_qwen4._apply(root, register)
     once = {r: (root / "csrc" / r).read_text() for r in _COVERED}
     calls = len(records)
+    assert calls, "first install must register"
 
     jit_qwen4._apply(root, register)  # second install must be a no-op
     assert {r: (root / "csrc" / r).read_text() for r in _COVERED} == once
-    assert len(records) == calls
+    assert len(records) == calls, "second install must not re-register"
 
 
 def test_absent_files_are_skipped(tmp_path):

@@ -11,8 +11,11 @@ real community tree. That gap shipped once: `detail=pattern.pattern`
 invisible on a warm cache because `prepare()` returned the cached bundle before
 validating anything.
 
-These tests need the community SGLang tree; they skip when it is not mounted
-(pass HCU_TEST_SGLANG_TREE to point at a different checkout).
+These tests need the community SGLang tree and skip without it; pass
+HCU_TEST_SGLANG_TREE (same gate as test_jit_sources.py) to point at a checkout.
+No default path is baked in: an absolute path from one developer's home would
+be dead weight in every other environment and leaks personal environment
+details into the repository.
 """
 
 import json
@@ -23,14 +26,26 @@ import pytest
 
 from hcu_adapter import jit_qwen4, jit_sources, registry
 
-_DEFAULT_TREE = "/public/home/yaoht/sglang/github/sglang/python/sglang/kernels/jit"
-
 
 def _tree():
-    root = Path(os.environ.get("HCU_TEST_SGLANG_TREE") or _DEFAULT_TREE)
-    if not (root / "csrc").is_dir():
-        pytest.skip(f"community JIT tree not mounted at {root}")
-    return root
+    """Community JIT source root, from the same gate test_jit_sources uses.
+
+    HCU_TEST_SGLANG_TREE points at the SGLang *repository root* (matching
+    test_jit_sources.py), so the JIT tree is rooted under
+    python/sglang/kernels/jit. Accepting a path that already ends at the JIT
+    root keeps the variable usable for both shapes.
+    """
+    root = os.environ.get("HCU_TEST_SGLANG_TREE")
+    if not root:
+        pytest.skip("requires explicitly selected community sglang tree")
+    root = Path(root)
+    candidates = [root / "python/sglang/kernels/jit", root]
+    for candidate in candidates:
+        if (candidate / "csrc").is_dir():
+            return candidate
+    pytest.skip(
+        f"HCU_TEST_SGLANG_TREE has no python/sglang/kernels/jit/csrc: {root}"
+    )
 
 
 def test_committed_needles_are_allowlisted():

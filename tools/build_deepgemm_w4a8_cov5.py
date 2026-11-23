@@ -53,7 +53,6 @@ def main():
     if compiler is None:
         raise FileNotFoundError("hipcc")
     output.parent.mkdir(parents=True, exist_ok=True)
-    stage = Path(tempfile.mkdtemp(prefix=f".{output.name}.build-", dir=output.parent))
     original = source / next(iter(SOURCE_HASHES))
     text = original.read_text()
     include = '#include "m_grouped_w4a8_gemm_nt_contiguous_wasp/bm128_bn512_bk64.inc.cuh"\n'
@@ -69,60 +68,62 @@ def main():
     # WASP1006 branch fails register allocation; never silently select it.
     text = text.replace(include, "").replace(branch, "")
     text = text.replace("mode == 1002 || mode == 1006", "mode == 1002")
-    generated = stage / "contiguous1002.cu"
-    generated.write_text(text)
-    binding = stage / "binding.cpp"
-    binding.write_text(
-        '#include <torch/extension.h>\n'
-        '#include "m_grouped_w4a8_gemm_nt_contiguous.h"\n'
-        'PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {\n'
-        '  m.def("run", &deepgemm::m_grouped_marlin_w4a8_gemm_nt_contiguous_hipc);\n'
-        f'  m.attr("SOURCE_COMMIT") = "{SOURCE_COMMIT}";\n'
-        '  m.attr("CODE_OBJECT_VERSION") = 5;\n'
-        '  m.attr("SUPPORTED_MODES") = pybind11::make_tuple(1002);\n'
-        '  m.attr("ARCHITECTURE") = "gfx936";\n'
-        '}\n'
-    )
-    previous_cwd = Path.cwd()
-    try:
-        os.chdir(stage)
-        extension = CUDAExtension(name=MODULE, sources=[str(generated)])
-        torch_root = Path(torch.__file__).parent
-        binary = stage / (MODULE + sysconfig.get_config_var("EXT_SUFFIX"))
-        command = [
-            compiler, "-mcode-object-version=5", "--offload-arch=gfx936",
-            "-shared", "-fPIC", "-O3", "-std=c++17", "-fno-gpu-rdc",
-            "--gpu-max-threads-per-block=1024", "-mllvm",
-            "-support-768-vgprs=true", "-DHIP_ENABLE_WARP_SYNC_BUILTINS",
-            "-DUSE_ROCM=1", "-D__HIP_PLATFORM_HCC__=1", "-DTORCH_VERSION_OVER_110",
-            f"-DTORCH_EXTENSION_NAME={MODULE}", "-w",
-            f"-D_GLIBCXX_USE_CXX11_ABI={int(torch._C._GLIBCXX_USE_CXX11_ABI)}",
-            "-I" + str(source / "csrc/include"),
-            "-I" + str(source / "csrc/arch/gfx936_gfx938_shared"),
-            "-I" + str(torch_root / "include"),
-            "-I" + str(torch_root / "include/torch/csrc/api/include"),
-            "-I" + sysconfig.get_paths()["include"],
-            str(binding), extension.sources[0], "-L" + str(torch_root / "lib"),
-            "-Wl,-rpath," + str(torch_root / "lib"), "-ltorch", "-ltorch_cpu",
-            "-ltorch_hip", "-ltorch_python", "-lc10", "-lc10_hip",
-            "-o", str(binary),
-        ]
-        (stage / "command.json").write_text(json.dumps(command, indent=2) + "\n")
-        subprocess.run(command, check=True)
-        check_sources(source)
-        report = {
-            "source_commit": SOURCE_COMMIT,
-            "source_hashes": SOURCE_HASHES,
-            "generated_sha256": hashlib.sha256(generated.read_bytes()).hexdigest(),
-            "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-            "torch": torch.__version__, "code_object_version": 5,
-            "architecture": "gfx936", "mode": 1002,
-            "scope": "Native1002 bodies unchanged; WASP1006 excluded and rejected",
-        }
-        (stage / "provenance.json").write_text(json.dumps(report, indent=2) + "\n")
-    finally:
-        os.chdir(previous_cwd)
-    stage.rename(output)
+    with tempfile.TemporaryDirectory(prefix=f".{output.name}.build-", dir=output.parent) as staging:
+        stage = Path(staging)
+        generated = stage / "contiguous1002.cu"
+        generated.write_text(text)
+        binding = stage / "binding.cpp"
+        binding.write_text(
+            '#include <torch/extension.h>\n'
+            '#include "m_grouped_w4a8_gemm_nt_contiguous.h"\n'
+            'PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {\n'
+            '  m.def("run", &deepgemm::m_grouped_marlin_w4a8_gemm_nt_contiguous_hipc);\n'
+            f'  m.attr("SOURCE_COMMIT") = "{SOURCE_COMMIT}";\n'
+            '  m.attr("CODE_OBJECT_VERSION") = 5;\n'
+            '  m.attr("SUPPORTED_MODES") = pybind11::make_tuple(1002);\n'
+            '  m.attr("ARCHITECTURE") = "gfx936";\n'
+            '}\n'
+        )
+        previous_cwd = Path.cwd()
+        try:
+            os.chdir(stage)
+            extension = CUDAExtension(name=MODULE, sources=[str(generated)])
+            torch_root = Path(torch.__file__).parent
+            binary = stage / (MODULE + sysconfig.get_config_var("EXT_SUFFIX"))
+            command = [
+                compiler, "-mcode-object-version=5", "--offload-arch=gfx936",
+                "-shared", "-fPIC", "-O3", "-std=c++17", "-fno-gpu-rdc",
+                "--gpu-max-threads-per-block=1024", "-mllvm",
+                "-support-768-vgprs=true", "-DHIP_ENABLE_WARP_SYNC_BUILTINS",
+                "-DUSE_ROCM=1", "-D__HIP_PLATFORM_HCC__=1", "-DTORCH_VERSION_OVER_110",
+                f"-DTORCH_EXTENSION_NAME={MODULE}", "-w",
+                f"-D_GLIBCXX_USE_CXX11_ABI={int(torch._C._GLIBCXX_USE_CXX11_ABI)}",
+                "-I" + str(source / "csrc/include"),
+                "-I" + str(source / "csrc/arch/gfx936_gfx938_shared"),
+                "-I" + str(torch_root / "include"),
+                "-I" + str(torch_root / "include/torch/csrc/api/include"),
+                "-I" + sysconfig.get_paths()["include"],
+                str(binding), extension.sources[0], "-L" + str(torch_root / "lib"),
+                "-Wl,-rpath," + str(torch_root / "lib"), "-ltorch", "-ltorch_cpu",
+                "-ltorch_hip", "-ltorch_python", "-lc10", "-lc10_hip",
+                "-o", str(binary),
+            ]
+            (stage / "command.json").write_text(json.dumps(command, indent=2) + "\n")
+            subprocess.run(command, check=True)
+            check_sources(source)
+            report = {
+                "source_commit": SOURCE_COMMIT,
+                "source_hashes": SOURCE_HASHES,
+                "generated_sha256": hashlib.sha256(generated.read_bytes()).hexdigest(),
+                "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+                "torch": torch.__version__, "code_object_version": 5,
+                "architecture": "gfx936", "mode": 1002,
+                "scope": "Native1002 bodies unchanged; WASP1006 excluded and rejected",
+            }
+            (stage / "provenance.json").write_text(json.dumps(report, indent=2) + "\n")
+        finally:
+            os.chdir(previous_cwd)
+        stage.rename(output)
     print(json.dumps({"output": str(output), **report}, indent=2))
 
 

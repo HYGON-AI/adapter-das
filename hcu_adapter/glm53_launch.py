@@ -23,6 +23,8 @@ PARALLEL_SIZES = (
 def checkpoint_family(path):
     with (path / "config.json").open() as stream:
         model = json.load(stream)
+    if (model.get("hidden_size"), model.get("num_hidden_layers"), model.get("n_routed_experts")) != (6144, 78, 256):
+        return None
     quant = model.get("quantization_config") or {}
     groups = (quant.get("config_groups") or {}).values()
     if model.get("model_type") != "glm_moe_dsa" or quant.get("quant_method") != "compressed-tensors" or not groups:
@@ -42,7 +44,7 @@ def checkpoint_family(path):
     return "w4a8" if found_experts else None
 
 
-def select_profile(argv, *, optional=False):
+def parse_options(argv, *, optional=False):
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     parser.add_argument("--model-path", required=not optional, type=Path)
     parser.add_argument("--disaggregation-ib-device")
@@ -53,6 +55,12 @@ def select_profile(argv, *, optional=False):
     for option in ("enable-prefill-cp", "enable-dp-attention", "enable-hisparse"):
         parser.add_argument("--" + option, action="store_true")
     args, _ = parser.parse_known_args(argv)
+    return args
+
+
+def select_profile(argv, *, optional=False):
+    args = parse_options(argv, optional=optional)
+    parser = argparse.ArgumentParser()
     settings = vars(args).copy()
     model_path = settings.pop("model_path")
     if optional and (not model_path or not (model_path / "config.json").is_file()):
@@ -100,10 +108,31 @@ def apply_official_defaults(argv, original):
         return
     if "--help" in argv or "-h" in argv:
         return
-    selection = select_profile(argv, optional=True)
-    if selection is None:
-        return
-    env = profile_environment(selection)
+    from .glm53_env_rules import resolve_environment
+    from .glm53_profiles import LAUNCH_ENV_KEYS
+
+    args = parse_options(argv, optional=True)
+    config = hcu_config.load()
+    settings = config["hosts"].get("sglang", {})
+    configured = {**config["overrides"], **settings.get("env", {})}
+    # Older files may contain per-topology overrides. Only those overrides use
+    # the legacy selector. Neither global config nor auto rules depend on it.
+    if settings.keys() - {"env"}:
+        selected = select_profile(argv, optional=True)
+        if selected is not None:
+            configured.update(settings.get(selected[0], {}))
+    family = None
+    plugins = os.environ.get("SGLANG_PLUGINS", configured.get("SGLANG_PLUGINS"))
+    hcu_allowed = plugins is None or "hcu" in {p.strip() for p in str(plugins).split(",")}
+    if hcu_allowed and args.model_path and (args.model_path / "config.json").is_file():
+        family = checkpoint_family(args.model_path)
+    env, sources = resolve_environment(args, family, os.environ, configured, LAUNCH_ENV_KEYS)
+    if family == "w4a8" and env["HCU_W4A8_MOE"] != "native":
+        raise SystemExit("GLM-5.3 W4A8 requires native MoE; check HCU_W4A8_MOE")
+    if sources:
+        print("HCU SGLang env: " + " ".join(
+            f"{key}={env[key]}({source})" for key, source in sorted(sources.items())
+        ), file=sys.stderr, flush=True)
     if env != os.environ:
         env[marker] = str(os.getpid())
         os.execve(sys.executable, [sys.executable, *original[1:]], env)

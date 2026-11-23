@@ -775,11 +775,12 @@ def _validate(doc, path):
     if "sglang" in hosts:
         from .glm53_fp8_decode import CONFIG_KEYS
 
-        from .glm53_profiles import PROFILES
+        from .glm53_profiles import LAUNCH_ENV_KEYS, PROFILES
 
         allowed = {name: set(item.defaults).union(item.site, item.derived)
                    for name, item in PROFILES.items()}
         allowed["glm53_fp8_decode_dp32"] = CONFIG_KEYS
+        allowed["env"] = LAUNCH_ENV_KEYS
         options = hosts["sglang"]
         if not isinstance(options, dict) or set(options) - allowed.keys():
             raise HcuConfigError("Unknown SGLang host setting")

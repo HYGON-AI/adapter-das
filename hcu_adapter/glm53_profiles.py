@@ -327,3 +327,8 @@ PROFILES = {
         },
     ),
 }
+
+# Supported deployment overrides, independent of the compatibility launchers.
+LAUNCH_ENV_KEYS = frozenset().union(
+    *(set(p.defaults).union(p.site, p.derived) for p in PROFILES.values())
+)

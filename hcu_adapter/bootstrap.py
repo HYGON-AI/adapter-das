@@ -200,8 +200,7 @@ def install() -> None:
 
         plugins = os.environ.get("SGLANG_PLUGINS")
         plugin_names = {name.strip() for name in (plugins or "").split(",")}
-        hcu_allowed = plugins is None or "hcu" in plugin_names
-        if hcu_allowed and (module_launch or cli_launch) and original_argv:
+        if (module_launch or cli_launch) and original_argv:
             from hcu_adapter.glm53_launch import apply_official_defaults
 
             try:

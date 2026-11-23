@@ -21,100 +21,45 @@
 正式选择走配置文件；运行时每算子实际谁在跑，看启动日志 `HCU adapter runtime:`
 行或 `HCU_ADAPTER_DUMP`（规约见 [governance.md](governance.md) §4）。
 
-## GLM-5.3 W4A8 和 Channel-FP8 多配方入口
+## 官方 SGLang 启动时的 GLM-5.3 环境变量
 
-用官方命令 `python3 -m sglang.launch_server` 后接原有服务参数。在安装 adapter 和 plugin 的 HCU 镜像中，adapter 启动时读取本地
-checkpoint 的 `config.json`，按量化、角色、并行参数与 HiSparse 开关选择下表
-的一项。匹配时自动补齐优化项及插件白名单；其余拓扑沿用服务自身的环境。W4A8 配方使用 compressed-tensors 权重与
-`HCU_W4A8_MOE=native`。八节点 FP8 Decode 配置见下一节。
+在安装本版 adapter 和 HCU plugin 的镜像中，使用
+`python3 -m sglang.launch_server` 和正常的 SGLang 参数。每个变量分别按
+**显式环境变量 > 配置文件 > 自动规则 > 默认值** 取值。启动日志逐项标注
+`explicit`、`config`、`auto`、`default`。未由 adapter 管理取值的项
+保留运行库自身的默认行为。
 
-| YAML 节点（在 `hosts.sglang` 下） | 拓扑 | 节点配置 |
-|---|---|---|
-| `glm53_w4a8_ifb_tp8` | 单节点 TP8 / EP1 | 集合通信网卡、代理例外 |
-| `glm53_w4a8_prefill_cp8` | 两节点 TP8 / PP2 / CP8 / EP8 | 集合通信网卡、代理例外 |
-| `glm53_w4a8_decode_dp16` | 两节点 TP16 / DP16 / EP16 | 集合通信网卡、代理例外 |
-| `glm53_fp8_ifb_cp8` | 两节点 TP8 / CP8 / EP8 | 集合通信网卡、可见设备 |
-| `glm53_fp8_ifb_dp8` | 两节点 TP8 / attention DP8 / EP8 | 集合通信网卡、可见设备、BLAS 路径 |
-| `glm53_fp8_ifb_dcp4` | 两节点 TP8 / attention DP2 / DCP4 / EP8 | 集合通信网卡、可见设备、BLAS 路径 |
-| `glm53_fp8_ifb_hisparse` | 两节点 TP8 / attention DP8 / EP8，HiSparse | 集合通信网卡、可见设备、BLAS 路径 |
-| `glm53_fp8_prefill_cp8` | 两节点 TP8 / CP8 / EP8 | 集合通信网卡、可见设备 |
-| `glm53_fp8_decode_dp8` | 两节点 TP8 / attention DP8 / EP8 | 集合通信网卡、可见设备、BLAS 路径 |
-
-集合通信网卡填写 `NCCL_SOCKET_IFNAME` 和 `NCCL_IB_HCA`。可见设备为
-`HIP_VISIBLE_DEVICES`。BLAS 路径为 `HIPBLASLT_TENSILE_LIBPATH`、
-`HIPBLASLT_TUNING_OVERRIDE_FILE` 和 `ROCBLAS_TENSILE_LIBPATH`。
-W4A8 历史配置的 `NO_PROXY` 为 `*`，部署时按本站代理策略填写。示例：
+部署覆盖可写在当前目录的 `hcu_adapter.yaml`，或使用 `HCU_CONFIG`
+指定文件。通用配置节点为 `hosts.sglang.env`，不需要选配方名。例如：
 
 ```yaml
 version: 1
 hosts:
   sglang:
-    glm53_w4a8_prefill_cp8:
+    env:
       NCCL_SOCKET_IFNAME: bond1
       NCCL_IB_HCA: shca_0,shca_1,shca_2,shca_3
-      NO_PROXY: "*"
+      SGLANG_DSA_FUSE_TOPK: 0
 ```
 
-显式环境变量优先，其次是本角色配置和可用的全局算子配置。配方需要时，
-GLOO 和 ROCSHMEM 分别继承 socket 网卡与集合通信 IB 网卡，Mooncake
-过滤器取本节点的 `--disaggregation-ib-device`，`no_proxy` 继承 `NO_PROXY`。
-其余项使用该角色的默认值。完整清单见
-[各角色默认值和支持的覆盖项](../hcu_adapter/glm53_profiles.py)。
-启动日志打印实际选择的配方以及每个生效值的来源。模型路径、角色 rank 0
-的 rendezvous 地址、本节点 rank、DeepEP 配置文件和 P/D 网卡仍通过原 CLI 指定。
+若同时显式导出 `SGLANG_DSA_FUSE_TOPK=1`，生效值为 1。删除这条 export
+后，YAML 的 0 生效。两处都删除后，才由模型、DCP 等运行条件推导。
+既有 `ops` 配置及旧版按角色命名的 YAML 覆盖可继续使用。同一字段在配置文件
+内优先取兼容的角色覆盖，然后取 `hosts.sglang.env`，最后取 `ops`。
 
-## GLM-5.3 Channel-FP8 八节点 P/D Decode
-
-在含本配方的镜像中，使用官方 `python3 -m sglang.launch_server`，后接原有服务参数。入口匹配本地 compressed-tensors Channel-FP8
-模型、8 节点、TP32 / attention DP32 / EP32、Mooncake Decode 和 DeepEP
-low_latency，普通和 HiSparse Decode 共用此环境配方。
-其他 GLM-5.3 配方见上一节。
-
-按节点在当前目录放置 `hcu_adapter.yaml`，或沿用 `HCU_CONFIG` 指向的文件。
-下面用示例值说明哪些字段需要按机器填写。BLAS 调优文件和库目录应填写镜像内
-可读的实际路径。容器已注入的设备可见性优先。P/D 传输网卡由 CLI
-`--disaggregation-ib-device` 指定，可与集合通信使用不同网面。
-
-```yaml
-version: 1
-hosts:
-  sglang:
-    glm53_fp8_decode_dp32:
-      HIP_VISIBLE_DEVICES: "0,1,2,3"
-      NCCL_SOCKET_IFNAME: ibp129s0
-      NCCL_IB_HCA: shca_0,shca_1,shca_2,shca_4
-      HIPBLASLT_TENSILE_LIBPATH: /opt/glm53/blas/lib/hipblaslt/library_gfx938
-      HIPBLASLT_TUNING_OVERRIDE_FILE: /opt/glm53/tuning/hipblaslt.config
-      ROCBLAS_TENSILE_LIBPATH: /opt/glm53/tuning/library_gpu6
-```
-
-配方按 **显式 env > 配置文件 > 自动规则 > 配方默认值** 解析，在启动日志打印
-每个生效值和来源。上面六项无配方默认值。自动规则将 `GLOO_SOCKET_IFNAME`
-继承自 `NCCL_SOCKET_IFNAME`，`ROCSHMEM_ALLOWED_IBV_DEVICES` 继承自
-`NCCL_IB_HCA`，`MC_TE_FILTERS` 和 `MC_ALLOWED_IBV_DEVICES` 取 P/D 的 CLI 设备列表。
-下面是这一配方的固定默认值，均可在同一 YAML 节点覆盖。
-
-| 默认值 | 环境变量 |
+| 变量 | 生效依据 |
 |---|---|
-| `1` | `SPT_NOENV`、`HF_HUB_OFFLINE`、`TRANSFORMERS_OFFLINE`、`SGLANG_SCHEDULER_SKIP_ALL_GATHER`、`SGLANG_NCCL_ALL_GATHER_IN_OVERLAP_SCHEDULER_SYNC_BATCH`、`MC_ENABLE_DEST_DEVICE_AFFINITY`、`ROCSHMEM_DISABLE_HDP_FLUSH`、`ROCSHMEM_IPC_MNVL`、`SGLANG_MOE_COPY_WEIGHT_VIEWS_BEFORE_H2D`、`SGLANG_USE_DEEPGEMM_MOE`、`SGLANG_USE_FP8_W8A8_MOE`、`SGLANG_HCU_GLM_CT_BF16_ROUTER`、`SGLANG_USE_LIGHTOP`、`SGLANG_GLM_OPT_DECODE`、`SGLANG_GLM_HCU_GEMM`、`SGLANG_HCU_USE_LIGHTOP_ROPE`、`SGLANG_ENABLE_HCU_CONCAT_MLA_ABSORB_Q`、`SGLANG_DSA_HCU_LIGHTOP_MASK_TOPK`、`SGLANG_DSA_FUSE_TOPK`、`ALLREDUCE_STREAM_WITH_COMPUTE`、`HIP_KERNEL_EVENT_SYSTENFENCE`、`HIP_GRAPH_ACCUMULATE_DISPATCH`、`HIP_GRAPH_USE_CMD_CACHE` |
-| `sglang` | `HCU_ADAPTER_HOST` |
-| `hcu` | `SGLANG_PLUGINS` |
-| `none` | `VLLM_PLUGINS` |
-| `python` | `SGLANG_UNIFIED_RADIX_TREE_CORE_BACKEND` |
-| `0` | `SGLANG_ROCM_USE_MULTI_STREAM`、`NCCL_IB_DISABLE`、`DEEPEP_ENABLE_LL_LAYERED_OPT`、`SGLANG_OPT_USE_TOPK_V2`、`HIP_BUFFER_EXTRA_SIZE` |
-| `120` | `SGLANG_UVICORN_WORKER_HEALTHCHECK_TIMEOUT` |
-| `1200` | `SGLANG_DISAGGREGATION_BOOTSTRAP_TIMEOUT` |
-| `288` | `ROCSHMEM_GDA_NUM_QPS_DEFAULT_CTX` |
-| `32` | `ROCSHMEM_IPC_MNVL_NPES` |
-| `gda` | `ROCSHMEM_BACKEND` |
-| `shca` | `ROCSHMEM_GDA_PROVIDER` |
-| `256` | `SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK` |
-| `3` | `LIGHTOP_SPARSE_MQA_GROUP6_ROWS_PER_CTA`、`GPU_MAX_HW_QUEUES` |
-| `glibc.rtld.optional_static_tls=0x40000` | `GLIBC_TUNABLES` |
-| `100` | `HIP_KERNEL_BATCH_CEILING` |
-| `16` | `GPU_FORCE_BLIT_COPY_SIZE` |
-| `8388608` | `HSA_KERNARG_POOL_SIZE` |
-| `131072` | `ROC_AQL_QUEUE_SIZE` |
+| `SGLANG_PLUGINS`、`SGLANG_USE_LIGHTOP` | 已识别的 GLM-5.3 Channel-FP8 / W4A8 使用 HCU 插件和 LightOp 默认值 |
+| `HCU_W4A8_MOE` | 本地 GLM-5.3 compressed-tensors INT4 专家及动态 per-token INT8 激活选择 native；显式要求降为 W4A16 时终止启动 |
+| `SGLANG_USE_FP8_W8A8_MOE` | GLM-5.3 Channel-FP8 权重及激活契约 |
+| `SGLANG_W4A8_TPMOE_BACKEND` | W4A8 的 TP8 / EP1 路径 |
+| `GLOO_SOCKET_IFNAME`、`ROCSHMEM_ALLOWED_IBV_DEVICES` | 分别从生效的 socket 网卡及 DeepEP 集合通信 IB 网卡推导 |
+| Mooncake 过滤器 | 根据 P/D 角色和本节点的 `--disaggregation-ib-device` 推导 |
+| 可见设备、BLAS 文件和库路径、网络代理、离线加载策略 | 由部署方或镜像提供 |
+
+[逐项自动条件和默认值](../hcu_adapter/glm53_env_rules.py)。
+不同节点数可共用同一份配置。TP、EP、CP 或传输后端会影响依赖它们的变量。
+普通 DP32 Decode 和 HiSparse Decode 都使用官方入口及各自原有的服务参数。
 
 ## 全量变量表
 

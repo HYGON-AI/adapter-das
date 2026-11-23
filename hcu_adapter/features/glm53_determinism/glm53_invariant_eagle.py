@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Stable EH normalization and BF16 LM-head projection for GLM's EAGLE path."""
+"""Batch-invariant EH normalization, EH projection, and LM heads for GLM EAGLE."""
 
 from functools import wraps
 
@@ -64,12 +64,37 @@ def install():
         )
         return output
 
-    def install_head(model):
+    def install_eh_projection(projection):
+        if (
+            type(projection) is not torch.nn.Linear
+            or projection.bias is not None
+            or (projection.in_features, projection.out_features) != (8192, 4096)
+        ):
+            return
+        original_projection = projection.forward
+
+        @wraps(original_projection)
+        def forward(input):
+            weight = projection.weight
+            if (
+                not is_bf16_matrix(input)
+                or input.numel() == 0
+                or not is_bf16_matrix(weight)
+                or input.device != weight.device
+            ):
+                return original_projection(input)
+            return project(input, weight)
+
+        projection.forward = forward
+
+    def install_model(model):
         original_init = model.__init__
 
         @wraps(original_init)
         def init(self, *args, **kwargs):
             original_init(self, *args, **kwargs)
+            if model is Glm5NextForConditionalGenerationNextN:
+                install_eh_projection(self.model.eh_proj)
             processor = self.logits_processor
             if processor is None:
                 return
@@ -102,8 +127,8 @@ def install():
         "glm_eagle_projections", eh_norm,
         target=f"{deepseek_nextn.__name__}:fused_eh_norm",
         mechanism=registry.MECH_SEAM,
-        detail="Use row-wise RMS normalization and fixed BF16 LM-head tiles on HIP",
+        detail="Use row-wise EH RMS normalization and fixed BF16 EH/LM-head tiles on HIP",
     )
     deepseek_nextn.fused_eh_norm = eh_norm
-    install_head(Glm5NextForConditionalGeneration)
-    install_head(Glm5NextForConditionalGenerationNextN)
+    install_model(Glm5NextForConditionalGeneration)
+    install_model(Glm5NextForConditionalGenerationNextN)

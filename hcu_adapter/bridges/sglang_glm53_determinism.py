@@ -38,3 +38,8 @@ def install(_he=None):
         from hcu_adapter.features.glm53_determinism import glm53_invariant_mla
 
         glm53_invariant_mla.install()
+
+    if env.enabled("HCU_GLM53_LIGHTOP_BLOCK_FP8_MOE"):
+        from hcu_adapter.features.glm53_determinism import lightop_block_fp8_moe
+
+        lightop_block_fp8_moe.install()

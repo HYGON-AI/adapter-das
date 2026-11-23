@@ -15,6 +15,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 SEED = 42
+MTP_COUNTERS = ('spec_verify_ct', 'spec_num_correct_drafts', 'spec_num_proposed_drafts')
 ANCHOR = ('A bakery sold 17 rolls in the morning and 26 in the afternoon. '
           'How many rolls did it sell? Explain briefly and give the total.')
 JAPAN = 'What is the capital of Japan? Reply with only the city name.'
@@ -93,13 +94,38 @@ class Service:
         assert all(item['output_ids'] for item in data), data
         return data
 
+    def generate_cold_ids(self, input_ids, max_tokens):
+        self.flush()
+        body = payload([], max_tokens)
+        body.pop('text')
+        body['input_ids'] = input_ids
+        with self.post('/generate', body) as raw:
+            rows = json.load(raw)
+        assert len(rows) == len(input_ids)
+        assert all(row['meta_info']['cached_tokens'] == 0 for row in rows)
+        return rows
+
     def stream(self, text, max_tokens):
-        start = monotonic()
-        first = None
-        final = None
-        last = None
         body = payload([text], max_tokens, stream=True, ignore_eos=True)
         body['text'] = body['text'][0]
+        return self._stream(body, 1, max_tokens)[0]
+
+    def tokenize(self, texts):
+        with self.post('/tokenize', {'prompt': [prompt(text) for text in texts]}) as response:
+            tokens = json.load(response)['tokens']
+        assert len(tokens) == len(texts) and all(tokens)
+        return tokens
+
+    def stream_batch(self, input_ids, max_tokens):
+        body = payload([], max_tokens, stream=True, ignore_eos=True)
+        del body['text']
+        body['input_ids'] = input_ids
+        return self._stream(body, len(input_ids), max_tokens)
+
+    def _stream(self, body, batch_size, max_tokens):
+        start = monotonic()
+        rows = [{'start': start, 'first': None, 'last': None, 'response': None, 'token_events': []}
+                for _ in range(batch_size)]
         with self.post('/generate', body) as response:
             for raw in response:
                 if not raw.startswith(b'data:'):
@@ -110,15 +136,19 @@ class Service:
                 packet = json.loads(value)
                 if 'error' in packet:
                     raise RuntimeError(packet['error'])
+                row = rows[packet['index'] if len(rows) > 1 else 0]
                 n = packet['meta_info']['completion_tokens']
-                if n and first is None:
-                    first = monotonic()
-                if final is None or n > final['meta_info']['completion_tokens']:
-                    last = monotonic()
-                final = packet
-        assert final and first is not None and last is not None
-        assert final['meta_info']['completion_tokens'] == max_tokens
-        return {'start': start, 'first': first, 'last': last, 'response': final}
+                if n and (not row['token_events'] or n > row['token_events'][-1][0]):
+                    now = monotonic()
+                    row['token_events'].append([n, 1000 * (now - start)])
+                    if row['first'] is None:
+                        row['first'] = now
+                    row['last'] = now
+                row['response'] = packet
+        for row in rows:
+            assert row['response'] and row['first'] is not None and row['last'] is not None
+            assert row['response']['meta_info']['completion_tokens'] == max_tokens
+        return rows
 
 
 def write(path, result):
@@ -160,8 +190,9 @@ def calls(server, output, dataset, capture_graph_buffers):
         write(output / 'call-responses.json', results)
 
 
-def performance(server, output, concurrencies, repeats, output_tokens):
+def performance(server, output, concurrencies, repeats, output_tokens, packed=False):
     prompts = [CACHE_PREFIX + x for x in (ANCHOR, JAPAN, FRANCE, 'What is five times six?')]
+    packed_ids = server.tokenize(prompts[:max(concurrencies)]) if packed else None
     stats = {}
     for count in concurrencies:
         for warm_cache in (False, True):
@@ -172,7 +203,10 @@ def performance(server, output, concurrencies, repeats, output_tokens):
                     server.flush()
                     if warm_cache:
                         server.generate([CACHE_PREFIX], 1)
-                    rows = list(workers.map(lambda x: server.stream(x, output_tokens), prompts[:count]))
+                    if packed:
+                        rows = server.stream_batch(packed_ids[:count], output_tokens)
+                    else:
+                        rows = list(workers.map(lambda x: server.stream(x, output_tokens), prompts[:count]))
                     if repeat == 0:
                         continue
                     elapsed = max(x['last'] for x in rows) - min(x['start'] for x in rows)
@@ -180,12 +214,14 @@ def performance(server, output, concurrencies, repeats, output_tokens):
                                     'ttft_ms': [1000 * (x['first'] - x['start']) for x in rows],
                                     'tpot_ms': [1000 * (x['last'] - x['first']) / (output_tokens - 1) for x in rows],
                                     'cached_tokens': [x['response']['meta_info']['cached_tokens'] for x in rows],
+                                    'token_events': [x['token_events'] for x in rows],
                                     'responses': [x['response'] for x in rows]})
             if warm_cache:
                 assert all(all(x > 0 for x in row['cached_tokens']) for row in results), results
             else:
                 assert all(min(row['cached_tokens']) == 0 for row in results), results
             stats[label] = {'output_tokens_per_request': output_tokens,
+                            'request_mode': 'packed-token-ids' if packed else 'concurrent',
                             'median_tok_s': median(row['tok_s'] for row in results),
                             'median_ttft_ms': median(x for row in results for x in row['ttft_ms']),
                             'median_tpot_ms': median(x for row in results for x in row['tpot_ms']),
@@ -230,45 +266,82 @@ def accuracy(server, output, dataset, sample_size):
                                              'indices': [entry['dataset_index'] for entry in sample], 'rows': results})
 
 
+def compare_response(expected, response, dataset_index, variant):
+    return {
+        'variant': variant,
+        'dataset_index': dataset_index,
+        'tokens_equal': expected['output_ids'] == response['output_ids'],
+        'accept_counts': {
+            key: [expected['meta_info'].get(key), response['meta_info'].get(key)]
+            for key in MTP_COUNTERS
+        },
+        'response': response,
+    }
+
+
 def cross_batch(server, output):
     reference = json.loads((output / 'gsm8k-results.json').read_text())['rows']
     results = []
     for i in range(0, len(reference) - 1, 8):
         first, second = reference[i:i + 2]
         for name, examples in (('alone', [first]), ('reversed', [second, first])):
-            server.flush()
-            body = payload([], 512)
-            body.pop('text')
-            body['input_ids'] = [ex['response']['prompt_token_ids'] for ex in examples]
-            with server.post('/generate', body) as raw:
-                rows = json.load(raw)
-            assert len(rows) == len(examples)
-            assert all(row['meta_info']['cached_tokens'] == 0 for row in rows)
+            rows = server.generate_cold_ids([ex['response']['prompt_token_ids'] for ex in examples], 512)
             for ex, row in zip(examples, rows):
-                expected = ex['response']
-                comparisons = {
-                    key: [expected['meta_info'].get(key), row['meta_info'].get(key)]
-                    for key in ('spec_verify_ct', 'spec_num_correct_drafts', 'spec_num_proposed_drafts')
-                }
-                results.append({'variant': name, 'dataset_index': ex['dataset_index'],
-                                'tokens_equal': expected['output_ids'] == row['output_ids'],
-                                'accept_counts': comparisons, 'response': row})
+                results.append(compare_response(ex['response'], row, ex['dataset_index'], name))
         write(output / 'gsm8k-cross-batch.json', results)
     return results
 
 
+def replay_pair(server, output, fixture, index):
+    reference = json.loads(fixture.read_text())['rows']
+    position = next((i for i, row in enumerate(reference) if row['dataset_index'] == index), None)
+    if position is None or (position ^ 1) >= len(reference):
+        raise SystemExit(f'GSM8K fixture has no complete pair for dataset index {index}')
+    companion = reference[position ^ 1]
+    anchor_ids = reference[position]['response']['prompt_token_ids']
+    companion_ids = companion['response']['prompt_token_ids']
+    solo = server.generate_cold_ids([anchor_ids], 512)[0]
+    cases = (
+        ('packed', [anchor_ids, companion_ids], 0),
+        ('reversed', [companion_ids, anchor_ids], 1),
+        ('solo-repeat', [anchor_ids], 0),
+    )
+    comparisons = [
+        compare_response(solo, server.generate_cold_ids(ids, 512)[slot], index, name)
+        for name, ids, slot in cases
+    ]
+    write(output / 'gsm8k-pair-replay.json', {
+        'dataset_index': index, 'companion_index': companion['dataset_index'],
+        'solo': solo, 'comparisons': comparisons,
+    })
+    return comparisons
+
+
+def require_matching_comparisons(comparisons, filename):
+    if not comparisons or any(
+        not row['tokens_equal'] or any(
+            a is None or a != b for a, b in row['accept_counts'].values()
+        )
+        for row in comparisons
+    ):
+        raise SystemExit(f'Cross-batch output tokens or MTP counters differ; see {filename}')
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('stage', choices=['calls', 'performance', 'accuracy', 'cross-batch'])
+    parser.add_argument('stage', choices=['calls', 'performance', 'accuracy', 'cross-batch', 'replay-pair'])
     parser.add_argument('output', type=Path)
     parser.add_argument('--port', type=int, required=True)
     parser.add_argument('--dataset', type=Path)
+    parser.add_argument('--fixture', type=Path, help='gsm8k-results.json for replay-pair')
+    parser.add_argument('--index', type=int, help='GSM8K dataset index for replay-pair')
     parser.add_argument('--capture-graph-buffers', action='store_true')
     parser.add_argument('--require-deterministic', action='store_true')
     parser.add_argument('--sample-size', type=int, default=64)
     parser.add_argument('--concurrencies', type=int, nargs='+', choices=(1, 2, 4), default=(1, 2, 4))
     parser.add_argument('--perf-repetitions', type=int, default=5)
     parser.add_argument('--perf-output-tokens', type=int, default=32)
+    parser.add_argument('--perf-packed', action='store_true', help='Submit one pretokenized batch per HTTP request')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     server = Service(f'http://127.0.0.1:{args.port}')
@@ -276,21 +349,21 @@ def main():
         calls(server, args.output, args.dataset, args.capture_graph_buffers)
     elif args.stage == 'performance':
         assert args.perf_repetitions >= 2 and args.perf_output_tokens >= 2
-        performance(server, args.output, args.concurrencies, args.perf_repetitions, args.perf_output_tokens)
+        performance(server, args.output, args.concurrencies, args.perf_repetitions,
+                    args.perf_output_tokens, packed=args.perf_packed)
     elif args.stage == 'accuracy':
         assert args.dataset is not None
         accuracy(server, args.output, args.dataset, args.sample_size)
-    else:
+    elif args.stage == 'cross-batch':
         comparisons = cross_batch(server, args.output)
-        if args.require_deterministic and (
-            not comparisons or any(
-                not row['tokens_equal'] or any(
-                    a is None or a != b for a, b in row['accept_counts'].values()
-                )
-                for row in comparisons
-            )
-        ):
-            raise SystemExit('Cross-batch output tokens or MTP counters differ; see gsm8k-cross-batch.json')
+        if args.require_deterministic:
+            require_matching_comparisons(comparisons, 'gsm8k-cross-batch.json')
+    else:
+        if args.fixture is None or args.index is None:
+            parser.error('replay-pair requires --fixture and --index')
+        comparisons = replay_pair(server, args.output, args.fixture, args.index)
+        if args.require_deterministic:
+            require_matching_comparisons(comparisons, 'gsm8k-pair-replay.json')
 
 
 if __name__ == '__main__':

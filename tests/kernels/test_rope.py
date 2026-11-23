@@ -24,9 +24,10 @@ requires_gpu = pytest.mark.skipif(
 
 @requires_gpu
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_rope_neox_gpu(dtype):
+@pytest.mark.parametrize("rot", [48, 64, 96])
+def test_rope_neox_gpu(dtype, rot):
     torch.manual_seed(5)
-    T, qH, kvH, D, rot = 37, 8, 4, 128, 64
+    T, qH, kvH, D = 37, 8, 4, 128
     cache = torch.randn(128, rot, device="cuda", dtype=torch.float32)
     pos = torch.randint(0, 128, (T,), device="cuda")
     q = torch.randn(T, qH * D, device="cuda").to(dtype)
@@ -34,6 +35,13 @@ def test_rope_neox_gpu(dtype):
     q0, k0 = q.clone(), k.clone()
 
     sgl_kernel.rotary_embedding(pos, q, k, D, cache, is_neox=True)
+
+    for before, after in ((q0, q), (k0, k)):
+        torch.testing.assert_close(
+            after.view(T, -1, D)[..., rot:],
+            before.view(T, -1, D)[..., rot:],
+            rtol=0, atol=0,
+        )
 
     for t in (0, 5, 36):
         p = pos[t].item()

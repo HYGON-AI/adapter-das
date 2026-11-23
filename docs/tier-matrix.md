@@ -244,6 +244,72 @@ Diffusion norm + scale/shift; HCU CUDA-dispatch kernel
 
 路由变量：（auto）
 
+## diffusion_layernorm_modulate
+
+Diffusion BF16 LayerNorm modulation; HCU CUDA dispatch
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| triton | candidate HIP D divisible by 4, up to 8192; gf |
+| emu | candidate Torch BF16 LayerNorm and modulation  |
+
+路由变量：（auto）
+
+## diffusion_qknorm_complex_rope_cuda
+
+Single-tensor Q/K RMSNorm and complex RoPE
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
+## diffusion_qknorm_complex_rope_pack_
+
+In-place Q plus prefix K/V packing with RMSNorm and complex RoPE
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
+## diffusion_qknorm_complex_rope
+
+Q/K RMSNorm and complex RoPE on the Triton op entry
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
+## diffusion_qknorm_complex_rope_kv
+
+K RMSNorm and complex RoPE with prefix K/V packing
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
+## diffusion_fused_complex_rope
+
+Diffusion complex RoPE
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| cpp | candidate HIP port of the Qwen-Image 2.1 plugi |
+| emu | candidate Torch fallback for unsupported layou |
+
+路由变量：（auto）
+
 ## flashinfer_rope
 
 FlashInfer cached Q/K RoPE ABI; sgl_kernel in-place Triton

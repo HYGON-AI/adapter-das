@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
+from importlib import import_module
 
 from . import registry
 
@@ -33,6 +34,27 @@ def install():
         target="sglang::fused_scale_residual_norm_scale_shift/CUDA", mechanism=registry.MECH_SEAM,
         detail="HCU Triton residual + layer/RMS norm modulation; upstream tuple and aliases preserved",
     )
+    _install_layernorm_modulate(library)
     logging.getLogger("hcu.adapter").info(
         "HCU adapter: diffusion norm-scale-shift CUDA dispatch registered"
+    )
+
+
+def _install_layernorm_modulate(library):
+    from sgl_kernel.norm_scale_shift_triton import fused_layernorm_modulate
+
+    upstream = "sglang.kernels.kda_kernels.layernorm_modulate_triton"
+    try:
+        import_module(upstream)
+    except ModuleNotFoundError as exc:
+        if exc.name and (exc.name == upstream or upstream.startswith(exc.name + ".")):
+            return
+        raise
+
+    op_name = "triton_fused_layernorm_modulate"
+    library.impl(op_name, fused_layernorm_modulate, allow_override=True)
+    registry.register(
+        "diffusion_layernorm_modulate", fused_layernorm_modulate,
+        target=f"sglang::{op_name}/CUDA", mechanism=registry.MECH_SEAM,
+        detail="BF16 modulation on HCU with the upstream schema and exactness gates",
     )

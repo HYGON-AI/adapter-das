@@ -48,6 +48,8 @@ compressed-tensors checkpoint，启动时按量化、角色、并行参数及 Hi
 编辑后通过 `HCU_CONFIG=/path/to/your.yaml` 指定。自定义文件是完整配置。
 启动日志将镜像内置值和自定义文件值标为 `config`，环境覆盖标为 `explicit`。
 
+FP8 IFB CP8 的 YAML 设置 `SGLANG_HCU_LIGHTOP_PAGED_MQA_NATIVE_SCHEDULE=1`，由 LightOp 自行调度 paged MQA。显式设置为 `0` 可恢复传入调度表。其他配置未指定此项时沿用 `SGLANG_HCU_GLM53_FP8_DECODE_NATIVE_OPS` 的原有行为。
+
 节点的 socket 网卡、集合通信 IB 网卡、设备可见性、代理和 BLAS 路径由部署方
 提供。未覆盖时，GLOO 继承 socket 网卡，DeepEP 的 ROCSHMEM 继承集合通信
 IB 网卡；需要的 Mooncake 过滤器取本节点的 `--disaggregation-ib-device`。

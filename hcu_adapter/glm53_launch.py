@@ -10,14 +10,23 @@ import sys
 from pathlib import Path
 
 from . import hcu_config, hcu_env
-from . import glm53_fp8_decode as dp32
-from .glm53_fp8_decode import _channel_fp8, launch_environment
-from .glm53_profiles import PROFILES, Profile, preset_env
+from .glm53_profiles import PROFILES, preset_env
 
 PARALLEL_SIZES = (
     "nnodes", "tp-size", "pp-size", "ep-size", "dp-size", "attn-dp-size",
     "attn-cp-size", "dcp-size",
 )
+
+
+def _channel_fp8(group):
+    weights = group.get("weights") or {}
+    acts = group.get("input_activations") or {}
+    return (
+        (weights.get("type"), weights.get("num_bits"), weights.get("strategy"))
+        == ("float", 8, "channel")
+        and (acts.get("type"), acts.get("num_bits"), acts.get("strategy"), acts.get("dynamic"))
+        == ("float", 8, "token", True)
+    )
 
 
 def checkpoint_family(path):
@@ -44,9 +53,9 @@ def checkpoint_family(path):
     return "w4a8" if found_experts else None
 
 
-def parse_options(argv, *, optional=False):
+def parse_options(argv):
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
-    parser.add_argument("--model-path", required=not optional, type=Path)
+    parser.add_argument("--model-path", type=Path)
     parser.add_argument("--disaggregation-ib-device")
     for option in PARALLEL_SIZES:
         parser.add_argument("--" + option, default="1")
@@ -63,46 +72,17 @@ def matching_profile(args, family):
         return None
     settings = vars(args).copy()
     settings.pop("model_path")
-    devices = settings.pop("disaggregation_ib_device")
+    settings.pop("disaggregation_ib_device")
     # These checkpoints declare compressed-tensors in config.json. An explicit
     # equivalent CLI flag must select the same preset as the inferred value.
     settings["quantization"] = "compressed-tensors" if family == "w4a8" else None
     topology = {key: value for key, value in settings.items() if value not in (None, False, "1")}
+    if family == "fp8" and args.disaggregation_mode == "decode" and args.attn_dp_size == "32":
+        topology.pop("enable_hisparse", None)
     for name, profile in PROFILES.items():
         if name.startswith(f"glm53_{family}_") and profile.topology == topology:
-            return name, profile, devices
-    dp32_topology = PROFILES["glm53_fp8_decode_dp8"].topology.copy()
-    dp32_topology.update(nnodes="8", tp_size="32", ep_size="32", attn_dp_size="32")
-    if family == "fp8" and {k: v for k, v in topology.items() if k != "enable_hisparse"} == dp32_topology:
-        return "glm53_fp8_decode_dp32", Profile("glm53-fp8-decode.yaml", dp32.SITE_KEYS, dp32.DERIVED_KEYS, dp32_topology, offline=True), devices
+            return name, profile
     return None
-
-
-def select_profile(argv):
-    args = parse_options(argv)
-    selected = matching_profile(args, checkpoint_family(args.model_path))
-    parser = argparse.ArgumentParser()
-    if selected is None:
-        parser.error("unsupported GLM-5.3 checkpoint, role or parallel configuration")
-    if args.disaggregation_mode and not args.disaggregation_ib_device:
-        parser.error("P/D profiles require --disaggregation-ib-device for this node")
-    return selected
-
-
-def profile_environment(selection):
-    name, profile, devices = selection
-    config = hcu_config.load()
-    configured = {**config["overrides"], **config["hosts"].get("sglang", {}).get(name, {})}
-    env, sources = launch_environment(
-        os.environ, configured, devices, defaults=profile.defaults,
-        site=profile.site, derived=profile.derived,
-    )
-    if name.startswith("glm53_w4a8_") and env["HCU_W4A8_MOE"] != "native":
-        raise SystemExit(f"{name} requires HCU_W4A8_MOE=native")
-    print(name + ": " + " ".join(
-        f"{k}={env[k]}({source})" for k, source in sorted(sources.items())
-    ), file=sys.stderr, flush=True)
-    return env
 
 
 def apply_official_defaults(argv, original):
@@ -116,7 +96,7 @@ def apply_official_defaults(argv, original):
     from .glm53_env_rules import resolve_environment
     from .glm53_profiles import LAUNCH_ENV_KEYS
 
-    args = parse_options(argv, optional=True)
+    args = parse_options(argv)
     config = hcu_config.load()
     settings = config["hosts"].get("sglang", {})
     configured = {**config["overrides"], **settings.get("env", {})}
@@ -126,11 +106,14 @@ def apply_official_defaults(argv, original):
     if hcu_allowed and args.model_path and (args.model_path / "config.json").is_file():
         family = checkpoint_family(args.model_path)
     preset, _ = hcu_env.resolve("HCU_CONFIG")
-    selected = matching_profile(args, family)
+    # A plain YAML already specifies its settings. Only named override sections
+    # and automatic selection need to look up the server topology.
+    use_auto = not preset and config["path"] is None
+    selected = matching_profile(args, family) if use_auto or settings.keys() - {"env"} else None
     auto_preset = None
     if selected is not None:
-        name, profile, _ = selected
-        if not preset and config["path"] is None:
+        name, profile = selected
+        if use_auto:
             auto_preset = "builtin:" + profile.filename
             configured.update(preset_env(profile.filename))
         configured.update(settings.get(name, {}))
@@ -152,18 +135,3 @@ def apply_official_defaults(argv, original):
     if env != os.environ:
         env[marker] = str(os.getpid())
         os.execve(sys.executable, [sys.executable, *original[1:]], env)
-
-
-def main():
-    argv = sys.argv[1:]
-    env = profile_environment(select_profile(argv))
-    # Preserve interpreter options such as -u on the new service process.
-    original = getattr(sys, "orig_argv", ())
-    interpreter_args = original[1:original.index("-m")] if "-m" in original else []
-    if not original and getattr(sys.stdout, "write_through", False):
-        interpreter_args = ["-u"]
-    os.execve(sys.executable, [sys.executable, *interpreter_args, "-m", "hcu_sglang", *argv], env)
-
-
-if __name__ == "__main__":
-    main()

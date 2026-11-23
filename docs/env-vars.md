@@ -29,7 +29,7 @@ compressed-tensors checkpoint，启动时按量化、角色、并行参数及 Hi
 `HCU_CONFIG` 优先。以普通 FP8 IFB DP8/EP8 为例：
 
 ```bash
-export HCU_CONFIG="${HCU_CONFIG:-$(python3 -c 'from importlib.resources import files; print(files("hcu_adapter") / "launch_configs")')/glm53-fp8-ifb-dp8.yaml}"
+export HCU_CONFIG="${HCU_CONFIG:-builtin:glm53-fp8-ifb-dp8.yaml}"
 ```
 
 该脚本使用 full Decode Graph，每个 attention DP rank 最大 Graph BS 为 4，

@@ -4,14 +4,14 @@
 
 使用已安装 adapter 和 plugin 的镜像时，P、D 两端分别选
 `glm53-w4a8-prefill.yaml` 和 `glm53-w4a8-decode.yaml`，使用官方入口
-`python3 -m sglang.launch_server`。文件定位和外部 `HCU_CONFIG` 覆盖方式见
+`python3 -m sglang.launch_server`。脚本默认使用对应的内置 YAML。指定外部配置文件的方式见
 [镜像启动配置](../../../docs/env-vars.md#glm-53-的镜像启动配置)。本目录的脚本用于源码环境复现。
 
 每节点 8 卡。prefill 使用两节点 PP2/TP8/CP8/EP8、DeepEP normal，
 decode 使用另两节点 TP16/DP16/EP16、DeepEP low_latency、EAGLE 5/1/6、
 decode graph max batch 16。decode 的两节点规模是本任务的配置，
 不同于来源部署文档的四节点 TP32。prefill 的 PP2 不启用 MTP，graph 关闭。
-Prefill 显式设置 `SGLANG_ENABLE_CP_V2=1`，与原生 GLM 的策略 CP 及每 rank
+Prefill 配方设置 `SGLANG_ENABLE_CP_V2=1`，与原生 GLM 的策略 CP 及每 rank
 物理补齐方式一致。旧 CP 的 32-token 请求曾在首层 attention 出口出现部分行全零；
 两组 CP v2 短前缀对照恢复，但完整数值精度仍在验证。
 

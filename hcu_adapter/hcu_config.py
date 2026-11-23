@@ -886,7 +886,6 @@ def _validate(doc, path):
     if not isinstance(hosts, dict) or set(hosts) - {"deepinfer", "sglang"}:
         raise HcuConfigError("Unknown adapter host settings")
     if "sglang" in hosts:
-        from . import glm53_fp8_decode as dp32
         from .glm53_profiles import LAUNCH_ENV_KEYS, PROFILES
 
         options = hosts["sglang"]
@@ -895,8 +894,6 @@ def _validate(doc, path):
         for name, profile in options.items():
             if name == "env":
                 allowed = LAUNCH_ENV_KEYS
-            elif name == "glm53_fp8_decode_dp32":
-                allowed = set(dp32.legacy_defaults()).union(dp32.SITE_KEYS, dp32.DERIVED_KEYS)
             elif name in PROFILES:
                 item = PROFILES[name]
                 allowed = set(item.defaults).union(item.site, item.derived)

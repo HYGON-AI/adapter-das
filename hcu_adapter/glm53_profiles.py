@@ -3,7 +3,7 @@
 
 """Environment defaults for the supported GLM-5.3 release launch recipes."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 
@@ -24,7 +24,7 @@ class Profile:
 
     @property
     def defaults(self):
-        # Compatibility launchers also exported these legacy policy values.
+        # Include policy keys accepted in existing per-profile site overrides.
         values = preset_env(self.filename)
         if self.offline:
             values.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
@@ -154,7 +154,15 @@ PROFILES = {
     ),
 }
 
-# Supported deployment overrides, independent of the compatibility launchers.
+# Both DP32 variants use the Decode preset and the same per-profile overrides.
+_dp8_decode = PROFILES["glm53_fp8_decode_dp8"]
+PROFILES["glm53_fp8_decode_dp32"] = replace(
+    _dp8_decode,
+    topology=dict(_dp8_decode.topology, nnodes="8", tp_size="32", ep_size="32", attn_dp_size="32"),
+    offline=True,
+)
+
+# Supported deployment overrides.
 LAUNCH_ENV_KEYS = frozenset("""
 ALLREDUCE_STREAM_WITH_COMPUTE
 DEEPEP_ENABLE_LL_LAYERED_OPT

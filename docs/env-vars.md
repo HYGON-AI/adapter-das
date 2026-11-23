@@ -251,7 +251,7 @@ trace 族在拍存在时不可用于功量归因。
 
 ### GLM-5.3-Flash blockwise FP8 TP8 确定性
 
-下列开关默认均为 `0`。两节点 gfx938 TP8 复现见 [启动与验收示例](../examples/glm5.3-flash-blockfp8/README.md)。
+下列开关默认均为 `0`。部署配置的 `ops` 下设置 `glm53_block_fp8_determinism: fixed` 可一起启用。两节点 gfx938 TP8 复现见 [启动与验收示例](../examples/glm5.3-flash-blockfp8/README.md)。
 
 | 开关 | 启用范围 |
 |---|---|

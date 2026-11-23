@@ -68,6 +68,19 @@ class DeterminismOptInTests(unittest.TestCase):
                 self.assertEqual(hcu_env.resolve(switch), ("0", "explicit"))
                 self.assertFalse(hcu_env.enabled(switch))
 
+    def test_deployment_recipe_selects_all_fixed_paths(self):
+        self.config.write_text(json.dumps({
+            "version": 1,
+            "ops": {"glm53_block_fp8_determinism": "fixed", "fused_moe": "triton"},
+        }))
+        hcu_config.load(force=True)
+        for switch in _SWITCHES:
+            with self.subTest(switch=switch), patch.dict(os.environ, {switch: "0"}):
+                self.assertEqual(hcu_config.lookup(switch), "1")
+                self.assertEqual(hcu_env.resolve(switch), ("0", "explicit"))
+            self.assertEqual(hcu_env.resolve(switch), ("1", "config"))
+        self.assertEqual(hcu_env.resolve("HCU_FUSED_MOE_IMPL"), ("triton", "config"))
+
     def test_bridge_calls_only_selected_installers(self):
         routes = {
             "HCU_ORDERED_TP8_BF16_REDUCE": (

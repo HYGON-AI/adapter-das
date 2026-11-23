@@ -3,6 +3,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
+if (( $# > 0 )); then
+    if (( $# < 4 || $# > 5 )); then
+        printf 'Usage: %s MODEL_PATH SGLANG_CHECKOUT DIST_INIT_ADDR NODE_RANK [ADAPTER_CHECKOUT]\n' "${0##*/}" >&2
+        exit 2
+    fi
+    MODEL_PATH=$1 SGLANG_CHECKOUT=$2 DIST_INIT_ADDR=$3 NODE_RANK=$4
+    if (( $# == 5 )); then
+        ADAPTER_CHECKOUT=$5
+    fi
+fi
 : "${MODEL_PATH:?Set MODEL_PATH to the GLM-5.3-Flash blockwise FP8 checkpoint}"
 : "${SGLANG_CHECKOUT:?Set SGLANG_CHECKOUT to the SGLang v0.5.22 source checkout}"
 : "${DIST_INIT_ADDR:?Set DIST_INIT_ADDR to the node 0 address and rendezvous port}"
@@ -11,14 +21,22 @@ case "$NODE_RANK" in
     0|1) ;;
     *) printf 'NODE_RANK must be 0 or 1\n' >&2; exit 2 ;;
 esac
-case "${DETERMINISTIC:=1}" in
-    0|1) ;;
+example_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+case "${DETERMINISTIC:-1}" in
+    1) default_config="$example_dir/hcu_adapter.yaml" ;;
+    0) default_config="$example_dir/hcu_adapter.baseline.yaml" ;;
     *) printf 'DETERMINISTIC must be 0 or 1\n' >&2; exit 2 ;;
 esac
+config="${HCU_CONFIG:-$default_config}"
+if [[ ! -r "$config" ]]; then
+    printf 'Adapter configuration is not readable: %s\n' "$config" >&2
+    exit 2
+fi
+config="$(cd -- "$(dirname -- "$config")" && pwd -P)/$(basename -- "$config")"
 if [[ -n "${ADAPTER_CHECKOUT:-}" ]]; then
     adapter_dir="$(cd -- "$ADAPTER_CHECKOUT" && pwd -P)"
 else
-    adapter_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+    adapter_dir="$(cd -- "$example_dir/../.." && pwd -P)"
 fi
 if [[ ! -d "$adapter_dir/hcu_adapter" ]]; then
     printf 'Set ADAPTER_CHECKOUT to the adapter repository root
@@ -29,24 +47,15 @@ if [[ ! -r "$SGLANG_CHECKOUT/python/sglang/launch_server.py" || ! -r "$MODEL_PAT
     printf 'Check SGLANG_CHECKOUT and MODEL_PATH\n' >&2
     exit 2
 fi
-export PYTHONPATH="$SGLANG_CHECKOUT/python:$adapter_dir${PYTHONPATH:+:$PYTHONPATH}"
-export HCU_ADAPTER_HOST=sglang SGLANG_PLUGINS=none
-export NCCL_IB_DISABLE="${NCCL_IB_DISABLE:-1}"
-export NCCL_SOCKET_IFNAME="${NCCL_SOCKET_IFNAME:-eth0}"
-export GLOO_SOCKET_IFNAME="${GLOO_SOCKET_IFNAME:-$NCCL_SOCKET_IFNAME}"
-export HCU_ORDERED_TP8_BF16_REDUCE="$DETERMINISTIC"
-export HCU_KDA_FIXED_SAFE_GATE_ANCHOR="$DETERMINISTIC"
-export HCU_GLM53_FIXED_KDA_PROJECTION="$DETERMINISTIC"
-export HCU_FIXED_BLOCK_FP8_DENSE="$DETERMINISTIC"
-export HCU_DSA_ORDERED_SHORT_TOPK="$DETERMINISTIC"
-export HCU_GLM53_FIXED_MHC_STATS="$DETERMINISTIC"
-# The gfx938 fixture uses the unfused mHC pre/post path for both arms.
-export SGLANG_OPT_USE_TILELANG_MHC_PRE="${SGLANG_OPT_USE_TILELANG_MHC_PRE:-false}"
-export SGLANG_OPT_USE_TILELANG_MHC_POST="${SGLANG_OPT_USE_TILELANG_MHC_POST:-false}"
-export HCU_GLM53_FIXED_EAGLE_PROJECTIONS="$DETERMINISTIC"
-export HCU_GLM53_FIXED_DSA_MATMUL="$DETERMINISTIC"
-
-exec python3 -u -m sglang.launch_server \
+iface="${NCCL_SOCKET_IFNAME:-eth0}"
+# Use the unfused mHC pre/post path for both arms in the gfx938 fixture.
+exec env HCU_CONFIG="$config" HCU_ADAPTER_HOST=sglang SGLANG_PLUGINS=none \
+    PYTHONPATH="$SGLANG_CHECKOUT/python:$adapter_dir${PYTHONPATH:+:$PYTHONPATH}" \
+    NCCL_IB_DISABLE="${NCCL_IB_DISABLE:-1}" NCCL_SOCKET_IFNAME="$iface" \
+    GLOO_SOCKET_IFNAME="${GLOO_SOCKET_IFNAME:-$iface}" \
+    SGLANG_OPT_USE_TILELANG_MHC_PRE="${SGLANG_OPT_USE_TILELANG_MHC_PRE:-false}" \
+    SGLANG_OPT_USE_TILELANG_MHC_POST="${SGLANG_OPT_USE_TILELANG_MHC_POST:-false}" \
+    python3 -u -m sglang.launch_server \
     --model-path "$MODEL_PATH" --served-model-name glm53-flash-blockfp8 \
     --host "${BIND_HOST:-127.0.0.1}" --port "${PORT:-25832}" \
     --tp-size 8 --nnodes 2 --node-rank "$NODE_RANK" --dist-init-addr "$DIST_INIT_ADDR" \

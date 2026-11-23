@@ -1,0 +1,4 @@
+version: 1
+ops:
+  glm53_block_fp8_determinism: fixed
+  fused_moe: triton

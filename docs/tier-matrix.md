@@ -134,6 +134,16 @@ TP all-reduce (+fused AR+RMSNorm seam, HCU_AR_NORM_IMPL)
 
 路由变量：`1`/`0`
 
+## glm53_block_fp8_determinism
+
+GLM-5.3-Flash blockwise FP8 TP8 deterministic inference
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| fixed | candidate Opt in to the eight fixed paths in t |
+
+路由变量：`1`
+
 ## kda_projection
 
 Batch-invariant unquantized GLM-5.3 KDA projections

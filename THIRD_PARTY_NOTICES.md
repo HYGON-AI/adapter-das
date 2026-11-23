@@ -71,6 +71,14 @@
   - `hcu_adapter/aiter_moe.py`——按 fork `fused_experts_impl_aiter` 配方
     重实现的桥接层（非逐字拷贝）。
 
+### sglang-hygon-plugin（HYGON 内部 Qwen-Image 2.1 插件）
+
+- 固定来源：`6985a7c5852c90554ca5bed158f8a35f82eadef4`。
+- `sglang_hygon/kernels/{complex_rope,qknorm_complex_rope,qknorm_complex_rope_pack}.cuh`
+  原样移至 `sgl_kernel/diffusion_rope_csrc/`。
+- `sglang_hygon/ops.py` 中的 HIP JIT 包装迁至
+  `sgl_kernel/diffusion_rope_cpp.py`，加入上游接口的布局选择和 Torch 回退。
+
 ### lmslim（HYGON 内部量化算子库，DTK wheel 分发，非公开开源项目）
 
 - 来源：内部 wheel `lmslim 0.4.0+das.opt1.dtk2604.torch290` 系列

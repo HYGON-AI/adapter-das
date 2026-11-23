@@ -549,12 +549,12 @@ BACKEND_CATALOG = {
     },
     "triton_pdl": {
         "var": None,
-        "summary": "triton 编译期 PDL 指令剥离（行为还原：gfx936 无 "
-                   "griddepcontrol）",
+        "summary": "triton 编译期 PDL 关断（行为还原：gfx936 无 griddepcontrol）",
         "backends": {
             "strip": {"status": "production",
-                      "note": "make_amdgcn 输出剔除 griddepcontrol.* 两行，"
-                              "语义=PDL 关"},
+                      "note": "两层：前端 grid_dependency_* no-op（新 wheel 在 "
+                              "ConvertTritonHCUToLLVM 前就失败）+ make_amdgcn "
+                              "剔除 griddepcontrol.* 两行；语义=PDL 关"},
         },
     },
     "triton_libdevice": {

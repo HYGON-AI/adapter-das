@@ -190,5 +190,5 @@ def install():
 
     logger.warning(
         "[hcu] MQA-logits emu installed (paged -> torch gather-GEMM, ragged ->"
-        " torch GEMM); gfx936 has no fp8 matrix unit so this is the accurate path"
+        " torch GEMM)"
     )

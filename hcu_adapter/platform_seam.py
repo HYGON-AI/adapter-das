@@ -211,7 +211,6 @@ def _install_ar_hw_truth(registry):
 
 
 def install():
-    import os
     import time
 
     import torch
@@ -383,6 +382,11 @@ def install():
     # 上游走保守回退路径。按 __wrapped__ 精确识别，未来新增探针自动覆盖。
     import functools as _ft
 
+    import sglang.srt.utils as _pkg_utils
+
+    def _unsupported():
+        return False
+
     for _name in list(vars(_common)):
         _v = getattr(_common, _name)
         _inner = getattr(_v, "__wrapped__", None)
@@ -390,7 +394,9 @@ def install():
             isinstance(_inner, _ft.partial)
             and _inner.func is getattr(_common, "_check_cuda_device_version", None)
         ):
-            setattr(_common, _name, lambda: False)
+            setattr(_common, _name, _unsupported)
+            if getattr(_pkg_utils, _name, None) is _v:
+                setattr(_pkg_utils, _name, _unsupported)
 
     # gcn 架构探针（is_gfx950_supported / is_gfx1250_supported，@lru_cache 无
     # __wrapped__）：原实现走 torch.version.hip 真值分支后裸调
@@ -426,8 +432,6 @@ def install():
     # `from sglang.srt.utils import common` above. The package namespace
     # therefore still holds the ORIGINAL callables; sync them (same for any
     # other already-imported re-export layer).
-    import sglang.srt.utils as _pkg_utils
-
     _sync = {
         "get_device_capability": _hcu_get_device_capability,
         "get_device_core_count": _hcu_get_device_core_count,

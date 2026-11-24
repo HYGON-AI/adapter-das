@@ -14,6 +14,7 @@ import signal
 import subprocess
 import sys
 from types import ModuleType, SimpleNamespace
+from unittest.mock import patch
 import pytest
 import torch
 from hcu_adapter.infra import registry as adapter_registry
@@ -22,10 +23,19 @@ from hcu_adapter.features.aiter.allreduce import MIB
 from hcu_adapter.infra.extensions import ExtensionCommitError
 from hcu_adapter.bridges import vllm as bridge, vllm_allreduce as compat
 from test_vllm_bridge import _stub_runtime_owners
-from vllm import envs, _aiter_ops as ops_module
-from vllm.distributed import parallel_state
-from vllm.distributed.device_communicators.aiter_custom_all_reduce import AiterCustomAllreduce
-from vllm.distributed.device_communicators.cuda_communicator import CudaCommunicator
+# The real ROCm module reads an architecture descriptor at import time, before
+# pytest can enter isolated(). Only supply that metadata during these imports;
+# preserve the official AR/dispatcher methods and restore the device query.
+_original_properties = torch.cuda.get_device_properties
+with patch.object(torch.cuda, "get_device_properties",
+                  return_value=SimpleNamespace(gcnArchName="gfx936")):
+    from vllm import envs, _aiter_ops as ops_module
+    from vllm.distributed import parallel_state
+    from vllm.distributed.device_communicators.aiter_custom_all_reduce import AiterCustomAllreduce
+    from vllm.distributed.device_communicators.cuda_communicator import CudaCommunicator
+assert torch.cuda.get_device_properties is _original_properties
+assert not torch.cuda.is_initialized()
+del _original_properties
 REAL_PROVIDER_IDENTITY = compat._provider_identity
 
 

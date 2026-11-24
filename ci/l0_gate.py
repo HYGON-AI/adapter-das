@@ -565,12 +565,8 @@ def check_impl_naming(r):
         return
     try:
         proc = subprocess.run(
-            [sys.executable, gen, "--check"],
-            # 60 s was too tight for a cold, tenant-loaded box: the gen
-            # subprocess pays a full torch import + FS scan and tipped past
-            # 60 s on 2026-11-17 nmz16 while the same check passed in ~30 s
-            # on an idle node. The cap exists to catch hangs, not to bound
-            # a warm run.
+            [sys.executable, "-I", "-S", gen, "--check"],
+            # Keep the isolated import boundary and the upstream cold-run budget.
             capture_output=True, text=True, timeout=120,
         )
         if proc.returncode != 0:

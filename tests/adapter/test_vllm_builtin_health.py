@@ -109,3 +109,50 @@ def test_host_failure_is_refused_even_inside_running_callback(monkeypatch):
     with pytest.raises(host.LatchedVllmRuntimeError, match='host owner unhealthy'):
         host.require_runtime_healthy()
     assert rendered == [True] and calls == []
+
+
+@pytest.mark.parametrize('failed_owner', [None, 'host', *(name for _, name in OWNERS)])
+def test_forward_checks_builtins_before_requested_owners(monkeypatch, failed_owner):
+    from hcu_adapter.infra.extensions import ExtensionContext
+
+    calls = []
+    actions = host.ProcessLocalActions()
+    monkeypatch.setattr(host, '_RUNTIME_ACTIONS', actions)
+
+    def activate():
+        if failed_owner == 'host':
+            raise RuntimeError('host owner unhealthy')
+        actions.record_extension_reports(())
+        actions.record_forward_extension_policy(ExtensionContext('cpu', None))
+
+    if failed_owner == 'host':
+        with pytest.raises(host.LatchedVllmRuntimeError, match='host owner unhealthy'):
+            actions.run_once('vllm-runtime', activate)
+    else:
+        actions.run_once('vllm-runtime', activate)
+
+    original_host = actions.require_runtime_healthy
+    original_requested = actions.require_requested_extensions_healthy
+
+    def check_host():
+        calls.append('host')
+        original_host()
+
+    def check_requested():
+        calls.append('requested')
+        original_requested()
+
+    monkeypatch.setattr(actions, 'require_runtime_healthy', check_host)
+    monkeypatch.setattr(actions, 'require_requested_extensions_healthy', check_requested)
+    _owners(monkeypatch, calls, failed_owner)
+    if failed_owner is None:
+        host.require_forward_healthy()
+    else:
+        with pytest.raises(RuntimeError, match=failed_owner + ' owner unhealthy'):
+            host.require_forward_healthy()
+    expected = ['host', *(name for _, name in OWNERS), 'requested']
+    if failed_owner is not None:
+        expected = expected[:expected.index(failed_owner) + 1]
+    assert calls[:len(expected)] == expected
+    # Requested-owner validation also rechecks the real host latch internally.
+    assert all(call == 'host' for call in calls[len(expected):])

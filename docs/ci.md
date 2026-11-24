@@ -539,6 +539,52 @@ when stream is capturing`）并阻塞；在实际捕获 stream 预热后，原�
 [governance.md](governance.md)；运行时归因用 `HCU_ADAPTER_DUMP`（JSON：
 每算子活跃实现+机制+env 生效值），集成问题的配置级二分以它为起点。
 
+## vLLM CPU 契约的进程隔离
+
+L0 的 tier matrix 生成子进程也使用 `-I -S`，直接读取被检查源码的 catalog；
+父进程的隔离参数不会自动传给子进程。旧系统 Adapter 的 sitecustomize 提前
+导入 catalog 会产生假的“文档过期”失败，不能通过重写正确的生成文档修复。
+
+`ci/l1_gpu_gate.sh` 的 `cpu_vllm` 段在新解释器中隐藏设备并设置
+`HCU_ADAPTER_HOST=none`，执行公开 AR、lifecycle、metadata discovery 和
+model mutation 契约。原生 kernel 段会初始化 HIP，不能与这些要求
+`torch.cuda.is_initialized() == False` 的测试共享进程。
+同一份显式文件数组同时生成 CPU 执行列表和 kernel 段的 `--ignore` 参数；
+文件只是转移执行段，任一段失败仍使整个 L1 失败，原断言不变。
+宿主收集器须允许这个明确隐藏三种设备可见性的 HOSTnone 进程执行 CPU
+契约；不能仅按 `test_vllm_` 文件名前缀跳过。保留 SGLang 宿主、缺失可见性
+声明或已初始化 CUDA 的拒绝，不能伪造 `_HCU_ADAPTER_ACTIVE_HOST=vllm`
+使测试准入。`test_host_suite_scoping.py` 通过真实子 pytest 验证执行/跳过边界，
+`test_l1_gate_ownership.py` 验证 CPU 执行列表与后续排除列表一致。
+`VLLM_TARGET_ROOT` 的显式配置优先；未配置时使用当前解释器安装的 vLLM
+包根目录，保留真实 Worker/runner 的源码与签名检查。
+CPU 段同时声明 `AR_ADAPTER_ROOT`，默认对应 CI 的源码接入阶段；独立 wheel
+验证可显式指定安装根目录。PR wheel CI 会把 checkout 的 `hcu_adapter/`
+换成安装包的符号链接，因此来源断言比较声明根下的精确模块文件与实际模块
+各自解析后的路径；不能要求安装包仍位于 checkout 根内，也不能仅用包根前缀
+接受另一个同名模块。源码与安装态的 Core 字节检查保持独立且必跑。
+
+独立 `ci/vllm_host_lane.sh` 同样声明 `AR_ADAPTER_ROOT`，未配置时使用
+当前 checkout 根目录，并保留显式覆盖。wheel CI 中该根下的包符号链接
+仍解析到安装位置；缺失变量不能改成跳过来源断言。有 Git 元数据时，
+车道日志同时记录完整 HEAD 和父提交，绑定实际 PR 合并源。
+
+新 built-in owner 并入主线时，同步更新 AR/extension-fatal 的 CPU seam
+夹具，隔离不属于该契约的 provider 安装与 owner health；不能让新增默认
+provider 初始化设备、抢先失败而掩盖原测试。AR、宿主失败锁存和官方哈希
+collector 保持真实，新 owner 的独立 admission/publication 测试也须同跑。
+
+AR 的 CPU 哈希测试只替换 Inductor 的硬件描述采样，继续执行真实普通/AOT
+collector 与其余编译因子，保留 mega artifact 开关和禁止 GPU 查询的守卫。
+metadata discovery 夹具另建真实 venv，保留 Adapter/Core/vendor 依赖并移除
+其他扩展发行包的可见文件；通过原始 entry-point discovery 精确断言三个探针
+及唯一 Adapter 入口，不替换 metadata API。交付镜像中已装的独立 Plugin 不应
+参与这个刻意隔离的生命周期探针；Plugin 组合仍由独立测试和 E2E 验证。
+
+model mutation 的 CPU 夹具提供真实 `nn.Module`、transfer engine 的模型引用
+和 MRV2 的 `speculator=None` 状态；继续执行官方方法与模型更新预检，不复制
+方法体或绕过 owner guard。该夹具验证入口契约，不代替真实模型热更新验收。
+
 ## 设计取舍备忘
 
 - **L0 刻意零依赖**（不用 pytest/torch）：云端 runner 免装环境、秒级出结果、

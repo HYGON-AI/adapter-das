@@ -82,6 +82,7 @@ def test_lightop_plan_graph_replay():
     num_sms = M.get_num_sms()
     lens = torch.full((8, 1), 300, dtype=torch.int32, device="cuda")
     s = torch.cuda.Stream()
+    s.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(s):
         M.get_paged_mqa_logits_metadata(lens, 64, num_sms)
     torch.cuda.synchronize()

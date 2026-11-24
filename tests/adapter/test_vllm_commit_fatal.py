@@ -414,12 +414,16 @@ def test_fresh_interpreter_does_not_inherit_failed_runtime(startup):
     # This child checks a new process's lifecycle, without requesting unrelated
     # built-in providers that have not been activated there. Keep the real
     # host query and original timeout; the parent's requested modes stay intact.
-    child_env = dict(os.environ, HCU_VLLM_MHC_IMPL="stock",
+    child_env = dict(os.environ, HCU_ADAPTER_HOST="none",
+                     HIP_VISIBLE_DEVICES="", CUDA_VISIBLE_DEVICES="",
+                     ROCR_VISIBLE_DEVICES="", HCU_VLLM_MHC_IMPL="stock",
                      HCU_VLLM_SPARSE_INDEXER_IMPL="stock",
                      HCU_VLLM_FLASHMLA_PREFILL="stock",
                      HCU_VLLM_FLASHMLA_DECODE="stock", HCU_VLLM_PCP_IMPL="stock")
     result = subprocess.run(
         [sys.executable, "-B", "-c",
+         "import sys; "
+         "assert not ({'vllm', 'sglang'} & sys.modules.keys()); "
          "from hcu_adapter.bridges import vllm as b; "
          "b.require_runtime_healthy(); "
          "assert b.extension_reports() == (); "

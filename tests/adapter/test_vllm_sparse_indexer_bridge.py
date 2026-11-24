@@ -25,6 +25,8 @@ def test_tools_import_without_arguments_frameworks_or_runtime_side_effects():
     root = Path(__file__).resolve().parents[2]
     code = '''
 import importlib.abc,runpy,sys
+assert sys.flags.no_site
+assert not ({'torch','vllm','sglang','hcu_adapter'} & sys.modules.keys())
 class Block(importlib.abc.MetaPathFinder):
     def find_spec(self,name,*args):
         if name.split('.')[0] in {'torch','vllm','sglang','hcu_adapter'}:
@@ -39,7 +41,9 @@ for path in sys.argv[1:]:
     paths = [root/'tests/tools/_probe_vllm_sparse_indexer.py',
              root/'tests/tools/_probe_vllm_sparse_indexer_lifecycle.py']
     code = code.replace('for path in sys.argv[1:]:', f'for path in {[str(p) for p in paths]!r}:')
-    result = subprocess.run([sys.executable, '-I', '-c', code], text=True,
+    # -I still runs installed sitecustomize before the import blocker. These
+    # stdlib-only probes must not start a host before their inert-import check.
+    result = subprocess.run([sys.executable, '-I', '-S', '-c', code], text=True,
                             capture_output=True, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr
 

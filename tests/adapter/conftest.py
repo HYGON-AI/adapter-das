@@ -15,6 +15,10 @@ being skipped as they were on vllm-less images. They still run -- and
 must stay green -- in the vllm lane, where the host is pinned to vllm
 and each file gets a fresh interpreter.
 
+An explicitly device-hidden HOSTnone process also runs these CPU contracts.
+The L1 cpu_vllm segment and documented standalone CPU commands use that
+boundary; skipping them would silently remove the transferred coverage.
+
 Also batches the ``_cpu_process`` clean-subprocess reruns: files whose
 tests each spawn their own interpreter when the session loaded a host
 (69 ct_w4a8 tests alone cost ~540 s of interpreter+torch startup).
@@ -43,6 +47,21 @@ _CPU_RERUN_FILES = {
 }
 
 
+@pytest.fixture
+def cpu_builtin_owner_health(monkeypatch):
+    """Keep CPU selector/Worker doubles independent of native owner startup.
+
+    Leave the runtime latch and required-extension health checks real. Built-in
+    owner aggregation and drift are exercised by their dedicated suites.
+    """
+    from importlib import import_module
+
+    for name in ("vllm_mhc", "vllm_sparse_indexer", "vllm_flashmla",
+                 "vllm_flashmla_decode", "vllm_pcp"):
+        owner = import_module("hcu_adapter.bridges." + name)
+        monkeypatch.setattr(owner, "require_healthy", lambda: None)
+
+
 def _is_vllm_host_file(path: str) -> bool:
     name = os.path.basename(path)
     if name in _EXTRA_VLLM_FILES:
@@ -58,6 +77,20 @@ def _host_loaded() -> bool:
         name == "sglang" or name.startswith(("sglang.", "hcu_adapter.bridges."))
         for name in sys.modules
     )
+
+
+def _hidden_cpu_process() -> bool:
+    if os.environ.get("HCU_ADAPTER_HOST") != "none":
+        return False
+    if os.environ.get("_HCU_ADAPTER_ACTIVE_HOST") not in (None, "none"):
+        return False
+    if any(name == "sglang" or name.startswith("sglang.") for name in sys.modules):
+        return False
+    if not all(os.environ.get(key) in ("", "-1") for key in
+               ("HIP_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES")):
+        return False
+    torch = sys.modules.get("torch")
+    return torch is None or not torch.cuda.is_initialized()
 
 
 def _batch_clean_cpu(items) -> None:
@@ -94,7 +127,7 @@ def _batch_clean_cpu(items) -> None:
 
 def pytest_collection_modifyitems(config, items):
     active = os.environ.get("_HCU_ADAPTER_ACTIVE_HOST")
-    if active == "vllm":
+    if active == "vllm" or _hidden_cpu_process():
         return
     reason = (
         "vllm-host suite: needs a CUDA-clean process with the vllm host "

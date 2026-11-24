@@ -9,10 +9,13 @@ uses an outside-repo cwd and clears PYTHONPATH. Only the fixture target is added
 """
 
 import json
+from importlib import metadata
 import os
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
+import venv
 
 import pytest
 
@@ -37,7 +40,32 @@ def installed_probe(tmp_path_factory):
     wheels = list(wheelhouse.glob("*.whl"))
     assert len(wheels) == 1
     pip(["install", "--no-deps", "--target", str(target), str(wheels[0])])
-    return target
+    # The delivery image also installs optional Plugin distributions. This
+    # probe owns its three real entry points and deliberately refuses any
+    # unrelated provider. Give it a real isolated interpreter, retaining
+    # Adapter/Core/vendor dependencies but no other extension distributions.
+    # Do not filter metadata APIs or replace entry-point discovery.
+    excluded = {
+        f.parts[0]
+        for dist in metadata.distributions()
+        if any(ep.group == "hcu_adapter.extensions" for ep in dist.entry_points)
+        for f in (dist.files or ())
+        if f.parts and f.parts[0] not in {".", ".."}
+    }
+    runtime = root / "runtime"
+    venv.EnvBuilder(with_pip=False, symlinks=True).create(runtime)
+    library = runtime / "lib" / ("python%d.%d" % sys.version_info[:2]) / "site-packages"
+    for entry in sys.path:
+        source = Path(entry)
+        if source.name not in {"site-packages", "dist-packages"} or not source.is_dir():
+            continue
+        for item in source.iterdir():
+            link = library / item.name
+            if (item.name in excluded or item.name == "__pycache__"
+                    or item.suffix in {".pth", ".egg-link"} or link.exists()):
+                continue
+            link.symlink_to(item, target_is_directory=item.is_dir())
+    return SimpleNamespace(site=target, python=str(runtime / "bin" / "python"))
 
 
 @pytest.mark.parametrize("spawn", [False, True])
@@ -54,8 +82,8 @@ def test_actual_metadata_general_plugin_and_config_unpickle(
                HCU_COMMIT_PROBE_MODE=mode,
                HCU_COMMIT_PROBE_LOG=str(tmp_path / "events.jsonl"))
     env.pop("ROCR_VISIBLE_DEVICES", None)
-    code = f"import site; site.addsitedir({str(installed_probe)!r}); from hcu_commit_fatal_probe import run; run({spawn!r})"
-    result = subprocess.run([sys.executable, "-B", "-c", code], env=env,
+    code = f"import site; site.addsitedir({str(installed_probe.site)!r}); from hcu_commit_fatal_probe import run; run({spawn!r})"
+    result = subprocess.run([installed_probe.python, "-B", "-c", code], env=env,
                             cwd=tmp_path, text=True, capture_output=True, timeout=150)
     assert result.returncode == 0, result.stdout + result.stderr
     row = json.loads(result.stdout.split("COMMIT_PROBE=", 1)[1])
@@ -79,10 +107,19 @@ def test_fixture_import_has_no_log_or_runtime_patch_side_effects(installed_probe
         env.pop(key, None)
     code = f'''
 import site
-site.addsitedir({str(installed_probe)!r})
+site.addsitedir({str(installed_probe.site)!r})
 import torch
+from types import SimpleNamespace
+from unittest.mock import patch
 names = ("init", "_lazy_init", "current_device", "get_device_properties")
 before = [getattr(torch.cuda, name) for name in names]
+# Preload the real framework base under the same bounded CPU metadata double.
+# Fixture imports below must still leave every original GPU callable intact.
+with patch.object(torch.cuda, "get_device_properties",
+                  return_value=SimpleNamespace(gcnArchName="gfx936")), \\
+     patch.object(torch.cuda, "_lazy_init",
+                  side_effect=AssertionError("CPU fixture import initialized GPU")):
+    from vllm.model_executor.layers.quantization.base_config import QuantizationConfig
 import hcu_commit_fatal_probe
 import hcu_commit_fatal_payload
 assert before == [getattr(torch.cuda, name) for name in names]
@@ -90,6 +127,6 @@ assert not torch.cuda.is_initialized()
 assert hcu_commit_fatal_payload.ProbeQuantizationConfig().get_name() == "cpu_commit_probe"
 print("fixture import has no log/env requirement or runtime patch")
 '''
-    result = subprocess.run([sys.executable, "-B", "-c", code], env=env, cwd=tmp_path,
+    result = subprocess.run([installed_probe.python, "-B", "-c", code], env=env, cwd=tmp_path,
                             text=True, capture_output=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr

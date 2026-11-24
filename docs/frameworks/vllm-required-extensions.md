@@ -65,3 +65,63 @@ Portable coverage exercises the real callback and extension host with injected
 discovery/platform dependencies, missing/ambiguous requirements, malformed
 configuration, failure latching, and a real fork. It is separate from installed
 wheel and actual vLLM startup/model validation.
+
+The activation-time requirement policy is also checked before execution. The
+Adapter's thin official Worker subclass checks it before delegating
+`execute_model`, including pending PP sends and V2 FULL Graph replay. In v0.33,
+that replay does not enter `Platform.set_additional_forward_context`; checking
+only that platform hook misses changes after capture. The existing platform
+hook remains for forwards that do enter it. Both boundaries call the same
+process-local policy, without rereading requirements, activating or repairing
+owners. The official runner, Graph dispatch, collectives and sampling remain
+delegated upstream.
+
+This Worker boundary covers the configured Adapter Worker under `uni`/`mp`.
+Foreign workers, extension-selected workers that do not inherit it, and other
+executors do not acquire this coverage from an ACTIVE report. CPU tests execute
+the real official Worker and Graph-manager replay with a fake device graph,
+including checker/report drift, missing enrollment, and latched retries.
+
+The Adapter Worker also retains the public runner-factory selection seam.
+Selecting a registered runner through `_make_model_runner` preserves this outer
+execution guard; CPU regressions cover both healthy FULL replay and factory
+ownership drift stopping before PP waits, offloader work and graph replay.
+These synthetic runner/device checks do not qualify a plugin runner or model.
+
+Installed validation on 2026-11-14 used Core `ae5ebff332`, Adapter `1c2b33e77e`
+and Plugin `01dee6db8a` on gfx936, with normally resolved wheel dependencies.
+The affected installed CPU suites passed 175 tests. A compiled
+Qwen2-0.5B-Instruct TP1 model replayed an existing FULL graph 35 times; controlled
+same-report republication then stopped the next Worker execution, with zero
+subsequent runner or Graph entries. The observer/fault injector was external
+test material, not installed production code. This checks report-generation
+drift; it does not claim actual vendor registry or kernel fault coverage.
+
+The matched platform-only/Worker-guard HumanEval 0-31 runs produced identical
+raw and normalized sample bytes: both scored 0/32 raw and 15/32 after the fixed
+format normalization. No new failure was observed for this Worker change;
+model accuracy remains unaccepted. Both used default Graph, BF16, seed 0,
+8192 context, one sequence, 256 batched tokens, explicit 320 MiB KV and a 0.045
+memory fraction. This is not a Core-change A/B or a performance qualification.
+Both API processes returned zero, but framework worker-grace/EngineCore
+force-kill warnings remained; clean shutdown is not accepted. Project GPU CI
+and the repository's review requirements remain separate merge gates.
+
+
+### Current-main integration (2026-11-19)
+
+The integration retains main `8490a6b6072bda681982e95b23cbcae313b1eec6`
+owner fixtures, host-lane provenance and the incoming SGLang compatibility work.
+The production delta from main remains confined to the shared lifecycle, vLLM
+platform bridge and thin Worker execution guard; no numerical kernel,
+native/build source or official runner body is changed. Built-in health
+regressions keep main's real lifecycle, activation deferral and failure-rendering
+reentry coverage, and additionally check forward ordering before requested owners.
+The Worker replay fixture restores device queries after its explicit import-only
+architecture metadata double and refuses GPU queries during execution.
+
+This integration requires its own complete host/native and model acceptance.
+Earlier loaded-model/HumanEval results above retain their original combinations;
+they do not qualify this merge. Device-hidden source/installed CPU results are
+reported separately from the full host lane, real model accuracy, performance
+and normal shutdown. Keep the request Draft while these gates remain open.

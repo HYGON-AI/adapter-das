@@ -13,6 +13,7 @@ import json
 import multiprocessing as mp
 import os
 from pathlib import Path
+import pickle
 import sys
 
 from hcu_adapter.infra.extensions import ExtensionCommitError, ExtensionSpec
@@ -38,7 +39,15 @@ def emit(event):
 
 def _cpu_guard():
     import torch
+    from types import SimpleNamespace
+    from unittest.mock import patch
 
+    assert not torch.cuda.is_initialized()
+    # Real config import can read the ROCm descriptor in both parent and spawn
+    # child. Restore the query before installing the original refusal guards.
+    with patch.object(torch.cuda, "get_device_properties",
+                      return_value=SimpleNamespace(gcnArchName="gfx936")):
+        from vllm.config import VllmConfig  # noqa: F401
     assert not torch.cuda.is_initialized()
 
     def forbidden(*args, **kwargs):
@@ -103,6 +112,10 @@ def exercise(config=None):
     # Explicit CPU test doubles; no vendor/platform/GPU probe is executed.
     bridge.detect_hcu = lambda: bridge.HcuDetection(True, None, "CPU admission double")
     bridge._ensure_hcu_platform_selected = lambda: None
+    # This fixture tests extension discovery/publication, not native HIP ABI.
+    # CpuPlatform would request CUDA symbols from the HIP runtime; the real
+    # loader/admission and its failure latch have their own runtime_abi suite.
+    bridge._require_vllm_hip_runtime_abi = lambda: None
     mode = os.environ["HCU_COMMIT_PROBE_MODE"]
     if mode == "runtime-badstr":
         def fail_platform():
@@ -174,7 +187,26 @@ def exercise(config=None):
             "scope": "real metadata/general-plugin/spawn; CPU admission doubles; no engine/model"}
 
 
+def _restore_cpu_config(payload):
+    # Spawn imports a config's defining module before its fields' __setstate__.
+    # Install the CPU import boundary first, then unpickle the real config and
+    # quantization payload without changing their reducers or state handling.
+    _cpu_guard()
+    return pickle.loads(payload)
+
+
+class CpuConfigEnvelope:
+    def __init__(self, config):
+        self.payload = pickle.dumps(config)
+
+    def __reduce__(self):
+        return _restore_cpu_config, (self.payload,)
+
+
 def spawn_child(config, writer):
+    from vllm.config import VllmConfig
+
+    assert isinstance(config, VllmConfig)
     writer.send(exercise(config))
     writer.close()
 
@@ -191,7 +223,8 @@ def run(spawn):
         config.quant_config = ProbeQuantizationConfig()
         context = mp.get_context("spawn")
         reader, writer = context.Pipe(duplex=False)
-        child = context.Process(target=spawn_child, args=(config, writer))
+        child = context.Process(target=spawn_child,
+                                args=(CpuConfigEnvelope(config), writer))
         child.start()
         writer.close()
         try:

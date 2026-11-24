@@ -264,11 +264,38 @@ vLLM worker/executor/env-cache 覆盖查询归 `bridges.vllm_model_load`，薄 W
 验证根配置、cwd/显式路径优先级及坏配置拒绝，并覆盖双宿主策略解析。
 
 vLLM public registry/extension health 修改先读 `docs/vllm-flash-registry.md`。
+安装态 CI 的 checkout package 可能是指向 wheel 的符号链接；来源门禁应比较
+声明的精确模块与实际模块解析后的路径，不能把 checkout 根包含关系作为
+安装包必须留在源码树内的要求。仍须核对固定 Core 字节与真实 wheel 来源。
 共享 lifecycle 机制放 `runtime_lifecycle.py`，不能长在宿主薄桥内；改动须
 回归双宿主 bootstrap/import 与共享 consumer 契约，并保持真实 vLLM probes。
+CPU AR 的官方模块导入可早于 fixture；架构 metadata double 仅包住实际导入，
+退出后恢复原设备查询并继续拒绝 GPU 初始化，不能靠测试收集顺序预热。
 回归必须覆盖真实官方 selector 在 clear/foreign 后的拒绝、零实参签名预检、
 精确 report/PID 绑定、sink 失败和错误格式化中实际 fork；不得只直接测 owner
 checker。CPU 生命周期通过不代表 HCU 数值或模型通过。
+vLLM public forward hook 的 required-owner 健康策略在成功激活/报告发布后
+冻结 entry-point/capability 并集、精确 report/checker（含 API1 无 checker
+标记）、PID 与 generation。共享事务在宿主锁外逐 owner 检查；不得在
+`run_once` 激活回调内调用 checker。forward 要求当前 PID 完成激活及登记，
+空 required 也不豁免；健康 fork 后须先走正常 child runtime 激活。
+任何后续 report 发布（含同对象重发）使 forward 登记失效，丢失 binding
+不能降为无 checker；不得在 forward 重读 env、激活或修复。既有严格
+capability checker 与 latch-only runtime 查询语义保持独立。CPU public
+hook/bootstrap 仅验证 Python 边界，真实 loaded-compiled/live Graph
+经官方 runner 的健康与 drift 拒绝仍需单独取证。
+v0.33 V2 FULL Graph replay 不进入平台 `set_additional_forward_context`；
+required-owner 检查还须在已配置的 Adapter Worker `execute_model` 委托前执行，
+同时阻断 PP 等待/传输和 replay。复用同一冻结策略，不复制 runner 或 Graph，
+不在 forward 重读环境；第三方/扩展选择的 Worker 必须另核继承与覆盖范围。
+真实 PP 模型取证须核对 `TP * PP` 个 worker、各自 current device/UUID、
+实际层范围和 `execute_model` 来源，不能把所有 rank 的设备都记成 device0。
+健康模型的生成、Graph 与 HumanEval 验证和失效 owner 的传输前拒绝是两项
+不同证据；替身 PP send 的组件结果不能替代真实拓扑的故障验证。
+若通过公开 registry 注入 owner 丢失，先用同一观测器证明各 rank 的实际
+执行线程、健康收发与 replay 均可见，再核对故障后的委托边界；不能仅凭
+HTTP 报错或缺失 trace 判定传输前拒绝。只覆盖实际注入的 rank 和时序，
+不得外推单 rank、并发失效、正常退出或性能。
 
 宿主启动失败须先锁存固定拒绝，再格式化异常；`__str__` 也可能抛
 `BaseException`、重入或 fork。扩展宿主先判原始 fatal 链，再安全生成唯一

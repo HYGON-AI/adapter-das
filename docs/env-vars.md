@@ -61,6 +61,29 @@ W4A8 复用 `NO_PROXY` 作为 `no_proxy`。这些派生值标为 `auto`。
 W4A8 使用同一份 compressed-tensors 权重，显式要求 W4A16 时启动报错。
 未配置的其他设置沿用所属运行库的默认行为。
 
+## HY3 Channel W8A8 的启动配置（candidate）
+
+HY3 使用与 GLM-5.3 相同的包内 YAML 机制，支持官方模块入口、`sglang serve`
+及现有 `python3 -m hcu_sglang` 入口。自动选择只覆盖本地 HY3 Channel W8A8、
+单节点 TP8/DP8、DeepEP auto、DP attention/DP lm head、FA3、NEXTN 的组合。
+
+| 文件 | 对应配方 | 关键差异 |
+|---|---|---|
+| `hy3-fp8-tp8-dp8-e4m3.yaml` | S7 FP8 | FP8 专家=1、融合 RoPE=1、KV 布局=1 |
+| `hy3-int8-tp8-dp8-e4m3.yaml` | S7 INT8 | FP8 专家=0、融合 RoPE=1、vendor FA |
+| `hy3-int8-tp8-dp8-e5m2.yaml` | 10.8 INT8 | FP8 专家=0、融合 RoPE=0、KV 布局=0 |
+
+未固定 vendor 的配方保留原有 FA 选择，不把 FA3 命令名称当作厂商内核证明。
+环境变量、外部配置、自动规则及默认值继续按四级优先级解析。包内配方的值记为
+`config`；自定义完整配置优先于自动配方，不合并遗漏项。旧的
+`SGL_CHUNKED_PREFIX_CACHE_THRESHOLD` 显式覆盖仍兼容，正式名称优先。
+队列、拷贝和通信值通过启动时重新执行 Python 生效；机器路径、显卡分配、
+网络和 sysctl 不写进模型配方。
+
+本扩展复用已合入的 Adapter PR #162 的启动配置基础；示例、配置 UI 操作和验证边界见
+[HY3 启动说明](../examples/hy3/README.md)。本次不新增用户环境变量，保留原
+配方的 `SGLANG_ENABLE_SPEC_V2` 遗留值，实际 NEXTN 行为仍需运行验证。
+
 ## 全量变量表
 
 | 变量 | 默认 | 自动规则 | 说明 |

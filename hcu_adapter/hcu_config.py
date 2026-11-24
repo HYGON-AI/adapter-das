@@ -900,6 +900,7 @@ def _validate(doc, path):
         raise HcuConfigError("Unknown adapter host settings")
     if "sglang" in hosts:
         from .glm53_env_rules import LAUNCH_ENV_KEYS
+        from .hy3_profiles import LAUNCH_ENV_KEYS as HY3_ENV_KEYS
 
         options = hosts["sglang"]
         if not isinstance(options, dict):
@@ -907,7 +908,7 @@ def _validate(doc, path):
         if options.keys() - {"env"}:
             raise HcuConfigError("Use hosts.sglang.env for SGLang launch settings")
         env = options.get("env", {})
-        if not isinstance(env, dict) or env.keys() - LAUNCH_ENV_KEYS:
+        if not isinstance(env, dict) or env.keys() - (LAUNCH_ENV_KEYS | HY3_ENV_KEYS):
             raise HcuConfigError("Unknown setting in hosts.sglang.env")
         if any(type(value) not in (str, int) for value in env.values()):
             raise HcuConfigError("hosts.sglang.env settings require strings or integers")

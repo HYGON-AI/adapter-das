@@ -170,9 +170,10 @@ def install() -> None:
         return
 
     launcher_args = list(original_argv)[-len(sys.argv)-1:]
-    module_launch = sys.argv[:1] == ["-m"] and launcher_args == [
-        "-m", "sglang.launch_server", *sys.argv[1:]
-    ]
+    module_launch = (sys.argv[:1] == ["-m"] and len(launcher_args) >= 2
+                     and launcher_args[0] == "-m"
+                     and launcher_args[1] in {"sglang.launch_server", "hcu_sglang", "hcu_sglang.launch_server"}
+                     and launcher_args[2:] == sys.argv[1:])
     cli_launch = bool(sys.argv) and PurePath(sys.argv[0]).name == "sglang" and sys.argv[1:2] == ["serve"]
     try:
         host, source = _detect_host(
@@ -196,7 +197,7 @@ def install() -> None:
         plugins = os.environ.get("SGLANG_PLUGINS")
         plugin_names = {name.strip() for name in (plugins or "").split(",")}
         if (module_launch or cli_launch) and original_argv:
-            from hcu_adapter.glm53_launch import apply_official_defaults
+            from hcu_adapter.sglang_launch import apply_official_defaults
 
             try:
                 apply_official_defaults(sys.argv[2:] if cli_launch else sys.argv[1:], original_argv)

@@ -782,6 +782,16 @@ BACKEND_CATALOG = {
                              "note": "__nv_* -> __ocml_*；hip 缺的名响亮 stub"},
         },
     },
+    "diffusion_fp32_numerics": {
+        "var": None,
+        "summary": "SGLang diffusion FP32 算术原语，仅在可见设备均为 gfx936 时启用",
+        "backends": {
+            "triton": {
+                "status": "candidate",
+                "note": "gfx936 上实测乘法与精确除法逐位对拍，倒平方根最大误差 1 ULP。",
+            },
+        },
+    },
     "diffusion_fa2": {
         "summary": "SGLang Diffusion FA / FA2 后端",
         "backends": {

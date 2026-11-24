@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 import subprocess
 import sys
 import os
@@ -24,13 +25,22 @@ def detection(monkeypatch):
     return torch
 
 
-def test_activation_requires_actual_supported_hip_identity(detection, monkeypatch):
+def test_activation_requires_actual_supported_hip_identity(detection, monkeypatch, caplog):
     assert diffusion.platform_plugin() == diffusion._PLATFORM_CLASS
+    assert not caplog.records
+
     monkeypatch.setattr(diffusion.hcu_env, 'arch_name', lambda: 'gfx950')
     assert diffusion.platform_plugin() is None
+    [(name, level, message)] = caplog.record_tuples
+    assert name == 'hcu.adapter' and level == logging.WARNING
+    assert 'requires gfx936' in message and 'detected: gfx950' in message
+    assert all(symbol in message for symbol in ('mul_rn_f32', 'div_rn_f32', 'rsqrt_approx_f32'))
+
+    caplog.clear()
     monkeypatch.setattr(diffusion.hcu_env, 'arch_name', lambda: 'gfx936')
     detection.version.hip = None
     assert diffusion.platform_plugin() is None
+    assert not caplog.records
 
 
 def test_hidden_devices_and_legacy_policy_do_not_activate(detection, monkeypatch):
@@ -127,10 +137,15 @@ def test_memory_query_preserves_the_native_argument_contract(native_platform, mo
 
 
 def test_backend_init_registers_the_public_seam_before_use(native_platform, monkeypatch):
-    monkeypatch.setattr(diffusion, 'install_collective_policy', lambda: False)
+    from hcu_adapter.bridges import sglang_diffusion_numerics
+
+    calls = []
+    monkeypatch.setattr(sglang_diffusion_numerics, 'install', lambda: calls.append('numerics'))
+    monkeypatch.setattr(diffusion, 'install_collective_policy', lambda: calls.append('collective'))
     monkeypatch.setattr(registry, '_RECORDS', {})
     monkeypatch.setattr(registry, '_BOUND', {})
     native_platform().init_backend()
+    assert calls == ['numerics', 'collective']
     record = registry.get('platform_detect')
     assert record['implementation'] == 'cuda'
     assert record['mechanism'] == registry.MECH_SEAM

@@ -20,6 +20,9 @@ def platform_plugin():
     if not architecture:
         raise RuntimeError('Cannot resolve the visible HIP architecture for diffusion')
     if architecture not in _SUPPORTED_ARCHES:
+        from hcu_adapter.bridges.sglang_diffusion_numerics import warn_unsupported_arches
+
+        warn_unsupported_arches((architecture,))
         return None
     return _PLATFORM_CLASS
 
@@ -168,6 +171,7 @@ def get_platform_class():
             return vae
 
         def init_backend(self):
+            from hcu_adapter.bridges import sglang_diffusion_numerics
             from hcu_adapter.infra import registry
 
             registry.register(
@@ -176,6 +180,7 @@ def get_platform_class():
                 mechanism=registry.MECH_SEAM,
                 detail='HCU diffusion OOT; native CUDA semantics, HIP hardware and non-NVML metadata',
             )
+            sglang_diffusion_numerics.install()
             install_collective_policy()
 
     _PLATFORM_TYPE = HcuDiffusionPlatform

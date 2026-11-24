@@ -66,6 +66,10 @@ Graph 生命周期仍需单独证明，不能由普通 AR 的可达性推定支�
 FP8 fallback 的公开注册、内核优先级、权重加载、量化和 INT8 非对称修正；
 仅将选中的 Triton provider 的共享 GEMM 调用点路由至 LightOp。
 `ops.vllm_scaled_mm` 支持 `auto`（默认）、`lightop`（要求 wheel）和 `triton`。
+`auto` 在首个满足原有 dtype/布局/尺度条件的真实 GEMM 执行时才加载 LightOp，
+未调用量化 GEMM 的 BF16 模型不因此导入整套 vendor 原生库。显式 `lightop`
+仍在启动时验证 wheel 与 ABI。自动模式缺包/缺入口保留官方 Triton；已观察到
+的 ABI/加载失败在该桥内拒绝后续调用，不能通过不匹配的形状绕过。
 `HCU_DISABLE_OPS=vllm_scaled_mm` 在新进程中跳过接入。INT8 覆盖 gfx936/gfx938，
 E4M3FN 仅 gfx938；不覆盖布局/尺度/对齐时保留官方 Triton 行为。候选状态不表示
 DSV41 整模型或性能验收完成。该后端不处理 CT W4A8 MoE 的 INT4 packing/HIPC。
@@ -119,6 +123,25 @@ metadata、官方 general-plugin loader 与 config spawn/unpickle 共 17 项检�
 
 
 mHC 行为适配候选、启动配置、缓存/生命周期及未闭合门禁见 [v0.33 mHC](vllm033-mhc.md)。默认仍为原始官方，不代表已知 gfx936 TileLang 分支通过。
+
+## 冻结堆的解释器退出清理
+
+HCU runtime 在平台和 native ABI 准入后注册标准 `atexit` 回调
+`gc.unfreeze`，使服务期间冻结的循环 native owner 在正常解释器退出时
+参加 Python 最终回收，包括 EngineCore 在 shutdown 后再次冻结的存活对象。
+实现位于 framework-free 的 `hcu_adapter.infra.interpreter_cleanup`，不替换 Core
+函数，也不修改服务期的 freeze、shutdown 的完整 `gc.collect()` 或清理期限。
+注册沿用宿主启动的串行事务；fork 继承回调和注册状态，spawn 独立注册。
+
+普通 `atexit` 不保证 `os._exit`、SIGKILL 或崩溃时执行。冻结堆包含的对象越多，
+最终回收可能越慢；去掉 native 泄漏告警不等于解决 EngineCore 清理超时。
+`tests/adapter/test_interpreter_cleanup.py` 覆盖真实解释器、再次冻结、fork、
+spawn/forkserver 及 framework-free 注册；完整编译模型的原始退出期限和
+HumanEval 对照仍是独立验收，当前候选不声明这些门禁已通过。
+
+退出条件：若目标 Core 的公开冻结堆入口已负责正常退出时解冻，且覆盖
+EngineCore 的末次 refreeze，应删除 Adapter 的重复注册并复用官方行为，
+重跑相同的循环 owner、子进程和模型退出对照；不以完整 wheel 字符串锁定该能力。
 
 ## KV cache placement extension seam
 

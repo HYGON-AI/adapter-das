@@ -548,6 +548,12 @@ def hcu_runtime_plugin() -> None:
         _ensure_hcu_platform_selected()
         configure_vllm_hip_runtime_path()
         _require_vllm_hip_runtime_abi()
+        # anchor-baseline(②): vLLM 0.33 freezes the serving heap and can
+        # refreeze survivors after EngineCore shutdown. Native-owner cycles
+        # still need normal interpreter finalization after that final freeze.
+        from hcu_adapter.infra.interpreter_cleanup import register_frozen_heap_cleanup
+
+        register_frozen_heap_cleanup()
         from hcu_adapter.bridges.vllm_fp8 import install as install_fp8_fallback
 
         install_fp8_fallback()

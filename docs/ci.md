@@ -39,6 +39,11 @@
 `Adapter CPU` 可手动运行，HCU dispatch 自身仍运行公共 build/L0。
 vLLM 车道保留每文件新解释器及 `VLLM_PLUGINS=none` 的桥契约测试形态，
 不能据此宣称真实 Plugin/模型已验收；nightly 的 observe 结果仍只用于分诊。
+车道开始时记录 Core、Adapter、可选 Plugin、Torch、Triton 的安装版本及
+模块来源，避免将镜像标签或 Adapter 的独立版本号当作 vLLM 目标版本。
+CPU 契约中的无关原生 owner 替身与 Triton interpreter 的比较 handle 修正，
+见开发 skill 的 `references/test-suite.md`；被测 owner、宿主锁存、原数值
+断言和 blocking 门禁继续执行。
 
 L1.5 v2/代表矩阵的下列 HCU 计数是**拆分前兼容快照的历史证据**，
 该快照包含生产兼容修复（现由 [PR #27](https://github.com/HYGON-AI/adapter-das/pull/27)

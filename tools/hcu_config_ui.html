@@ -116,9 +116,9 @@
       <option value="hy3-fp8-tp8-dp8-e4m3.yaml">TP8/DP8 · FP8 · KV E4M3 · NEXTN · 融合 RoPE 开启</option>
       <option value="hy3-int8-tp8-dp8-e4m3.yaml">TP8/DP8 · INT8 · KV E4M3 · NEXTN · vendor FA · 融合 RoPE 开启</option>
       <option value="hy3-int8-tp8-dp8-e5m2.yaml">TP8/DP8 · INT8 · KV E5M2 · NEXTN · 融合 RoPE 关闭</option>
-      <option value="hy3-int8-tp8-e4m3.yaml">TP8 · INT8 · KV E4M3 · 无 NEXTN · 融合 RoPE 关闭</option>
-      <option value="hy3-int8-tp8-e5m2.yaml">TP8 · INT8 · KV E5M2 · 无 NEXTN · 融合 RoPE 关闭</option>
-      <option value="hy3-fp8-tp8-nextn-e4m3.yaml">TP8 · FP8 · KV E4M3 · NEXTN · 关闭 radix cache</option>
+      <option value="hy3-int8-tp8-e4m3.yaml">TP8 · INT8 · KV E4M3 · 无 NEXTN · vendor FA / HCU KV</option>
+      <option value="hy3-int8-tp8-e5m2.yaml">TP8 · INT8 · KV E5M2 · 无 NEXTN · vendor FA / HCU KV</option>
+      <option value="hy3-fp8-tp8-nextn-e4m3.yaml">TP8 · FP8 · KV E4M3 · NEXTN · vendor FA / HCU KV</option>
     </select>
     <div id="hy3-env-rows"></div>
     <p>本节只生成配置，不启动服务；模型参数仍在启动命令里填写。仅完成配置回归，尚未进行本次模型精度及性能复测。</p>
@@ -522,6 +522,8 @@ const HY3_PRESETS = {
   },
   "hy3-int8-tp8-e4m3.yaml": {
     "HCU_ADAPTER_HOST": "sglang",
+    "HCU_FA_IMPL": "vendor",
+    "SGLANG_KV_LAYOUT_HCU_FA": "1",
     "SGLANG_PLUGINS": "hcu",
     "SGLANG_ROCM_USE_AITER_MOE": "false",
     "SGLANG_USE_FUSED_RMS_ROTARY": "0",
@@ -530,6 +532,8 @@ const HY3_PRESETS = {
   },
   "hy3-int8-tp8-e5m2.yaml": {
     "HCU_ADAPTER_HOST": "sglang",
+    "HCU_FA_IMPL": "vendor",
+    "SGLANG_KV_LAYOUT_HCU_FA": "1",
     "SGLANG_PLUGINS": "hcu",
     "SGLANG_ROCM_USE_AITER_MOE": "false",
     "SGLANG_USE_FUSED_RMS_ROTARY": "0",
@@ -542,6 +546,7 @@ const HY3_PRESETS = {
     "GPU_FORCE_BLIT_COPY_SIZE": "16",
     "GPU_MAX_HW_QUEUES": "3",
     "HCU_ADAPTER_HOST": "sglang",
+    "HCU_FA_IMPL": "vendor",
     "HIP_D2H_DIRECT_COPY_THRESHOLD": "512",
     "HIP_D2H_DISABLE_COPY_BUFFER": "0",
     "HIP_D2H_HSAAPI_COPY_THRESHOLD": "512",
@@ -556,6 +561,7 @@ const HY3_PRESETS = {
     "SGLANG_CHUNKED_PREFIX_CACHE_THRESHOLD": "0",
     "SGLANG_ENABLE_SPEC_V2": "1",
     "SGLANG_KVALLOC_KERNEL": "1",
+    "SGLANG_KV_LAYOUT_HCU_FA": "1",
     "SGLANG_NCCL_ALL_GATHER_IN_OVERLAP_SCHEDULER_SYNC_BATCH": "1",
     "SGLANG_PLUGINS": "hcu",
     "SGLANG_ROCM_USE_AITER_MOE": "1",

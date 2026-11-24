@@ -16,8 +16,14 @@
 | `hy3-fp8-tp8-nextn-e4m3` | S7 FP8 | 显存比例 0.9、BF16、NEXTN 2/1/3、关闭 radix cache、融合 RoPE=1 |
 
 这些命令未增加 `--quantization slimquant_marlin`、DP、DeepEP、shared-expert
-fusion 或 watchdog 等原脚本没有的参数。新 YAML 也未额外固定 vendor FA、
-DeepGEMM 开关或 KV 布局。FP8 保留原脚本的 NCCL all-gather 同步 batch 开关。
+fusion 或 watchdog 等原脚本没有的参数。三份 TP8 YAML 明确设置
+`HCU_FA_IMPL=vendor`、`SGLANG_KV_LAYOUT_HCU_FA=1`，沿用此前验证时的厂商 FA
+及 HCU KV 布局组合。这是相对原始脚本补齐的两项配置，显式环境变量仍可覆盖；
+它们不修改其他配方或 Plugin 全局默认值。DeepGEMM 开关保持原脚本的选择。
+FP8 保留原脚本的 NCCL all-gather 同步 batch 开关。
+
+E5M2 配方需要配套 HY3 运行适配中的 Adapter FA3/E5M2 检查修复，才能在
+显式 vendor 模式和支持的 HCU 上保留 FA3。仅安装本配置分支不能替代运行适配。
 
 TP8 INT8 的 `W8A8_SUPPORT_METHODS=2` 由配套 Plugin 的 compressed INT8
 实现读取。TP8 FP8 的 `USE_DCU_CUSTOM_ALLREDUCE=1` 按原样传入，当前

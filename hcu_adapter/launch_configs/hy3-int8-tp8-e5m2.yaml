@@ -6,6 +6,8 @@ hosts:
   sglang:
     env:
       HCU_ADAPTER_HOST: "sglang"
+      HCU_FA_IMPL: "vendor"
+      SGLANG_KV_LAYOUT_HCU_FA: "1"
       SGLANG_PLUGINS: "hcu"
       SGLANG_ROCM_USE_AITER_MOE: "false"
       SGLANG_USE_FUSED_RMS_ROTARY: "0"

@@ -73,11 +73,13 @@ NEXTN；以及 TP8 的 INT8 无 NEXTN、FP8 NEXTN 且关闭 radix cache。
 | `hy3-fp8-tp8-dp8-e4m3.yaml` | 原 TP8/DP8 FP8 | FP8 专家=1、融合 RoPE=1、KV 布局=1 |
 | `hy3-int8-tp8-dp8-e4m3.yaml` | 原 TP8/DP8 INT8 E4M3 | FP8 专家=0、融合 RoPE=1、vendor FA |
 | `hy3-int8-tp8-dp8-e5m2.yaml` | 原 TP8/DP8 INT8 E5M2 | FP8 专家=0、融合 RoPE=0、KV 布局=0 |
-| `hy3-int8-tp8-e4m3.yaml` | S7 TP8 INT8 | AITER MoE=false、融合 RoPE=0、W8A8 方法=2 |
+| `hy3-int8-tp8-e4m3.yaml` | S7 TP8 INT8 | AITER MoE=false、融合 RoPE=0、W8A8 方法=2、vendor FA、HCU KV 布局=1 |
 | `hy3-int8-tp8-e5m2.yaml` | 10.8 TP8 INT8 | 与上行计算开关相同；KV 类型由命令指定 |
-| `hy3-fp8-tp8-nextn-e4m3.yaml` | S7 TP8 FP8 | AITER MoE=1、融合 RoPE=1、同步 batch 使用 NCCL all-gather |
+| `hy3-fp8-tp8-nextn-e4m3.yaml` | S7 TP8 FP8 | AITER MoE=1、融合 RoPE=1、NCCL all-gather 同步 batch、vendor FA、HCU KV 布局=1 |
 
 未固定 vendor 的配方保留原有 FA 选择，不把 FA3 命令名称当作厂商内核证明。
+三份 TP8 配方显式选择 vendor 与 HCU KV 布局；E5M2 还需配套 HY3 Adapter
+运行适配中的 FA3/E5M2 检查修复。这些是配方配置，不改变 Plugin 全局 layout 默认值。
 环境变量、外部配置、自动规则及默认值继续按四级优先级解析。包内配方的值记为
 `config`；自定义完整配置优先于自动配方，不合并遗漏项。旧的
 `SGL_CHUNKED_PREFIX_CACHE_THRESHOLD` 显式覆盖仍兼容，正式名称优先。

@@ -213,7 +213,8 @@ def test_tp8_examples_select_their_own_environment_without_rewriting_cli(tmp_pat
     assert preset_env(filename).items() <= env.items()
     assert env["HCU_CONFIG"] == "builtin:" + filename
     assert "SGLANG_USE_DEEPGEMM_MOE" not in env
-    assert "HCU_FA_IMPL" not in env
+    assert env["HCU_FA_IMPL"] == "vendor"
+    assert env["SGLANG_KV_LAYOUT_HCU_FA"] == "1"
     if family == "int8":
         assert env["SGLANG_ROCM_USE_AITER_MOE"] == "false"
         assert env["SGLANG_USE_FUSED_RMS_ROTARY"] == "0"
@@ -244,6 +245,8 @@ def test_tp8_explicit_environment_and_custom_config_keep_priority(tmp_path, monk
         "W8A8_SUPPORT_METHODS": "3", "SGLANG_USE_FUSED_RMS_ROTARY": "1"}}}}))
     monkeypatch.setenv("HCU_CONFIG", str(config))
     monkeypatch.setenv("W8A8_SUPPORT_METHODS", "1")
+    monkeypatch.setenv("HCU_FA_IMPL", "triton")
+    monkeypatch.setenv("SGLANG_KV_LAYOUT_HCU_FA", "0")
     args = ["--model-path", str(checkpoint(tmp_path, "int")), "--tp-size=8",
             "--attention-backend=fa3", "--kv-cache-dtype=fp8_e4m3"]
     calls = []
@@ -251,6 +254,8 @@ def test_tp8_explicit_environment_and_custom_config_keep_priority(tmp_path, monk
     assert hy3_launch.apply_official_defaults(args, [sys.executable, "-m", "sglang.launch_server", *args])
     env = calls[0][2]
     assert env["W8A8_SUPPORT_METHODS"] == "1"
+    assert env["HCU_FA_IMPL"] == "triton"
+    assert env["SGLANG_KV_LAYOUT_HCU_FA"] == "0"
     assert env["SGLANG_USE_FUSED_RMS_ROTARY"] == "1"
     assert "SGLANG_ROCM_USE_AITER_MOE" not in env
 

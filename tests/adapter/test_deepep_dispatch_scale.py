@@ -72,13 +72,14 @@ class DeepEPDispatchScaleTests(unittest.TestCase):
                 self.assertEqual(bridge(*prefix, *args, **kwargs), "native")
                 self.assertEqual(calls[-1], (prefix + args, kwargs))
 
-    def test_upstream_weights_from_original_caller_reach_translation(self):
+    def test_explicit_upstream_weights_reach_translation(self):
         calls = []
         def native(*args, **kwargs):
             calls.append((args, kwargs))
         bridge = load_bridge(native)
         topk_weights = Tensor()
-        bridge(object(), object(), object(), 96, 288, use_fp8=True)
+        bridge(object(), object(), object(), 96, 288,
+               topk_weights=topk_weights, use_fp8=True)
         self.assertIs(calls[-1][0][3], topk_weights)
         self.assertEqual(calls[-1][1]["quant_type"], 2)
 

@@ -431,8 +431,12 @@ def check_glm53_opt_in_contracts(r):
     import subprocess
 
     try:
+        # By start directory, not by dotted name: the test tree is a namespace
+        # package, and a regular package called "tests" elsewhere on sys.path
+        # (cufile_python ships one) would win the import of "tests.adapter".
         result = subprocess.run(
-            [sys.executable, "-m", "unittest", "tests/adapter/test_glm53_determinism_config.py"],
+            [sys.executable, "-m", "unittest", "discover",
+             "-s", "tests/adapter", "-p", "test_glm53_determinism_config.py"],
             cwd=ROOT, env=dict(os.environ, HCU_ADAPTER_HOST="none"),
             capture_output=True, text=True, timeout=30,
         )

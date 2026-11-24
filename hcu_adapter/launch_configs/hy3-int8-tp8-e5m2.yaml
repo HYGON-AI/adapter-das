@@ -1,0 +1,15 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+---
+version: 1
+hosts:
+  sglang:
+    env:
+      HCU_ADAPTER_HOST: "sglang"
+      HCU_FA_IMPL: "vendor"
+      SGLANG_KV_LAYOUT_HCU_FA: "1"
+      SGLANG_PLUGINS: "hcu"
+      SGLANG_ROCM_USE_AITER_MOE: "false"
+      SGLANG_USE_FUSED_RMS_ROTARY: "0"
+      SGLANG_USE_LIGHTOP: "1"
+      W8A8_SUPPORT_METHODS: "2"

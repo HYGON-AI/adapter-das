@@ -39,6 +39,11 @@
     border:1px solid var(--line);border-radius:6px;padding:4px 7px;background:#fff;
     color:var(--ink);max-width:100%}
   textarea{width:100%}
+  .hy3-env-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,1fr);gap:8px;align-items:center;max-width:900px;margin:6px 0}
+  .hy3-env-row label{overflow-wrap:anywhere}
+  .hy3-env-row input{width:100%;box-sizing:border-box}
+  #hy3-profile{max-width:100%}
+  @media(max-width:600px){.hy3-env-row{grid-template-columns:minmax(0,1fr)}}
   .badge{display:inline-block;border-radius:5px;padding:0 6px;font-size:11px;
     border:1px solid;vertical-align:1px;margin-left:6px}
   .b-prod{color:var(--opsink);border-color:#9ed3b2;background:var(--ops)}
@@ -102,6 +107,22 @@
 <!-- ================= A. adapter ops ================= -->
 <h2>① Adapter 算子后端 <small>——只导出非默认项（与 wizard 同语义；默认 = production 档）</small></h2>
 <div class="card">
+  <details>
+    <summary>HY3 Channel W8A8 启动配置（TP8 与 TP8/DP8，candidate）</summary>
+    <p>选择配方后可编辑各项值，随下方 YAML 一起导出。显式环境变量优先。未选择时按模型和启动参数自动选择内置配方。</p>
+    <label for="hy3-profile">部署配方</label>
+    <select id="hy3-profile">
+      <option value="">不定制 HY3 配置</option>
+      <option value="hy3-fp8-tp8-dp8-e4m3.yaml">TP8/DP8 · FP8 · KV E4M3 · NEXTN · 融合 RoPE 开启</option>
+      <option value="hy3-int8-tp8-dp8-e4m3.yaml">TP8/DP8 · INT8 · KV E4M3 · NEXTN · vendor FA · 融合 RoPE 开启</option>
+      <option value="hy3-int8-tp8-dp8-e5m2.yaml">TP8/DP8 · INT8 · KV E5M2 · NEXTN · 融合 RoPE 关闭</option>
+      <option value="hy3-int8-tp8-e4m3.yaml">TP8 · INT8 · KV E4M3 · 无 NEXTN · vendor FA / HCU KV</option>
+      <option value="hy3-int8-tp8-e5m2.yaml">TP8 · INT8 · KV E5M2 · 无 NEXTN · vendor FA / HCU KV</option>
+      <option value="hy3-fp8-tp8-nextn-e4m3.yaml">TP8 · FP8 · KV E4M3 · NEXTN · vendor FA / HCU KV</option>
+    </select>
+    <div id="hy3-env-rows"></div>
+    <p>本节只生成配置，不启动服务；模型参数仍在启动命令里填写。仅完成配置回归，尚未进行本次模型精度及性能复测。</p>
+  </details>
   <div id="oprows"></div>
   <div class="btnrow">
     <button id="btn-yaml-copy">复制 YAML</button>
@@ -375,6 +396,9 @@ const OP_DEFAULT = {linear_attn_gdn_verify:"auto", silu_and_mul:"triton", rms_no
   kv_pool_strides:"text-patch", dist_broadcast:"writable-copy", int8_linear_gemm:"triton",
   triton_pdl:"strip", triton_libdevice:"hip-redirect", model_env:"auto",
   kda_prefill:"fork", conv1d:"fork"};
+for(const [op, spec] of Object.entries(CATALOG)){
+  if(!spec.backends[OP_DEFAULT[op]]) OP_DEFAULT[op] = "";
+}
 const OP_ENV = {allreduce:{custom:{HCU_TRITON_AR:"1"}, aiter:{HCU_TRITON_AR:"0",HCU_AITER_AR:"1"},
                              nccl:{HCU_TRITON_AR:"0",HCU_AITER_AR:"0"}},
                 paged_mqa_logits:{emu:{HCU_MQA_EMU:"1"},
@@ -395,7 +419,178 @@ const OP_ENV = {allreduce:{custom:{HCU_TRITON_AR:"1"}, aiter:{HCU_TRITON_AR:"0",
                 linear_attn_gdn:{aiter:{HCU_LINEAR_ATTN_GDN:"aiter"}},
                 model_env:{auto:{HCU_MODEL_ENV:"auto"}, off:{HCU_MODEL_ENV:"off"}}};
 
-function buildYaml(sel){ // sel: {op: backend} non-default only
+const HY3_PRESETS = {
+  "hy3-fp8-tp8-dp8-e4m3.yaml": {
+    "ALLREDUCE_STREAM_WITH_COMPUTE": "1",
+    "GLIBC_TUNABLES": "glibc.rtld.optional_static_tls=0x40000",
+    "GPU_FORCE_BLIT_COPY_SIZE": "16",
+    "GPU_MAX_HW_QUEUES": "3",
+    "HCU_ADAPTER_HOST": "sglang",
+    "HIP_D2H_DIRECT_COPY_THRESHOLD": "512",
+    "HIP_D2H_DISABLE_COPY_BUFFER": "0",
+    "HIP_D2H_HSAAPI_COPY_THRESHOLD": "512",
+    "HIP_GRAPH_ACCUMULATE_DISPATCH": "0",
+    "HIP_H2D_DIRECT_COPY_THRESHOLD": "32768",
+    "HIP_H2D_DISABLE_COPY_BUFFER": "0",
+    "HIP_H2D_HSAAPI_COPY_THRESHOLD": "32768",
+    "HIP_KERNEL_BATCH_CEILING": "100",
+    "HIP_KERNEL_EVENT_SYSTENFENCE": "1",
+    "HSA_KERNARG_POOL_SIZE": "8388608",
+    "PYTHONUNBUFFERED": "1",
+    "ROCSHMEM_HEAP_SIZE": "3737418240",
+    "ROCSHMEM_MAX_NUM_CONTEXTS": "32",
+    "ROC_AQL_QUEUE_SIZE": "131072",
+    "SGLANG_CHUNKED_PREFIX_CACHE_THRESHOLD": "0",
+    "SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK": "128",
+    "SGLANG_ENABLE_SPEC_V2": "1",
+    "SGLANG_KVALLOC_KERNEL": "1",
+    "SGLANG_KV_LAYOUT_HCU_FA": "1",
+    "SGLANG_PLUGINS": "hcu",
+    "SGLANG_ROCM_USE_AITER_MOE": "1",
+    "SGLANG_SET_CPU_AFFINITY": "1",
+    "SGLANG_USE_DEEPGEMM_MOE": "1",
+    "SGLANG_USE_FP8_W8A8_MOE": "1",
+    "SGLANG_USE_FUSED_RMS_ROTARY": "1",
+    "SGLANG_USE_LIGHTOP": "1"
+  },
+  "hy3-int8-tp8-dp8-e4m3.yaml": {
+    "ALLREDUCE_STREAM_WITH_COMPUTE": "1",
+    "GLIBC_TUNABLES": "glibc.rtld.optional_static_tls=0x40000",
+    "GPU_FORCE_BLIT_COPY_SIZE": "16",
+    "GPU_MAX_HW_QUEUES": "3",
+    "HCU_ADAPTER_HOST": "sglang",
+    "HCU_FA_IMPL": "vendor",
+    "HIP_D2H_DIRECT_COPY_THRESHOLD": "512",
+    "HIP_D2H_DISABLE_COPY_BUFFER": "0",
+    "HIP_D2H_HSAAPI_COPY_THRESHOLD": "512",
+    "HIP_GRAPH_ACCUMULATE_DISPATCH": "0",
+    "HIP_H2D_DIRECT_COPY_THRESHOLD": "32768",
+    "HIP_H2D_DISABLE_COPY_BUFFER": "0",
+    "HIP_H2D_HSAAPI_COPY_THRESHOLD": "32768",
+    "HIP_KERNEL_BATCH_CEILING": "100",
+    "HIP_KERNEL_EVENT_SYSTENFENCE": "1",
+    "HSA_KERNARG_POOL_SIZE": "8388608",
+    "PYTHONUNBUFFERED": "1",
+    "ROCSHMEM_HEAP_SIZE": "3737418240",
+    "ROCSHMEM_MAX_NUM_CONTEXTS": "32",
+    "ROC_AQL_QUEUE_SIZE": "131072",
+    "SGLANG_CHUNKED_PREFIX_CACHE_THRESHOLD": "0",
+    "SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK": "128",
+    "SGLANG_ENABLE_SPEC_V2": "1",
+    "SGLANG_KVALLOC_KERNEL": "1",
+    "SGLANG_PLUGINS": "hcu",
+    "SGLANG_ROCM_USE_AITER_MOE": "1",
+    "SGLANG_SET_CPU_AFFINITY": "1",
+    "SGLANG_USE_DEEPGEMM_MOE": "1",
+    "SGLANG_USE_FP8_W8A8_MOE": "0",
+    "SGLANG_USE_FUSED_RMS_ROTARY": "1",
+    "SGLANG_USE_LIGHTOP": "1"
+  },
+  "hy3-int8-tp8-dp8-e5m2.yaml": {
+    "ALLREDUCE_STREAM_WITH_COMPUTE": "1",
+    "GLIBC_TUNABLES": "glibc.rtld.optional_static_tls=0x40000",
+    "GPU_FORCE_BLIT_COPY_SIZE": "16",
+    "GPU_MAX_HW_QUEUES": "3",
+    "HCU_ADAPTER_HOST": "sglang",
+    "HIP_D2H_DIRECT_COPY_THRESHOLD": "512",
+    "HIP_D2H_DISABLE_COPY_BUFFER": "0",
+    "HIP_D2H_HSAAPI_COPY_THRESHOLD": "512",
+    "HIP_GRAPH_ACCUMULATE_DISPATCH": "0",
+    "HIP_H2D_DIRECT_COPY_THRESHOLD": "32768",
+    "HIP_H2D_DISABLE_COPY_BUFFER": "0",
+    "HIP_H2D_HSAAPI_COPY_THRESHOLD": "32768",
+    "HIP_KERNEL_BATCH_CEILING": "100",
+    "HIP_KERNEL_EVENT_SYSTENFENCE": "1",
+    "HSA_KERNARG_POOL_SIZE": "8388608",
+    "PYTHONUNBUFFERED": "1",
+    "ROCSHMEM_HEAP_SIZE": "3737418240",
+    "ROCSHMEM_MAX_NUM_CONTEXTS": "32",
+    "ROC_AQL_QUEUE_SIZE": "131072",
+    "SGLANG_CHUNKED_PREFIX_CACHE_THRESHOLD": "0",
+    "SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK": "128",
+    "SGLANG_ENABLE_SPEC_V2": "1",
+    "SGLANG_INT8_DEEPGEMM_ASM": "0",
+    "SGLANG_KVALLOC_KERNEL": "1",
+    "SGLANG_KV_LAYOUT_HCU_FA": "0",
+    "SGLANG_PLUGINS": "hcu",
+    "SGLANG_ROCM_USE_AITER_MOE": "1",
+    "SGLANG_SET_CPU_AFFINITY": "1",
+    "SGLANG_USE_DEEPGEMM_MOE": "1",
+    "SGLANG_USE_FP8_W8A8_MOE": "0",
+    "SGLANG_USE_FUSED_RMS_ROTARY": "0",
+    "SGLANG_USE_LIGHTOP": "1"
+  },
+  "hy3-int8-tp8-e4m3.yaml": {
+    "HCU_ADAPTER_HOST": "sglang",
+    "HCU_FA_IMPL": "vendor",
+    "SGLANG_KV_LAYOUT_HCU_FA": "1",
+    "SGLANG_PLUGINS": "hcu",
+    "SGLANG_ROCM_USE_AITER_MOE": "false",
+    "SGLANG_USE_FUSED_RMS_ROTARY": "0",
+    "SGLANG_USE_LIGHTOP": "1",
+    "W8A8_SUPPORT_METHODS": "2"
+  },
+  "hy3-int8-tp8-e5m2.yaml": {
+    "HCU_ADAPTER_HOST": "sglang",
+    "HCU_FA_IMPL": "vendor",
+    "SGLANG_KV_LAYOUT_HCU_FA": "1",
+    "SGLANG_PLUGINS": "hcu",
+    "SGLANG_ROCM_USE_AITER_MOE": "false",
+    "SGLANG_USE_FUSED_RMS_ROTARY": "0",
+    "SGLANG_USE_LIGHTOP": "1",
+    "W8A8_SUPPORT_METHODS": "2"
+  },
+  "hy3-fp8-tp8-nextn-e4m3.yaml": {
+    "ALLREDUCE_STREAM_WITH_COMPUTE": "1",
+    "GLIBC_TUNABLES": "glibc.rtld.optional_static_tls=0x40000",
+    "GPU_FORCE_BLIT_COPY_SIZE": "16",
+    "GPU_MAX_HW_QUEUES": "3",
+    "HCU_ADAPTER_HOST": "sglang",
+    "HCU_FA_IMPL": "vendor",
+    "HIP_D2H_DIRECT_COPY_THRESHOLD": "512",
+    "HIP_D2H_DISABLE_COPY_BUFFER": "0",
+    "HIP_D2H_HSAAPI_COPY_THRESHOLD": "512",
+    "HIP_GRAPH_ACCUMULATE_DISPATCH": "0",
+    "HIP_H2D_DIRECT_COPY_THRESHOLD": "32768",
+    "HIP_H2D_DISABLE_COPY_BUFFER": "0",
+    "HIP_H2D_HSAAPI_COPY_THRESHOLD": "32768",
+    "HIP_KERNEL_BATCH_CEILING": "100",
+    "HIP_KERNEL_EVENT_SYSTENFENCE": "1",
+    "HSA_KERNARG_POOL_SIZE": "8388608",
+    "ROC_AQL_QUEUE_SIZE": "131072",
+    "SGLANG_CHUNKED_PREFIX_CACHE_THRESHOLD": "0",
+    "SGLANG_ENABLE_SPEC_V2": "1",
+    "SGLANG_KVALLOC_KERNEL": "1",
+    "SGLANG_KV_LAYOUT_HCU_FA": "1",
+    "SGLANG_NCCL_ALL_GATHER_IN_OVERLAP_SCHEDULER_SYNC_BATCH": "1",
+    "SGLANG_PLUGINS": "hcu",
+    "SGLANG_ROCM_USE_AITER_MOE": "1",
+    "SGLANG_SET_CPU_AFFINITY": "1",
+    "SGLANG_USE_FP8_W8A8_MOE": "1",
+    "SGLANG_USE_FUSED_RMS_ROTARY": "1",
+    "SGLANG_USE_LIGHTOP": "1",
+    "USE_DCU_CUSTOM_ALLREDUCE": "1"
+  }
+};
+let hy3Environment = {};
+function renderHy3Environment(){
+  const box = document.getElementById("hy3-env-rows");
+  box.replaceChildren();
+  for(const [key, value] of Object.entries(hy3Environment)){
+    const row = document.createElement("div"); row.className = "hy3-env-row";
+    const label = document.createElement("label"); label.textContent = key;
+    const input = document.createElement("input"); input.type = "text";
+    input.value = value; input.setAttribute("aria-label", key);
+    input.oninput = () => {hy3Environment[key] = input.value; refreshYaml();};
+    row.append(label, input); box.appendChild(row);
+  }
+}
+document.getElementById("hy3-profile").onchange = event => {
+  hy3Environment = {...(HY3_PRESETS[event.target.value] || {})};
+  renderHy3Environment(); refreshYaml();
+};
+
+function buildYaml(sel, environment = hy3Environment){ // sel: {op: backend} non-default only
   const lines = ["# HCU adapter backend selection -- generated by tools/hcu_config_ui.html",
     "# 放到 sitecustomize.py 同级或 $HCU_CONFIG 指向的路径；校验：",
     "#   python tools/hcu_config_wizard.py --check hcu_adapter.yaml",
@@ -409,6 +604,12 @@ function buildYaml(sel){ // sel: {op: backend} non-default only
         const b = CATALOG[op].backends[sel[op]];
         lines.push("  " + op + ": " + sel[op] + "    # " + b.s + " — " + b.n);
       }
+    }
+  }
+  if(Object.keys(environment).length){
+    lines.push("hosts:", "  sglang:", "    env:");
+    for(const [key, value] of Object.entries(environment)){
+      lines.push("      " + key + ": " + JSON.stringify(String(value)));
     }
   }
   return lines.join("\n");
@@ -651,6 +852,11 @@ function renderOps(){
     const d = document.createElement("div");
     d.innerHTML = '<div class="nm">'+op+'</div><div class="sm">'+spec.summary+'</div>';
     const s = document.createElement("select");
+    if(!OP_DEFAULT[op]){
+      const option = document.createElement("option");
+      option.value = ""; option.textContent = "沿用框架默认（不写入配置）";
+      s.appendChild(option);
+    }
     for(const [b,info] of Object.entries(spec.backends)){
       const o = document.createElement("option");
       o.value = b; o.textContent = b + " (" + info.s + (info.s==="planned"?"，未接线":info.s==="broken"?"，选配即拒":"") + ")";
@@ -661,8 +867,10 @@ function renderOps(){
     s.onchange = () => { sel[op] = s.value; refreshYaml(); };
     const nt = document.createElement("div"); nt.className = "note";
     row.append(d, s, nt); box.appendChild(row);
-    const upd = () => nt.textContent = spec.backends[s.value].n + "（env 映射：" +
-      (spec.var || (OP_ENV[op] ? JSON.stringify(OP_ENV[op][s.value]) : "无（无运行时开关）")) + "）";
+    const upd = () => nt.textContent = spec.backends[s.value]
+      ? spec.backends[s.value].n + "（env 映射：" +
+        (spec.var || (OP_ENV[op] ? JSON.stringify(OP_ENV[op][s.value]) : "无（无运行时开关）")) + "）"
+      : "沿用框架默认，不写入配置。";
     s.addEventListener("change", upd); upd();
   }
 }
@@ -670,12 +878,16 @@ function refreshYaml(){
   const y = buildYaml(sel);
   $("yaml-pre").textContent = y;
   const picked = Object.keys(sel).filter(op=>sel[op]!==OP_DEFAULT[op]);
+  if(Object.keys(hy3Environment).length){
+    $("yaml-note").textContent = "已导出完整 HY3 启动环境；修改后保存为 hcu_adapter.yaml，或用 HCU_CONFIG 指定。环境变量仍优先。hosts.sglang.env 中的同名值优先于 ops 映射。";
+    return;
+  }
   $("yaml-note").textContent = picked.length
     ? "非默认 " + picked.length + " 项（" + picked.join(", ") + "）。放到 $HCU_CONFIG 指向路径或 adapter 根目录即生效；env 显式设置仍可压制文件（调试层）。"
     : "全部默认——正确部署零配置零环境变量；此文件可省略（导出仅含注释骨架）。";
 }
 $("btn-yaml-copy").onclick = () => copyText($("yaml-pre").textContent, $("btn-yaml-copy"));
-$("btn-yaml-reset").onclick = () => { for(const op of Object.keys(OP_DEFAULT)) sel[op]=OP_DEFAULT[op]; renderOps(); refreshYaml(); };
+$("btn-yaml-reset").onclick = () => { hy3Environment={}; $("hy3-profile").value=""; renderHy3Environment(); for(const op of Object.keys(OP_DEFAULT)) sel[op]=OP_DEFAULT[op]; renderOps(); refreshYaml(); };
 $("btn-yaml-dl").onclick = () => download("hcu_adapter.yaml", $("yaml-pre").textContent);
 
 // ---- B. parallel panel ----
@@ -800,7 +1012,7 @@ function download(name, text){
 // ---- init ----
 renderOps(); refreshYaml(); refreshCmd();
 // test hooks (browser smoke / console)
-window.HCU_UI = {CATALOG, PRESETS, buildYaml, buildCommand, estimate, classifyQuant,
+window.HCU_UI = {HY3_PRESETS, CATALOG, PRESETS, buildYaml, buildCommand, estimate, classifyQuant,
   setCfg: c => { curCfg = c; refreshVram(); }, getYaml: () => $("yaml-pre").textContent,
   getCmd: () => $("cmd-pre").textContent};
 </script>

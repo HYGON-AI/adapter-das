@@ -314,10 +314,12 @@ def install_read_patch() -> None:
     """Route GetKAndS.aiter to the torch gather (aiter kernel dead on gfx938)."""
     from sglang.kernels.ops.attention.dsa import index_buf_accessor as iba
 
-    iba.GetKAndS.aiter = _aiter_emu_wrapper
+    iba.GetKAndS.aiter = classmethod(_aiter_emu_wrapper)
 
 
-def _aiter_emu_wrapper(cls, *args, **kwargs):
+def _aiter_emu_wrapper(
+    cls, pool, buf, page_indices, seq_len_tensor, seq_len_sum, max_seq_len
+):
     if not getattr(_aiter_emu_wrapper, "_hit", 0):
         _aiter_emu_wrapper._hit = 1
         print("[HCU kprd] aiter-arm -> torch gather emu", flush=True)
@@ -326,7 +328,6 @@ def _aiter_emu_wrapper(cls, *args, **kwargs):
         print("[HCU kprd] called", flush=True)
     else:
         _aiter_emu_wrapper._hit += 1
-    pool, buf, page_indices, seq_len_tensor, seq_len_sum, max_seq_len = args
     page_size = pool.page_size
     index_head_dim = pool.index_head_dim
     quant_block_size = pool.quant_block_size

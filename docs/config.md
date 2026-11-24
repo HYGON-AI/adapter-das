@@ -1,5 +1,17 @@
 # HCU Adapter 后端配置（hcu_adapter.yaml）
 
+## HY3 内置启动配置（candidate）
+
+`hcu_adapter/launch_configs/hy3-*.yaml` 提供 FP8/KV E4M3、INT8/KV E4M3、
+INT8/KV E5M2 的 TP8 与 TP8/DP8 配方，共六份。模型和并行参数匹配时自动选择，
+TP8 INT8 不启用 NEXTN，TP8 FP8 保留 NEXTN 和 `--disable-radix-cache`。部署不要求
+自行建立 YAML；需要调整时，在 `tools/hcu_config_ui.html` 的 HY3 区域选择配方，
+编辑值并导出完整 `hcu_adapter.yaml`。显式 env 仍优先，未选择 HY3 时 UI 保持
+原有算子配置行为。`hosts.sglang.env` 同名值优先于 `ops` 映射。
+
+这套加载机制复用已合入的 Adapter PR #162。可直接使用的 Python 命令及生效日志见
+[HY3 启动说明](../examples/hy3/README.md)，本次尚未完成模型精度和性能复测。
+
 ## 是什么
 
 同一算子往往有多个可用来源：adapter 自带 triton 内核（`sgl_kernel`）、DTK vendor 轮

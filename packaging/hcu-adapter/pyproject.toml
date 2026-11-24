@@ -38,7 +38,7 @@ sglang-runtime = [
     "aiohttp",
     "fastapi",
     "uvicorn>=0.51",
-    "sgl-router",
+    "sglang-router",
     "uvloop",
     "watchfiles",
     "pyzmq>=25.1.2",
@@ -179,3 +179,12 @@ py-modules = ["sitecustomize"]
 [tool.setuptools.packages.find]
 where = ["../.."]
 include = ["hcu_adapter*"]
+
+# Package data must be listed explicitly here: the sources are mapped in from
+# the repo root (package-dir above), which is outside this build root, so
+# include-package-data has no SOURCES.txt entry to discover them from and
+# hcu_adapter/launch_configs/*.yaml would silently vanish from the wheel --
+# HCU_CONFIG=builtin:<name> then fails with "Missing built-in launch config"
+# (docs/env-vars.md). Regression guard: tests/adapter/test_packaging.py.
+[tool.setuptools.package-data]
+hcu_adapter = ["launch_configs/*.yaml"]

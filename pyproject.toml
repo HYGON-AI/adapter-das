@@ -142,11 +142,20 @@ test = [
     "tomli>=1.1; python_version < '3.11'",
 ]
 
-# vllm entry-points, sitecustomize and the package data of both packages
-# live with the hcu-adapter dist (packaging/hcu-adapter/pyproject.toml); this
-# project ships only the native kernel, so each wheel installs on its own.
+# vllm entry-points, sitecustomize and the adapter's own data files live with
+# the hcu-adapter dist (packaging/hcu-adapter/pyproject.toml); this project
+# ships only the native kernel and keeps the kernel's data files, so each
+# wheel installs on its own.
 [tool.setuptools.packages.find]
 include = ["sgl_kernel*"]
+
+# Data files are owned per dist. The kernel's JIT headers stay here (the JIT
+# path compiles csrc headers from the installed package); the adapter's
+# launch configs belong to packaging/hcu-adapter. Declared explicitly because
+# include-package-data cannot discover anything when the build root is not the
+# package root -- see the matching table in the adapter pyproject.
+[tool.setuptools.package-data]
+sgl_kernel = ["diffusion_rope_csrc/*.cuh"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

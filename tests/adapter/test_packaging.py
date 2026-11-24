@@ -4,15 +4,19 @@
 """Packaging contracts for the dual-dist build (governance §7.4).
 
 Two wheels, independent version lines, one interlock:
-  sgl-kernel  = shadow kernel only (sgl_kernel/*; no sitecustomize, no
-                entry-points); version single source: sgl_kernel/version.py
-  hcu-adapter = hcu_adapter/* + sitecustomize.py + vllm entry-points;
+  sgl-kernel  = shadow kernel only (sgl_kernel/* incl. diffusion_rope_csrc JIT
+                headers; no sitecustomize, no entry-points); version single
+                source: sgl_kernel/version.py
+  hcu-adapter = hcu_adapter/* (incl. launch_configs/*.yaml built-in presets) +
+                sitecustomize.py + vllm entry-points;
                 version single source: packaging/hcu-adapter/VERSION;
                 Requires-Dist: sgl-kernel==<sgl_kernel version>
 
 The release line used to ship one wheel that bundled hcu_adapter/; these
 contracts pin the split so `packaging/build.sh` (nightly) and `pip wheel .`
-(tests/dev) cannot drift back to a single dist.
+(tests/dev) cannot drift back to a single dist. Non-.py data files are part of
+the contract: each dist declares its own [tool.setuptools.package-data],
+because the adapter build root cannot discover files outside itself.
 """
 
 import os
@@ -110,6 +114,16 @@ def test_kernel_wheel_is_kernel_only(tmp_path):
     assert not [n for n in members if n.endswith(".dist-info/entry_points.txt")], \
         "vllm entry-points belong to the hcu-adapter dist"
 
+    # data files stay with their dist: the JIT compiles these headers from the
+    # installed package, so dropping the kernel's package-data breaks JIT
+    headers = {
+        f"sgl_kernel/diffusion_rope_csrc/{path.name}"
+        for path in (REPO_ROOT / "sgl_kernel" / "diffusion_rope_csrc").glob("*.cuh")
+    }
+    assert headers, "expected sgl_kernel/diffusion_rope_csrc/*.cuh in the tree"
+    assert not (headers - members), \
+        f"kernel wheel is missing JIT headers: {sorted(headers - members)}"
+
 
 def test_adapter_wheel_carries_adapter_sitecustomize_and_entry_points(tmp_path):
     wheel = _build_wheel(ADAPTER_ROOT, tmp_path / "wheel-adapter", tmp_path)
@@ -125,6 +139,18 @@ def test_adapter_wheel_carries_adapter_sitecustomize_and_entry_points(tmp_path):
     for path in (REPO_ROOT / "hcu_adapter").rglob("*.py"):
         expected.add(path.relative_to(REPO_ROOT).as_posix())
     assert not (expected - members), f"adapter wheel is missing: {sorted(expected - members)}"
+
+    # built-in launch configs are runtime data, loaded as
+    # HCU_CONFIG=builtin:<name> (docs/env-vars.md); they only reach the wheel
+    # through the adapter dist's explicit [tool.setuptools.package-data], since
+    # package-dir points outside this build root
+    configs = {
+        f"hcu_adapter/launch_configs/{path.name}"
+        for path in (REPO_ROOT / "hcu_adapter" / "launch_configs").glob("*.yaml")
+    }
+    assert configs, "expected hcu_adapter/launch_configs/*.yaml in the tree"
+    assert not (configs - members), \
+        f"adapter wheel is missing built-in launch configs: {sorted(configs - members)}"
 
     entry_points = [n for n in members if n.endswith(".dist-info/entry_points.txt")]
     assert entry_points, "adapter wheel must register the vllm entry-points"

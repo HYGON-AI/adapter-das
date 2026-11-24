@@ -1,10 +1,39 @@
 # HY3 Channel W8A8 启动配置
 
-本目录提供三份 `python3 -m sglang.launch_server` 启动示例。修改模型路径即可
+本目录提供六份 `python3 -m sglang.launch_server` 启动示例。修改模型路径即可
 复用命令；Python 环境需要安装配套的 SGLang 0.5.22、Adapter、Plugin 和计算库。
 无需调用辅助脚本，也无需自己新建 YAML。
 
-## 配置与启动命令
+## 新增的三份 TP8 配方
+
+以下三份对应 2026-11-24 补充的原始启动命令，未启用 DP attention 或 DeepEP。
+与后面的三份 TP8/DP8 配方分别选择、分别保存。
+
+| 包内 YAML（`hcu_adapter/launch_configs/`）与本目录同名 `.sh` | 原命令 | 保留的设置 |
+|---|---|---|
+| `hy3-int8-tp8-e4m3` | S7 INT8 | 显存比例 0.80、BF16、cache report、AITER MoE=false、融合 RoPE=0、W8A8 方法=2；不启用 NEXTN |
+| `hy3-int8-tp8-e5m2` | 10.8 INT8 | 显存比例 0.80、cache report、相同四项计算开关；未指定 dtype，不启用 NEXTN |
+| `hy3-fp8-tp8-nextn-e4m3` | S7 FP8 | 显存比例 0.9、BF16、NEXTN 2/1/3、关闭 radix cache、融合 RoPE=1 |
+
+这些命令未增加 `--quantization slimquant_marlin`、DP、DeepEP、shared-expert
+fusion 或 watchdog 等原脚本没有的参数。新 YAML 也未额外固定 vendor FA、
+DeepGEMM 开关或 KV 布局。FP8 保留原脚本的 NCCL all-gather 同步 batch 开关。
+
+TP8 INT8 的 `W8A8_SUPPORT_METHODS=2` 由配套 Plugin 的 compressed INT8
+实现读取。TP8 FP8 的 `USE_DCU_CUSTOM_ALLREDUCE=1` 按原样传入，当前
+Adapter/Plugin 未发现该变量的读取点；它不构成自定义 AllReduce 已生效的证据。
+
+两份 INT8 原脚本的动态库目录是部署路径，不属于模型配置。若环境依赖该目录，
+先在部署环境设置正确路径，例如原 Python 3.10 环境使用：
+
+```bash
+export LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/amdsmi:${LD_LIBRARY_PATH:-}
+```
+
+换用其他 Python 或镜像时使用对应的真实目录。脚本本身不执行此机器路径设置。
+FP8 原脚本的八卡可见性和 `kernel.numa_balancing=0` 也由部署环境提供。
+
+## 原有 TP8/DP8 配置与启动命令
 
 | 配置文件（位于 `hcu_adapter/launch_configs/`） | 本目录的同名 `.sh` | 对应原配方 | 融合 RoPE | FA 选择 |
 |---|---|---|---|---|
@@ -17,9 +46,9 @@ page size 等仍由启动命令指定，选择器不重写这些参数。`--atte
 与 Adapter 的实际 FA 实现是两个选择；表中未固定 vendor 的配方不代表厂商 FA
 已经生效。
 
-自动选择仅覆盖本地 `config.json` 中的 `hy_v3` / `HYV3ForCausalLM`，且量化为
+两类配方的自动选择仅覆盖本地 `config.json` 中的 `hy_v3` / `HYV3ForCausalLM`，且量化为
 compressed-tensors Channel W8A8、激活为动态 per-token INT8 或 FP8 的模型。
-启动参数必须匹配单节点 TP8 / DP8、DeepEP auto、DP attention、DP lm head、
+原有 TP8/DP8 配方的启动参数必须匹配单节点 TP8 / DP8、DeepEP auto、DP attention、DP lm head、
 FA3、NEXTN，以及上表中的 KV 类型。INT8 允许原脚本的 `slimquant_marlin`。
 其他模型、量化和未收录的拓扑保持原有启动逻辑。
 
@@ -40,7 +69,7 @@ HCU HY3 env: ... SGLANG_USE_FUSED_RMS_ROTARY=1(config) ...
 
 显式 `HCU_CONFIG` 或自动发现的 `hcu_adapter.yaml/yml/json` 优先于内置配方。
 自定义文件是完整配置，未填写的值不会自动从 HY3 内置 YAML 补齐。可复制上表
-中的文件再修改，也可在 `tools/hcu_config_ui.html` 中选择 HY3 配方、编辑值并
+中的文件再修改，也可在 `tools/hcu_config_ui.html` 中选择六份 HY3 配方之一、编辑值并
 导出。保存为运行目录的 `hcu_adapter.yaml`，或通过 `HCU_CONFIG` 指定路径。
 同一个文件中 `hosts.sglang.env` 的同名值优先于 `ops` 映射。
 

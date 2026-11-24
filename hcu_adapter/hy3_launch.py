@@ -12,7 +12,7 @@ import sys
 from . import hcu_config, hcu_env
 from .glm53_env_rules import resolve_environment
 from .glm53_env_rules import LAUNCH_ENV_KEYS as COMMON_ENV_KEYS
-from .hy3_profiles import LAUNCH_ENV_KEYS, PROFILES, preset_env
+from .hy3_profiles import LAUNCH_ENV_KEYS, PROFILES, TP8_PROFILES, preset_env
 
 
 def checkpoint_family(path):
@@ -38,12 +38,14 @@ def checkpoint_family(path):
 def select_profile(argv):
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     parser.add_argument("--model-path", type=Path)
+    parser.add_argument("--dp-size", default="1")
     for name in ("nnodes", "pp-size", "ep-size", "attn-cp-size", "attn-dp-size", "dcp-size", "moe-dense-tp-size"):
         parser.add_argument("--" + name, default="1")
-    for name in ("tp-size", "dp-size", "moe-a2a-backend", "deepep-mode", "kv-cache-dtype",
+    for name in ("tp-size", "moe-a2a-backend", "deepep-mode", "kv-cache-dtype",
                  "attention-backend", "speculative-algorithm", "quantization", "disaggregation-mode"):
         parser.add_argument("--" + name)
-    for name in ("enable-dp-attention", "enable-dp-lm-head", "enable-prefill-cp", "enable-hisparse"):
+    for name in ("enable-dp-attention", "enable-dp-lm-head", "enable-prefill-cp", "enable-hisparse",
+                 "disable-radix-cache"):
         parser.add_argument("--" + name, action="store_true")
     args, _ = parser.parse_known_args(argv)
     if not args.model_path or not (args.model_path / "config.json").is_file():
@@ -53,14 +55,23 @@ def select_profile(argv):
         return None
     if (any(getattr(args, name) != "1" for name in (
             "nnodes", "pp_size", "ep_size", "attn_cp_size", "attn_dp_size", "dcp_size", "moe_dense_tp_size"))
-            or args.tp_size != "8" or args.dp_size != "8"
-            or args.moe_a2a_backend != "deepep" or args.deepep_mode != "auto"
-            or not args.enable_dp_attention or not args.enable_dp_lm_head
+            or args.tp_size != "8"
             or args.enable_prefill_cp or args.enable_hisparse or args.disaggregation_mode
-            or args.attention_backend != "fa3" or args.speculative_algorithm != "NEXTN"
-            or args.quantization not in ((None, "slimquant_marlin") if family == "int8" else (None,))):
+            or args.attention_backend != "fa3"):
         return None
-    filename = PROFILES.get((family, args.kv_cache_dtype))
+    if (args.dp_size == "8" and args.enable_dp_attention and args.enable_dp_lm_head
+            and args.moe_a2a_backend == "deepep" and args.deepep_mode == "auto"
+            and args.speculative_algorithm == "NEXTN"
+            and args.quantization in ((None, "slimquant_marlin") if family == "int8" else (None,))):
+        filename = PROFILES.get((family, args.kv_cache_dtype))
+    elif (args.dp_size == "1" and not args.enable_dp_attention and not args.enable_dp_lm_head
+            and args.moe_a2a_backend is None and args.deepep_mode is None
+            and args.quantization is None
+            and ((family == "int8" and args.speculative_algorithm is None)
+                 or (family == "fp8" and args.speculative_algorithm == "NEXTN" and args.disable_radix_cache))):
+        filename = TP8_PROFILES.get((family, args.kv_cache_dtype))
+    else:
+        return None
     return (family, filename) if filename else None
 
 

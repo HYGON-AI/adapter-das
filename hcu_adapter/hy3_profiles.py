@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Bundled environments for single-node HY3 Channel W8A8 TP8/DP8."""
+"""Bundled environments for single-node HY3 Channel W8A8 launches."""
 
 from pathlib import Path
 
@@ -10,6 +10,12 @@ PROFILES = {
     ("fp8", "fp8_e4m3"): "hy3-fp8-tp8-dp8-e4m3.yaml",
     ("int8", "fp8_e4m3"): "hy3-int8-tp8-dp8-e4m3.yaml",
     ("int8", "fp8_e5m2"): "hy3-int8-tp8-dp8-e5m2.yaml",
+}
+
+TP8_PROFILES = {
+    ("fp8", "fp8_e4m3"): "hy3-fp8-tp8-nextn-e4m3.yaml",
+    ("int8", "fp8_e4m3"): "hy3-int8-tp8-e4m3.yaml",
+    ("int8", "fp8_e5m2"): "hy3-int8-tp8-e5m2.yaml",
 }
 
 
@@ -32,5 +38,6 @@ SGLANG_SET_CPU_AFFINITY SGLANG_DEEPEP_NUM_MAX_DISPATCH_TOKENS_PER_RANK
 SGLANG_ROCM_USE_AITER_MOE SGLANG_USE_FP8_W8A8_MOE
 SGLANG_USE_FUSED_RMS_ROTARY SGLANG_USE_LIGHTOP SGLANG_ENABLE_SPEC_V2
 SGLANG_USE_DEEPGEMM_MOE SGLANG_INT8_DEEPGEMM_ASM SGLANG_KV_LAYOUT_HCU_FA
-SGLANG_PLUGINS
+SGLANG_PLUGINS USE_DCU_CUSTOM_ALLREDUCE W8A8_SUPPORT_METHODS
+SGLANG_NCCL_ALL_GATHER_IN_OVERLAP_SCHEDULER_SYNC_BATCH
 """.split())

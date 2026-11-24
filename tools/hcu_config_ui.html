@@ -108,14 +108,17 @@
 <h2>① Adapter 算子后端 <small>——只导出非默认项（与 wizard 同语义；默认 = production 档）</small></h2>
 <div class="card">
   <details>
-    <summary>HY3 Channel W8A8 启动配置（TP8 / DP8 / NEXTN，candidate）</summary>
+    <summary>HY3 Channel W8A8 启动配置（TP8 与 TP8/DP8，candidate）</summary>
     <p>选择配方后可编辑各项值，随下方 YAML 一起导出。显式环境变量优先。未选择时按模型和启动参数自动选择内置配方。</p>
     <label for="hy3-profile">部署配方</label>
     <select id="hy3-profile">
       <option value="">不定制 HY3 配置</option>
-      <option value="hy3-fp8-tp8-dp8-e4m3.yaml">FP8 · KV E4M3 · 融合 RoPE 开启</option>
-      <option value="hy3-int8-tp8-dp8-e4m3.yaml">INT8 · KV E4M3 · vendor FA · 融合 RoPE 开启</option>
-      <option value="hy3-int8-tp8-dp8-e5m2.yaml">INT8 · KV E5M2 · 融合 RoPE 关闭</option>
+      <option value="hy3-fp8-tp8-dp8-e4m3.yaml">TP8/DP8 · FP8 · KV E4M3 · NEXTN · 融合 RoPE 开启</option>
+      <option value="hy3-int8-tp8-dp8-e4m3.yaml">TP8/DP8 · INT8 · KV E4M3 · NEXTN · vendor FA · 融合 RoPE 开启</option>
+      <option value="hy3-int8-tp8-dp8-e5m2.yaml">TP8/DP8 · INT8 · KV E5M2 · NEXTN · 融合 RoPE 关闭</option>
+      <option value="hy3-int8-tp8-e4m3.yaml">TP8 · INT8 · KV E4M3 · 无 NEXTN · 融合 RoPE 关闭</option>
+      <option value="hy3-int8-tp8-e5m2.yaml">TP8 · INT8 · KV E5M2 · 无 NEXTN · 融合 RoPE 关闭</option>
+      <option value="hy3-fp8-tp8-nextn-e4m3.yaml">TP8 · FP8 · KV E4M3 · NEXTN · 关闭 radix cache</option>
     </select>
     <div id="hy3-env-rows"></div>
     <p>本节只生成配置，不启动服务；模型参数仍在启动命令里填写。仅完成配置回归，尚未进行本次模型精度及性能复测。</p>
@@ -516,6 +519,51 @@ const HY3_PRESETS = {
     "SGLANG_USE_FP8_W8A8_MOE": "0",
     "SGLANG_USE_FUSED_RMS_ROTARY": "0",
     "SGLANG_USE_LIGHTOP": "1"
+  },
+  "hy3-int8-tp8-e4m3.yaml": {
+    "HCU_ADAPTER_HOST": "sglang",
+    "SGLANG_PLUGINS": "hcu",
+    "SGLANG_ROCM_USE_AITER_MOE": "false",
+    "SGLANG_USE_FUSED_RMS_ROTARY": "0",
+    "SGLANG_USE_LIGHTOP": "1",
+    "W8A8_SUPPORT_METHODS": "2"
+  },
+  "hy3-int8-tp8-e5m2.yaml": {
+    "HCU_ADAPTER_HOST": "sglang",
+    "SGLANG_PLUGINS": "hcu",
+    "SGLANG_ROCM_USE_AITER_MOE": "false",
+    "SGLANG_USE_FUSED_RMS_ROTARY": "0",
+    "SGLANG_USE_LIGHTOP": "1",
+    "W8A8_SUPPORT_METHODS": "2"
+  },
+  "hy3-fp8-tp8-nextn-e4m3.yaml": {
+    "ALLREDUCE_STREAM_WITH_COMPUTE": "1",
+    "GLIBC_TUNABLES": "glibc.rtld.optional_static_tls=0x40000",
+    "GPU_FORCE_BLIT_COPY_SIZE": "16",
+    "GPU_MAX_HW_QUEUES": "3",
+    "HCU_ADAPTER_HOST": "sglang",
+    "HIP_D2H_DIRECT_COPY_THRESHOLD": "512",
+    "HIP_D2H_DISABLE_COPY_BUFFER": "0",
+    "HIP_D2H_HSAAPI_COPY_THRESHOLD": "512",
+    "HIP_GRAPH_ACCUMULATE_DISPATCH": "0",
+    "HIP_H2D_DIRECT_COPY_THRESHOLD": "32768",
+    "HIP_H2D_DISABLE_COPY_BUFFER": "0",
+    "HIP_H2D_HSAAPI_COPY_THRESHOLD": "32768",
+    "HIP_KERNEL_BATCH_CEILING": "100",
+    "HIP_KERNEL_EVENT_SYSTENFENCE": "1",
+    "HSA_KERNARG_POOL_SIZE": "8388608",
+    "ROC_AQL_QUEUE_SIZE": "131072",
+    "SGLANG_CHUNKED_PREFIX_CACHE_THRESHOLD": "0",
+    "SGLANG_ENABLE_SPEC_V2": "1",
+    "SGLANG_KVALLOC_KERNEL": "1",
+    "SGLANG_NCCL_ALL_GATHER_IN_OVERLAP_SCHEDULER_SYNC_BATCH": "1",
+    "SGLANG_PLUGINS": "hcu",
+    "SGLANG_ROCM_USE_AITER_MOE": "1",
+    "SGLANG_SET_CPU_AFFINITY": "1",
+    "SGLANG_USE_FP8_W8A8_MOE": "1",
+    "SGLANG_USE_FUSED_RMS_ROTARY": "1",
+    "SGLANG_USE_LIGHTOP": "1",
+    "USE_DCU_CUSTOM_ALLREDUCE": "1"
   }
 };
 let hy3Environment = {};

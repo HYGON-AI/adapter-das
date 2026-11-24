@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 
@@ -12,7 +13,7 @@ import pytest
 
 from hcu_adapter import bootstrap, hcu_config, hy3_launch, sglang_launch
 from hcu_adapter.glm53_env_rules import LAUNCH_ENV_KEYS as COMMON_KEYS
-from hcu_adapter.hy3_profiles import LAUNCH_ENV_KEYS, PROFILES, preset_env
+from hcu_adapter.hy3_profiles import LAUNCH_ENV_KEYS, PROFILES, TP8_PROFILES, preset_env
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -191,7 +192,67 @@ def test_real_reexec_applies_environment_once_and_keeps_pid(tmp_path):
 def test_ui_presets_match_packaged_yaml():
     html = (ROOT / "tools/hcu_config_ui.html").read_text(encoding="utf-8")
     presets = json.loads(re.search(r"const HY3_PRESETS = (.*?);\nlet hy3Environment", html, re.S)[1])
-    assert presets == {name: preset_env(name) for name in PROFILES.values()}
+    assert presets == {name: preset_env(name) for name in [*PROFILES.values(), *TP8_PROFILES.values()]}
+
+
+@pytest.mark.parametrize("family,kv", list(TP8_PROFILES))
+def test_tp8_examples_select_their_own_environment_without_rewriting_cli(tmp_path, monkeypatch, family, kv):
+    filename = TP8_PROFILES[(family, kv)]
+    text = (ROOT / "examples/hy3" / filename.replace(".yaml", ".sh")).read_text()
+    command = shlex.split(text.replace("\\\n", ""), comments=True)
+    assert command[:3] == ["python3", "-m", "sglang.launch_server"]
+    args = command[3:]
+    args[args.index("--model-path") + 1] = str(checkpoint(tmp_path, "float" if family == "fp8" else "int"))
+    assert hy3_launch.select_profile(args) == (family, filename)
+    original = [sys.executable, "-m", "sglang.launch_server", *args]
+    calls = []
+    monkeypatch.setattr(os, "execve", lambda *a: calls.append(a))
+    assert hy3_launch.apply_official_defaults(args, original)
+    _, actual_command, env = calls.pop()
+    assert actual_command == original
+    assert preset_env(filename).items() <= env.items()
+    assert env["HCU_CONFIG"] == "builtin:" + filename
+    assert "SGLANG_USE_DEEPGEMM_MOE" not in env
+    assert "HCU_FA_IMPL" not in env
+    if family == "int8":
+        assert env["SGLANG_ROCM_USE_AITER_MOE"] == "false"
+        assert env["SGLANG_USE_FUSED_RMS_ROTARY"] == "0"
+        assert env["W8A8_SUPPORT_METHODS"] == "2"
+        assert "--speculative-algorithm" not in actual_command
+        assert ("--dtype" in actual_command) == (kv == "fp8_e4m3")
+    else:
+        assert env["USE_DCU_CUSTOM_ALLREDUCE"] == "1"
+        assert env["SGLANG_NCCL_ALL_GATHER_IN_OVERLAP_SCHEDULER_SYNC_BATCH"] == "1"
+        assert "--disable-radix-cache" in actual_command
+
+
+@pytest.mark.parametrize("family,extra", [
+    ("int", ["--dp-size=2"]), ("int", ["--enable-dp-attention"]),
+    ("int", ["--speculative-algorithm=NEXTN"]), ("int", ["--moe-a2a-backend=deepep"]),
+    ("float", []), ("float", ["--speculative-algorithm=NEXTN"]),
+    ("float", ["--speculative-algorithm=EAGLE", "--disable-radix-cache"]),
+])
+def test_tp8_does_not_apply_to_other_parallel_or_draft_modes(tmp_path, family, extra):
+    args = ["--model-path", str(checkpoint(tmp_path, family)), "--tp-size=8",
+            "--attention-backend=fa3", "--kv-cache-dtype=fp8_e4m3", *extra]
+    assert hy3_launch.select_profile(args) is None
+
+
+def test_tp8_explicit_environment_and_custom_config_keep_priority(tmp_path, monkeypatch):
+    config = tmp_path / "custom.json"
+    config.write_text(json.dumps({"version": 1, "hosts": {"sglang": {"env": {
+        "W8A8_SUPPORT_METHODS": "3", "SGLANG_USE_FUSED_RMS_ROTARY": "1"}}}}))
+    monkeypatch.setenv("HCU_CONFIG", str(config))
+    monkeypatch.setenv("W8A8_SUPPORT_METHODS", "1")
+    args = ["--model-path", str(checkpoint(tmp_path, "int")), "--tp-size=8",
+            "--attention-backend=fa3", "--kv-cache-dtype=fp8_e4m3"]
+    calls = []
+    monkeypatch.setattr(os, "execve", lambda *a: calls.append(a))
+    assert hy3_launch.apply_official_defaults(args, [sys.executable, "-m", "sglang.launch_server", *args])
+    env = calls[0][2]
+    assert env["W8A8_SUPPORT_METHODS"] == "1"
+    assert env["SGLANG_USE_FUSED_RMS_ROTARY"] == "1"
+    assert "SGLANG_ROCM_USE_AITER_MOE" not in env
 
 
 @pytest.mark.parametrize("builtin", [False, True])

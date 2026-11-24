@@ -21,33 +21,38 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="HCU GPU r
 SENTINEL = -7.0
 
 
-@pytest.fixture(scope="module")
-def routed_face():
-    if torch.version.hip is None:
-        pytest.skip("DTK AITER route requires HIP")
+def _isolated_verify_binding(vendor, policy):
     from hcu_adapter import gdn_aiter as bridge
     from sglang.kernels.ops.attention.fla import fused_sigmoid_gating_recurrent as face
-    provider = pytest.importorskip("aiter.ops.triton.fla.fused_sigmoid_gating_recurrent")
-    vendor = getattr(provider, "fused_sigmoid_gating_delta_rule_update", None)
-    if vendor is None:
-        pytest.skip("installed AITER has no GDN target-verify provider")
+
     current = face.fused_sigmoid_gating_delta_rule_update
     upstream = getattr(current, bridge._VERIFY_MARKER, current)
     namespace = dict(upstream.__globals__)
     namespace.pop(bridge._VERIFY_DISPATCH, None)
-    # Numerical vendor contracts must not depend on the process-wide auto
-    # selection (ragged/fixed variants intentionally lie outside auto scope).
     fn = types.FunctionType(upstream.__code__, namespace, upstream.__name__,
                             upstream.__defaults__, upstream.__closure__)
     fn.__kwdefaults__ = upstream.__kwdefaults__
-    bridge._bind_target_verify_aiter(fn, vendor, torch, policy="aiter")
+    bridge._bind_target_verify_aiter(fn, vendor, torch, policy=policy)
     return fn, upstream
 
 
-def make_case(n, steps=4, kind="chain", seed=17):
+@pytest.fixture(scope="module")
+def routed_face():
+    if torch.version.hip is None:
+        pytest.skip("DTK AITER route requires HIP")
+    provider = pytest.importorskip("aiter.ops.triton.fla.fused_sigmoid_gating_recurrent")
+    vendor = getattr(provider, "fused_sigmoid_gating_delta_rule_update", None)
+    if vendor is None:
+        pytest.skip("installed AITER has no GDN target-verify provider")
+    # The numerical cases also exercise contracts outside the auto policy.
+    return _isolated_verify_binding(vendor, policy="aiter")
+
+
+def make_case(n, steps=4, kind="chain", seed=17, *, heads=8, value_heads=24,
+              split_gate_columns=False):
     torch.manual_seed(seed)
     rng = random.Random(seed)
-    h, hv, d = 8, 24, 128
+    h, hv, d = heads, value_heads, 128
     total, slots = n * steps, n + 3
     qkv = torch.randn(1, total, 2 * h * d + hv * d, device="cuda",
                       dtype=torch.bfloat16) * 0.3
@@ -55,7 +60,12 @@ def make_case(n, steps=4, kind="chain", seed=17):
     k = qkv[..., h*d:2*h*d].view(1, total, h, d)
     v = qkv[..., 2*h*d:].view(1, total, hv, d)
     ab_dtype = torch.bfloat16 if kind in ("bf16_gates", "sglang_2d", "sglang_2d_strided") else torch.float32
-    ab = torch.randn(1, total, hv, 2, device="cuda", dtype=ab_dtype) * 0.2
+    if split_gate_columns:
+        ab = torch.randn(1, total, 2 * hv, device="cuda", dtype=ab_dtype) * 0.2
+        a, b = ab.split(hv, dim=-1)
+    else:
+        ab = torch.randn(1, total, hv, 2, device="cuda", dtype=ab_dtype) * 0.2
+        a, b = ab[..., 0], ab[..., 1]
     lengths = [steps] * n
     if kind == "ragged":
         lengths = [1 + i % steps for i in range(n)]
@@ -78,7 +88,7 @@ def make_case(n, steps=4, kind="chain", seed=17):
         A_log=torch.randn(hv, device="cuda", dtype=torch.float32) * 0.2,
         dt_bias=torch.randn(hv, device="cuda", dtype=torch.float32) * 0.2,
         softplus_beta=1.0, softplus_threshold=20.0,
-        q=q, k=k, v=v, a=ab[..., 0], b=ab[..., 1],
+        q=q, k=k, v=v, a=a, b=b,
         initial_state_source=torch.randn(slots, hv, d, d, device="cuda",
                                          dtype=torch.float32) * 0.1,
         initial_state_indices=torch.tensor(indices, device="cuda", dtype=torch.int32),
@@ -212,9 +222,13 @@ def test_verify_output_snapshot_and_source_contract(routed_face, n, steps, kind)
     check_result(p, meta, base, ref_out, ref_cache, written, before)
 
 
-def test_verify_graph_replay_changes_values_indices_and_tree(routed_face, dt_bias_dtype=None, parents_enabled=True, n=16):
+def test_verify_graph_replay_changes_values_indices_and_tree(
+    routed_face, dt_bias_dtype=None, parents_enabled=True, n=16, *,
+    heads=8, value_heads=24, split_gate_columns=False,
+):
     fn, _ = routed_face
-    p, meta = make_case(n, 4, "sglang_2d_strided")
+    shape = dict(heads=heads, value_heads=value_heads, split_gate_columns=split_gate_columns)
+    p, meta = make_case(n, 4, "sglang_2d_strided", **shape)
     if dt_bias_dtype is not None:
         p["dt_bias"] = p["dt_bias"].to(dt_bias_dtype)
     if not parents_enabled:
@@ -234,9 +248,9 @@ def test_verify_graph_replay_changes_values_indices_and_tree(routed_face, dt_bia
     ref_out, ref_cache, written = fp32_reference(p, meta)
     check_result(p, meta, output, ref_out, ref_cache, written, before)
     for seed, kind in [(31,"chain"), (37,"strided"), (43,"padded")]:
-        fresh, meta = make_case(n, 4, kind, seed)
-        fresh["a"] = fresh["a"].reshape(-1, 24).to(p["a"].dtype)
-        fresh["b"] = fresh["b"].reshape(-1, 24).to(p["b"].dtype)
+        fresh, meta = make_case(n, 4, kind, seed, **shape)
+        fresh["a"] = fresh["a"].reshape(-1, value_heads).to(p["a"].dtype)
+        fresh["b"] = fresh["b"].reshape(-1, value_heads).to(p["b"].dtype)
         for name, value in fresh.items():
             if (isinstance(value, torch.Tensor) and name != "intermediate_states_buffer"
                     and p[name] is not None):
@@ -247,6 +261,59 @@ def test_verify_graph_replay_changes_values_indices_and_tree(routed_face, dt_bia
         graph.replay()
         torch.cuda.synchronize()
         check_result(p, meta, output, ref_out, ref_cache, written, before)
+
+
+@pytest.fixture
+def native_hip_verify_face():
+    if torch.version.hip is None:
+        pytest.skip("AITER HIP verification requires DTK")
+    device = torch.cuda.get_device_properties(torch.device("cuda", 0))
+    if device.gcnArchName.split(":")[0] != "gfx938":
+        pytest.skip("AITER HIP VERIFY candidate is limited to gfx938")
+    provider = pytest.importorskip("aiter")
+    vendor = getattr(provider, "sglang_fused_sigmoid_gating_delta_rule_update", None)
+    if vendor is None:
+        pytest.skip("installed AITER has no native SGLang VERIFY provider")
+    calls = []
+
+    def observed_vendor(**kwargs):
+        calls.append(tuple(kwargs["q"].shape))
+        return vendor(**kwargs)
+
+    observed_vendor.__signature__ = inspect.signature(vendor)
+    observed_vendor.__module__ = vendor.__module__
+    fn, upstream = _isolated_verify_binding(observed_vendor, policy="aiter_hip")
+    return fn, upstream, calls
+
+
+@pytest.mark.parametrize("n,gate_dtype,bias_dtype", [
+    (1, torch.bfloat16, torch.bfloat16),
+    (24, torch.bfloat16, torch.float32),
+    (4, torch.float32, torch.float32),
+])
+def test_native_hip_verify_tp1_output_and_fp32_snapshots(
+    native_hip_verify_face, n, gate_dtype, bias_dtype,
+):
+    fn, _, calls = native_hip_verify_face
+    p, meta = make_case(n, kind="sglang_2d_strided", heads=16, value_heads=48,
+                        split_gate_columns=True)
+    p["a"], p["b"] = p["a"].to(gate_dtype), p["b"].to(gate_dtype)
+    p["dt_bias"] = p["dt_bias"].to(bias_dtype)
+    before = p["initial_state_source"].clone()
+    ref_out, ref_cache, written = fp32_reference(p, meta)
+    result = fn(**p)
+    torch.cuda.synchronize()
+    assert calls == [(1, n * 4, 16, 128)]
+    check_result(p, meta, result, ref_out, ref_cache, written, before)
+
+
+def test_native_hip_verify_tp1_changing_inputs_and_state_slots(native_hip_verify_face):
+    fn, upstream, calls = native_hip_verify_face
+    test_verify_graph_replay_changes_values_indices_and_tree(
+        (fn, upstream), dt_bias_dtype=torch.bfloat16, n=4,
+        heads=16, value_heads=48, split_gate_columns=True,
+    )
+    assert calls == [(1, 16, 16, 128)] * 3
 
 
 @pytest.fixture

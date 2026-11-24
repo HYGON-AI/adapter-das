@@ -158,6 +158,11 @@ auto 正面设备测试仅在已验证构建/架构运行，其他环境明确 p
 CPU 接线仍覆盖未验证版本/架构/合同回上游和显式 triton/总闸优先级。
 vendor 已执行后的异常不能重试上游，因为快照可能已经写入。
 
+`aiter_hip` 的回归使用 gfx938、TP1 H16/HV48、BF16 QKV、K=V=128 和
+draft4 VERIFY。设备用例直接对拍 AITER HIP 与上游 Triton 的输出和 FP32
+快照，核验初始状态与未写槽位，并在 Graph 重放时更换输入及索引。接线用例
+检查显式选择、架构与形状回退、快关优先级及原别名接管。
+
 
 BoltOps HIPC 编译子进程也须隔离宿主启动环境：其缓存标识包含
 aicc --version 的完整输出；继承 SGLang PYTHONPATH 时，Python helper 会把

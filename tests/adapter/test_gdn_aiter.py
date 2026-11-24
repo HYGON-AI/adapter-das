@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
-"""CPU routing contracts for automatic GDN AITER verify selection."""
+"""CPU routing contracts for GDN AITER verify selection."""
 import inspect
 import math
 import os
@@ -53,13 +53,13 @@ lower_bound=None, disable_state_update=False, intermediate_states_buffer=None,
 intermediate_state_indices=None, cache_steps=None, retrieve_parent_token=None"""
 
 
-def faces(extra=""):
+def faces(extra="", *, vendor_extra=""):
     ns = {"calls": [], "error": None, "__name__": "cpu_gdn_face"}
     exec("def face(" + PARAMETERS + extra + "):\n"
          " calls.append(('upstream', dict(locals())))\n"
          " return 'upstream'\n", ns)
     vendor = {"calls": ns["calls"], "error": None, "__name__": "cpu_aiter_face"}
-    exec("def vendor(" + PARAMETERS + "):\n"
+    exec("def vendor(" + PARAMETERS + vendor_extra + "):\n"
          " calls.append(('aiter', dict(locals())))\n"
          " if error is not None: raise error\n"
          " return 'aiter'\n", vendor)
@@ -226,6 +226,129 @@ def auto_inputs():
     return p
 
 
+def hip_inputs(n=4):
+    p = auto_inputs()
+    tokens = n * 4
+    qkv_strides = (tokens * 10240, 10240, 128, 1)
+    p.update(
+        q=TensorMetadata((1, tokens, 16, 128), strides=qkv_strides),
+        k=TensorMetadata((1, tokens, 16, 128), strides=qkv_strides),
+        v=TensorMetadata((1, tokens, 48, 128), strides=qkv_strides),
+        a=TensorMetadata((tokens, 48), strides=(96, 1)),
+        b=TensorMetadata((tokens, 48), strides=(96, 1)),
+        A_log=TensorMetadata((48,), "fp32"),
+        dt_bias=TensorMetadata((48,)),
+        initial_state_source=TensorMetadata((n + 3, 48, 128, 128), "fp32"),
+        initial_state_indices=TensorMetadata((n,), "i32"),
+        cu_seqlens=TensorMetadata((n + 1,), "i32"),
+        intermediate_states_buffer=TensorMetadata((n + 3, 4, 48, 128, 128), "fp32"),
+        intermediate_state_indices=TensorMetadata((n,), "i32"),
+        retrieve_parent_token=TensorMetadata((n, 4), "i32"),
+    )
+    return p
+
+
+@pytest.mark.parametrize("n", [1, 24, 48, 512])
+def test_hip_verify_uses_native_with_packed_tp1_metadata(n):
+    ns, vendor = faces()
+    torch, probes = auto_torch("gfx938:sramecc+:xnack-")
+    fn = ns["face"]
+    signature = inspect.signature(fn)
+    routed = bridge._bind_target_verify_aiter(fn, vendor["vendor"], torch, policy="aiter_hip")
+    assert routed is fn
+    assert inspect.signature(fn) == signature
+    p = hip_inputs(n)
+    assert fn(**p) == "aiter"
+    assert probes == [0]
+    backend, forwarded = ns["calls"][-1]
+    assert backend == "aiter"
+    for name in ("q", "k", "v", "a", "initial_state_source", "intermediate_states_buffer"):
+        assert forwarded[name] is p[name]
+    assert forwarded["b"].is_contiguous()
+
+
+@pytest.mark.parametrize("arch", ["gfx936", "gfx9380"])
+def test_hip_verify_other_arch_keeps_upstream(arch):
+    ns, vendor = faces()
+    torch, probes = auto_torch(arch)
+    fn = bridge._bind_target_verify_aiter(ns["face"], vendor["vendor"], torch, policy="aiter_hip")
+    assert fn(**hip_inputs()) == "upstream"
+    assert probes == [0]
+    assert [backend for backend, _ in ns["calls"]] == ["upstream"]
+
+
+@pytest.mark.parametrize("change", [
+    {"disable_state_update": False},
+    {"cache_ring": True},
+    {"cache_replayssm_inputs": True},
+    {"a": TensorMetadata((16, 48), strides=(96, 2))},
+    {"a": TensorMetadata((16, 48), strides=(47, 1))},
+    {"a": TensorMetadata((8, 96))},
+])
+def test_hip_verify_invalid_contract_keeps_upstream_without_gpu_probe(change):
+    replay = ", cache_replayssm_inputs=False"
+    ns, vendor = faces(", cache_ring=False" + replay, vendor_extra=replay)
+    torch, probes = auto_torch("gfx938")
+    fn = bridge._bind_target_verify_aiter(ns["face"], vendor["vendor"], torch, policy="aiter_hip")
+    p = hip_inputs()
+    p.update(change)
+    assert fn(**p) == "upstream"
+    assert not probes
+    assert [backend for backend, _ in ns["calls"]] == ["upstream"]
+
+
+def test_hip_verify_leaves_tp2_contract_on_upstream():
+    ns, vendor = faces()
+    torch, probes = auto_torch("gfx938")
+    fn = bridge._bind_target_verify_aiter(ns["face"], vendor["vendor"], torch, policy="aiter_hip")
+    assert fn(**auto_inputs()) == "upstream"
+    assert not probes
+
+
+@pytest.mark.parametrize("native_hip", [False, True])
+def test_verify_provider_import_matches_selected_backend(native_hip):
+    ns, vendor = faces()
+    torch = types.ModuleType("torch")
+    torch.version = types.SimpleNamespace(hip="test")
+    fla = types.ModuleType("sglang.kernels.ops.attention.fla")
+    fla.fused_sigmoid_gating_recurrent = types.SimpleNamespace(
+        fused_sigmoid_gating_delta_rule_update=ns["face"],
+    )
+    aiter = types.ModuleType("aiter")
+    aiter.sglang_fused_sigmoid_gating_delta_rule_update = vendor["vendor"]
+    triton_provider = types.ModuleType("aiter.ops.triton.fla.fused_sigmoid_gating_recurrent")
+    triton_provider.fused_sigmoid_gating_delta_rule_update = mock.sentinel.triton_provider
+    with mock.patch.dict(sys.modules, {
+        "torch": torch,
+        fla.__name__: fla,
+        "aiter": aiter,
+        triton_provider.__name__: triton_provider,
+    }):
+        kwargs = {"native_hip": True} if native_hip else {}
+        assert bridge._load_target_verify_providers(**kwargs) == (
+            torch, ns["face"], vendor["vendor"] if native_hip else mock.sentinel.triton_provider,
+        )
+
+
+def test_explicit_hip_installs_native_provider_without_auto_stack_gate():
+    from hcu_adapter import hcu_env, registry
+    ns, vendor = faces()
+    torch, probes = auto_torch("gfx938")
+    with mock.patch.dict(os.environ, {"HCU_DISABLE_OPS": ""}), \
+         mock.patch.object(hcu_env, "resolve", return_value=("aiter_hip", "explicit")), \
+         mock.patch.object(bridge, "_verify_auto_stack_supported",
+                           side_effect=AssertionError("auto qualification is not used")), \
+         mock.patch.object(bridge, "_load_target_verify_providers",
+                           return_value=(torch, ns["face"], vendor["vendor"])) as load, \
+         mock.patch.object(registry, "register") as register:
+        bridge._install_target_verify_aiter()
+    load.assert_called_once_with(native_hip=True)
+    register.assert_called_once()
+    assert not probes
+    assert ns["face"](**hip_inputs()) == "aiter"
+    assert probes == [0]
+
+
 def test_auto_default_uses_vendor_and_caches_assigned_device_probe():
     ns, vendor = faces()
     torch, probes = auto_torch()
@@ -343,9 +466,10 @@ def test_explicit_aiter_preserves_manual_provider_selection():
     with mock.patch.object(hcu_env, "resolve", return_value=("aiter","explicit")), \
          mock.patch.object(bridge, "_verify_auto_stack_supported", return_value=False), \
          mock.patch.object(bridge, "_load_target_verify_providers",
-                           return_value=(torch, ns["face"], vendor["vendor"])), \
+                           return_value=(torch, ns["face"], vendor["vendor"])) as load, \
          mock.patch.object(registry, "register"):
         bridge._install_target_verify_aiter()
+    load.assert_called_once_with()
     assert ns["face"](**inputs()) == "aiter"
     assert not probes
 
@@ -382,7 +506,7 @@ def test_auto_policy_registered_as_default_with_explicit_rollback():
     from hcu_adapter.hcu_config import BACKEND_CATALOG
     assert hcu_env.REGISTRY["HCU_LINEAR_ATTN_GDN_VERIFY"]["default"] == "auto"
     assert set(BACKEND_CATALOG["linear_attn_gdn_verify"]["backends"]) == {
-        "auto", "triton", "aiter",
+        "auto", "triton", "aiter", "aiter_hip",
     }
 
 

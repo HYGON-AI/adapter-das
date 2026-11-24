@@ -409,10 +409,12 @@ REGISTRY = {
     },
     "HCU_LINEAR_ATTN_GDN_VERIFY": {
         "env": "HCU_LINEAR_ATTN_GDN_VERIFY", "default": "auto",
-        "about": "GDN target_verify: auto=qualified gfx936/DTK2610 build and packed "
-                 "BF16 H8/HV24 N<=18/draft4 with FP32 state/snapshots -> AITER; "
-                 "others upstream. triton=upstream rollback, aiter=manual provider. "
-                 "Independent of prefill/packed decode; startup/capture policy",
+        "about": "GDN target_verify: auto uses AITER Triton for the qualified "
+                 "gfx936/gfx938 DTK2610 stack with packed BF16 H8/HV24 draft4 "
+                 "and FP32 state/snapshots. triton selects upstream rollback. "
+                 "aiter selects the manual AITER Triton provider. "
+                 "aiter_hip opts into native AITER HIP for gfx938 packed TP1 "
+                 "H16/HV48 draft4. This is a startup/capture policy for VERIFY.",
     },
     "HCU_DSA_PRESHUFFLE": {
         "env": "HCU_DSA_PRESHUFFLE", "default": "1",

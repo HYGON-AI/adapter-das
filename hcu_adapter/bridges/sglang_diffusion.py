@@ -65,12 +65,52 @@ def install_collective_policy():
     return True
 
 
+class _HcuFa2Unavailable(ValueError):
+    pass
+
+
+def _select_hcu_fa2(head_size, dtype, *, explicit_fa2):
+    from importlib.machinery import PathFinder
+
+    import torch
+
+    from hcu_adapter.infra import kill_switch, registry
+
+    if kill_switch.op_disabled('vendor_fa'):
+        raise _HcuFa2Unavailable('HCU diffusion FA2 is disabled by vendor_fa')
+    if dtype not in (torch.bfloat16, torch.float16):
+        raise _HcuFa2Unavailable('HCU diffusion FA2 requires BF16 or FP16')
+    if PathFinder.find_spec('flash_attn') is None:
+        raise _HcuFa2Unavailable('HCU diffusion FA2 requires the DTK flash_attn wheel')
+    try:
+        from hcu_adapter.bridges.sglang_diffusion_fa2 import (
+            HcuFlashAttention2Backend,
+            HcuFlashAttentionBackend,
+        )
+    except (ImportError, OSError) as error:
+        raise _HcuFa2Unavailable(
+            'HCU diffusion FA2 could not load the DTK flash_attn interfaces'
+        ) from error
+    backend = HcuFlashAttention2Backend if explicit_fa2 else HcuFlashAttentionBackend
+    if head_size not in backend.get_supported_head_sizes():
+        raise _HcuFa2Unavailable(f'HCU diffusion FA2 does not support head size {head_size}')
+
+    registry.register(
+        'diffusion_fa2',
+        backend,
+        target='sglang.multimodal_gen.runtime.platforms.current_platform.get_attn_backend_cls_str',
+        mechanism=registry.MECH_SEAM,
+        detail='DTK FA2 packed varlen with requested backend identity',
+    )
+    return f'{backend.__module__}.{backend.__qualname__}'
+
+
 def get_platform_class():
     global _PLATFORM_TYPE
     if _PLATFORM_TYPE is not None:
         return _PLATFORM_TYPE
 
-    from sglang.multimodal_gen.runtime.platforms import PlatformEnum
+    from sglang.multimodal_gen.runtime.platforms import AttentionBackendEnum, PlatformEnum
     from sglang.multimodal_gen.runtime.platforms.cuda import NonNvmlCudaPlatform
     from sglang.multimodal_gen.runtime.platforms.rocm import RocmPlatform
 
@@ -108,6 +148,20 @@ def get_platform_class():
                 cls, device_id=device_id, distributed=distributed,
                 empty_cache=empty_cache, cpu_group=cpu_group,
             )
+
+        @classmethod
+        def get_attn_backend_cls_str(cls, selected_backend, head_size, dtype):
+            if selected_backend in (AttentionBackendEnum.FA, AttentionBackendEnum.FA2):
+                try:
+                    return _select_hcu_fa2(
+                        head_size,
+                        dtype,
+                        explicit_fa2=selected_backend is AttentionBackendEnum.FA2,
+                    )
+                except _HcuFa2Unavailable:
+                    if selected_backend is AttentionBackendEnum.FA2:
+                        raise
+            return super().get_attn_backend_cls_str(selected_backend, head_size, dtype)
 
         @classmethod
         def optimize_vae(cls, vae):

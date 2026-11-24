@@ -144,3 +144,100 @@ def test_registration_failure_aborts_backend_initialization(native_platform, mon
     monkeypatch.setattr(registry, 'register', reject)
     with pytest.raises(ValueError, match='registration rejected'):
         native_platform().init_backend()
+
+
+@pytest.mark.parametrize(
+    'requested, expected_class',
+    [('FA', 'HcuFlashAttentionBackend'), ('FA2', 'HcuFlashAttention2Backend')],
+)
+def test_component_attention_selection_preserves_requested_backend(
+    native_platform, monkeypatch, requested, expected_class
+):
+    import torch
+    from pkgutil import resolve_name
+    from sglang.multimodal_gen.runtime import platforms
+    from sglang.multimodal_gen.runtime.layers.attention.backends.attention_backend import (
+        AttentionRequirements,
+    )
+    from sglang.multimodal_gen.runtime.layers.attention.selector import (
+        _cached_get_attn_backend,
+        component_attn_backend_context_manager,
+        get_attn_backend,
+    )
+
+    from hcu_adapter.infra import kill_switch
+
+    pytest.importorskip('flash_attn')
+    monkeypatch.setattr(kill_switch, 'op_disabled', lambda op: False)
+    monkeypatch.setattr(registry, '_RECORDS', {})
+    monkeypatch.setattr(registry, '_BOUND', {})
+    monkeypatch.setattr(platforms, 'current_platform', native_platform())
+    _cached_get_attn_backend.cache_clear()
+    requested_backend = platforms.AttentionBackendEnum[requested]
+    try:
+        with component_attn_backend_context_manager(
+            requested_backend, component_name='transformer'
+        ):
+            backend = get_attn_backend(
+                128,
+                torch.bfloat16,
+                attention_requirements=AttentionRequirements(packed_varlen=True),
+            )
+    finally:
+        _cached_get_attn_backend.cache_clear()
+
+    assert backend is resolve_name(
+        f'hcu_adapter.bridges.sglang_diffusion_fa2.{expected_class}'
+    )
+    assert backend.get_enum() is requested_backend
+    assert backend.supports_packed_varlen()
+    if requested == 'FA':
+        from sglang.multimodal_gen.runtime.layers.attention.backends.flash_attn import (
+            FlashAttentionImpl,
+        )
+
+        impl = backend.get_impl_cls()
+        assert backend.supports_ring_rotation()
+        assert impl.forward is FlashAttentionImpl.forward
+        assert impl.forward_ring_kv_chunk is FlashAttentionImpl.forward_ring_kv_chunk
+    assert registry.get('diffusion_fa2')['mechanism'] == registry.MECH_SEAM
+
+
+@pytest.mark.parametrize('requested', [None, 'TORCH_SDPA'])
+def test_other_attention_backends_delegate_to_upstream(native_platform, monkeypatch, requested):
+    import torch
+    from sglang.multimodal_gen.runtime.platforms import AttentionBackendEnum
+    from sglang.multimodal_gen.runtime.platforms.cuda import NonNvmlCudaPlatform
+
+    requested = AttentionBackendEnum[requested] if requested is not None else None
+    calls = []
+
+    def resolve(cls, backend, head_size, dtype):
+        calls.append((cls, backend, head_size, dtype))
+        return 'upstream.Backend'
+
+    monkeypatch.setattr(NonNvmlCudaPlatform, 'get_attn_backend_cls_str', classmethod(resolve))
+    assert native_platform.get_attn_backend_cls_str(requested, 128, torch.bfloat16) == 'upstream.Backend'
+    assert calls == [(native_platform, requested, 128, torch.bfloat16)]
+
+
+def test_vendor_kill_switch_delegates_fa_and_rejects_fa2(native_platform, monkeypatch):
+    import torch
+    from sglang.multimodal_gen.runtime.platforms import AttentionBackendEnum
+
+    from hcu_adapter.infra import kill_switch
+
+    from sglang.multimodal_gen.runtime.platforms.cuda import NonNvmlCudaPlatform
+
+    monkeypatch.setattr(kill_switch, 'op_disabled', lambda op: op == 'vendor_fa')
+    monkeypatch.setattr(
+        NonNvmlCudaPlatform,
+        'get_attn_backend_cls_str',
+        classmethod(lambda cls, backend, head_size, dtype: 'upstream.Backend'),
+    )
+    assert (
+        native_platform.get_attn_backend_cls_str(AttentionBackendEnum.FA, 128, torch.bfloat16)
+        == 'upstream.Backend'
+    )
+    with pytest.raises(ValueError, match='disabled by vendor_fa'):
+        native_platform.get_attn_backend_cls_str(AttentionBackendEnum.FA2, 128, torch.bfloat16)

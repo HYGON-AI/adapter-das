@@ -616,6 +616,16 @@ triton extra.cuda libdevice -> hip/OCML 重定向（is_cuda 语义选路修正�
 
 路由变量：（auto）
 
+## diffusion_fa2
+
+SGLang Diffusion FA / FA2 后端
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| vendor | candidate FA 保留官方后端标识，packed varlen 走 DTK FA2； |
+
+路由变量：（auto）
+
 ## flash_attention
 
 fa3 backend 注意力面（kvcache 分页/统一窗 + varlen prefill）

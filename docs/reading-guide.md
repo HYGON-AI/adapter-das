@@ -28,6 +28,7 @@
 | **新容器/新镜像首次部署** | docs/bootstrap.md（依赖重打+tvm-ffi 预热+自检，照做 ≤10min） |
 | 排查精度问题 | skills/…/references/precision-triage.md → references/kill-switches.md |
 | 改 CI / 加门禁 | docs/ci.md → docs/test-route-governance.md（目标态：精度→功能→性能→路由→退役）→ ci/l0_gate.py |
+| **打 wheel / 读夜间包版本号** | docs/packaging.md（双 dist 形态、`<public>+<platform>.<stamp>` 怎么读、往哪对齐）→ tests/adapter/test_packaging.py |
 | 梳理 L1.5 / 更新上游用例 manifest | docs/l15-test-inventory.md（逐文件候选与分诊）→ docs/l15-family-matrix.md（Dense/MLA/MoE/量化/Mamba 代表矩阵）→ docs/test-route-governance.md §1.3–§1.5 → docs/test-route-implementation-plan.md MR-02A～02E |
 | 设计性能 A/B、路由统计或代码退役 | docs/test-route-governance.md → docs/test-route-implementation-plan.md（MR-00～MR-12）→ docs/autotune.md → docs/governance.md |
 | 按测试治理路线开工 / 查依赖和验收 | docs/test-route-implementation-plan.md → 对应 MR 段的依赖、DoD 与验收命令 |
@@ -54,6 +55,7 @@ DeepInfer 的具体文件位置见[算子导航](frameworks/deepinfer-kernels.md
 | docs/architecture.md | 分层机制：影子库/is_cuda 语义路由/三档路由/横向机制（配 architecture.html 一页图） | §3 图与 `hcu_adapter/` 目录结构不符 |
 | **docs/governance.md** | **治理宪法**：双仓边界（adapter=行为还原 / plugin 独立仓=性能新能力）、seam→rebind→text-patch 裁决链、active-ref 角色、运行时注册表与 dump、plugin 接入时序 / 双宿主共建 / 维护闭环（§7） | 与 ci/l0_gate.py 三规则或 `hcu_adapter/registry.py` 行为不符 |
 | docs/ci.md | CI 当前分层与实测账：L0 → L1/L1.5 GPU → L2 扩展验证（含双线三绑定铁律） | GATES 列表与 l1_gpu_gate.sh 不符 |
+| docs/packaging.md | 双 dist 打包：两张 wheel 的内容、`<public>+<platform>.<stamp>` 版本怎么读、包内数据归属 | 产物文件名/版本段、`build.sh` 戳规则或 package-data 归属与实际不符 |
 | docs/l15-test-inventory.md | L1.5 v2 逐文件候选账：分类、logical op、路由证据、纳入/排除和晋级条件 | 上游版本变更、nodeid 漂移或 manifest 已更新但清单未同步 |
 | docs/l15-family-matrix.md | L1.5 Dense/MLA/MoE/量化/Mamba 五类无权重代表行为矩阵、runner 和 DoD | 固定 case、上游 exact nodeid 或 family 边界与实际执行不符 |
 | docs/test-route-governance.md | 测试目标态路线：精度→功能→性能→运行态路由→报告→代码退役 | route schema、分层、生命周期或报告格式与实际落地不符 |

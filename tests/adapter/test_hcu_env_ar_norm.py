@@ -13,6 +13,9 @@ from hcu_adapter import hcu_config, hcu_env
 
 
 def test_ar_norm_probe_checks_module_without_import(monkeypatch, tmp_path):
+    # The wheel-layout gate only runs without a host; the kernels segment
+    # starts this process with the sglang host active, where it is skipped.
+    monkeypatch.delenv("_HCU_ADAPTER_ACTIVE_HOST", raising=False)
     package = tmp_path / "aiter"
     module = package / "dist" / "device_communicators" / "custom_all_reduce.py"
     module.parent.mkdir(parents=True)
@@ -34,6 +37,7 @@ def test_ar_norm_probe_checks_module_without_import(monkeypatch, tmp_path):
 
 
 def test_ar_norm_probe_without_aiter(monkeypatch):
+    monkeypatch.delenv("_HCU_ADAPTER_ACTIVE_HOST", raising=False)
     monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
     monkeypatch.setattr(torch.version, "hip", "7.0", raising=False)
     assert not hcu_env.has_aiter_custom_allreduce()

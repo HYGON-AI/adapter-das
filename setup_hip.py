@@ -25,7 +25,9 @@ Ops covered (see csrc/ sources for the per-op porting notes):
   sgl_per_token_group_quant_8bit / sgl_per_token_group_quant_8bit_v2
 """
 
+import os
 import platform
+import re
 from pathlib import Path
 
 import torch
@@ -35,15 +37,63 @@ from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 root = Path(__file__).parent.resolve()
 arch = platform.machine().lower()
 
+if torch.version.hip is None:
+    raise SystemExit(
+        "setup_hip.py: the installed torch is not a HIP/DTK build "
+        "(torch.version.hip is None)"
+    )
+
+
+def _pin_module():
+    # shared renderer: keeps setup_hip.py and hcu-adapter's interlock pin
+    # byte-for-byte identical (same source of truth as ci/l0_gate).
+    import importlib.util
+
+    path = root / "packaging" / "hcu-adapter" / "_pin.py"
+    spec = importlib.util.spec_from_file_location("_das_build_version", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _platform_tag():
+    tag = os.environ.get("DAS_PLATFORM_TAG", "").strip().strip(".")
+    if tag:
+        return tag
+    dtk = (os.environ.get("DAS_DTK_TAG")
+           or os.environ.get("DTK_VERSION")
+           or (f"dtk{os.environ['DTK_VER']}" if os.environ.get("DTK_VER") else ""))
+    if not dtk:
+        raise SystemExit(
+            "setup_hip.py: cannot determine the DTK version; set "
+            "DAS_PLATFORM_TAG or DTK_VERSION/DTK_VER so the wheel records "
+            "which DTK/torch ABI it was built against"
+        )
+    dtk = re.sub(r"[^a-z0-9]", "", dtk.lower().removeprefix("dtk"))
+    torch_nums = re.findall(r"\d+", torch.__version__.split("+", 1)[0])[:3]
+    return f"dtk{dtk}.torch{''.join(torch_nums)}"
+
 
 def _version():
-    src = (root / "sgl_kernel" / "version.py").read_text(encoding="utf-8")
-    import re
+    return _pin_module().kernel_version(platform=_platform_tag())
 
-    m = re.search(r'^__version__ = "(.+?)"$', src, re.M)
-    if not m:
-        raise RuntimeError("cannot read __version__ from sgl_kernel/version.py")
-    return m.group(1)
+
+def _rocm_archs():
+    archs = [a for a in re.split(r"[;,\s]+",
+                                 os.environ.get("AMDGPU_TARGETS", "")) if a]
+    if not archs and torch.cuda.is_available():
+        archs = [torch.cuda.get_device_properties(0).gcnArchName.split(":")[0]]
+    if not archs:
+        raise SystemExit(
+            "setup_hip.py: AMDGPU_TARGETS is empty and no GPU is visible; "
+            "set it to the target arch list (e.g. gfx936;gfx938)"
+        )
+    return list(dict.fromkeys(archs))
+
+
+# torch.utils.cpp_extension assembles --offload-arch from PYTORCH_ROCM_ARCH
+# (it does not read AMDGPU_TARGETS); bridge every requested target here.
+os.environ["PYTORCH_ROCM_ARCH"] = ";".join(_rocm_archs())
 
 
 operator_namespace = "sgl_kernel"

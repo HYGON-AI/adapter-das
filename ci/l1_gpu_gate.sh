@@ -306,7 +306,10 @@ for g in _test_hcu_config _test_fa3_emu_cp _test_rope_fallback_vs_fused \
     f="tests/tools/$g.py"
     [ -f "$f" ] || { echo "    SKIP $g (missing)" >> "$GATES_LOG"; continue; }
     echo "=== $g ===" >> "$GATES_LOG"
-    if timeout 300 python3 "$f" >> "$GATES_LOG" 2>&1; then
+    # The curated gates are windows too: the config gate starts one
+    # interpreter per check, and on a slow-start image their sum outgrows the
+    # stock 300s, so they take the same HCU_L1_TIMEOUT_SCALE as the segments.
+    if timeout $(( 300 * TSCALE )) python3 "$f" >> "$GATES_LOG" 2>&1; then
         echo "L1: gate $g PASS"
     else
         echo "L1: gate $g FAIL -- tail:"; tail -n 8 "$GATES_LOG" | sed 's/^/    /'

@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sgl-kernel"
-version = "0.1.0"
+# single source: sgl_kernel/version.py (governance §7.4); the hcu-adapter
+# dist in packaging/hcu-adapter pins this exact version.
+dynamic = ["version"]
 description = "Triton-backed drop-in replacement of sgl_kernel for HCU (Hygon HCU). Provides the AOT kernel backend (`import sgl_kernel`) consumed by sglang's `sglang.kernels` fused-op layer, so upstream sglang runs on HCU without any code modification."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -140,20 +142,19 @@ test = [
     "tomli>=1.1; python_version < '3.11'",
 ]
 
-[project.entry-points."vllm.platform_plugins"]
-hcu_adapter = "hcu_adapter.bridges.vllm:hcu_platform_plugin"
-
-[project.entry-points."vllm.general_plugins"]
-hcu_adapter = "hcu_adapter.bridges.vllm:hcu_runtime_plugin"
-
-[tool.setuptools]
-py-modules = ["sitecustomize"]
-
+# vllm entry-points, sitecustomize and the adapter's own data files live with
+# the hcu-adapter dist (packaging/hcu-adapter/pyproject.toml); this project
+# ships only the native kernel and keeps the kernel's data files, so each
+# wheel installs on its own.
 [tool.setuptools.packages.find]
-include = ["hcu_adapter*", "sgl_kernel*"]
+include = ["sgl_kernel*"]
 
+# Data files are owned per dist. The kernel's JIT headers stay here (the JIT
+# path compiles csrc headers from the installed package); the adapter's
+# launch configs belong to packaging/hcu-adapter. Declared explicitly because
+# include-package-data cannot discover anything when the build root is not the
+# package root -- see the matching table in the adapter pyproject.
 [tool.setuptools.package-data]
-hcu_adapter = ["launch_configs/*.yaml"]
 sgl_kernel = ["diffusion_rope_csrc/*.cuh"]
 
 [tool.pytest.ini_options]

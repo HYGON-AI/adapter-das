@@ -54,6 +54,8 @@ jobs:
     timeout-minutes: 360
     container:
       image: ${{ needs.validate-image.outputs.image }}
+    env:
+      OPTEST_PUBLISH_ROOT: /public/ci_resources/op_test_output
     defaults:
       run:
         shell: bash
@@ -78,7 +80,35 @@ jobs:
         id: tests
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
-        run: optest --op_name all --test_mode all
+        run: |
+          set -o pipefail
+          optest --op_name all --test_mode all 2>&1 | tee "$RUNNER_TEMP/optest-console.log"
+
+      - name: Archive operator test logs on failure
+        if: ${{ !cancelled() && steps.tests.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: optest-failure-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /op_test_log/*/*/acc/*.log
+            /op_test_log/*/*/acc/_FAILED
+            /op_test_log/*/*/per/*.log
+            !/op_test_log/triton/*/per/test-source.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Print failed operator test logs
+        if: ${{ !cancelled() && steps.tests.outcome == 'failure' }}
+        run: |
+          stop_token="$(cat /proc/sys/kernel/random/uuid)"
+          while IFS= read -r reported_path; do
+            log="$(realpath -e -- "$reported_path")" || continue
+            [[ "$log" == /op_test_log/* && -f "$log" ]] || continue
+            printf '::group::%s\n::stop-commands::%s\n' "$log" "$stop_token"
+            cat -- "$log" || true
+            printf '\n::%s::\n::endgroup::\n' "$stop_token"
+          done < <(sed -n 's|^[[:blank:]]*\[FAILED\] log=\(/op_test_log/.*\.log\)[[:space:]]*$|\1|p' \
+            "$RUNNER_TEMP/optest-console.log" | sort -u)
 
       - name: Publish operator test results
         id: publish
@@ -88,22 +118,12 @@ jobs:
           OPTEST_OUTCOME: ${{ steps.tests.outcome }}
           TZ: Asia/Shanghai
         run: |
-          shared_dir=/public/ci_resources
-          mount_target="$(findmnt -n -o TARGET --target "$shared_dir")"
-          case "$mount_target" in
-            /public|/public/*) ;;
-            *)
-              echo "::error::$shared_dir is not on a /public mount"
-              exit 1
-              ;;
-          esac
-
+          mountpoint -- "${OPTEST_PUBLISH_ROOT%/*}"
+          mkdir -p -- "$OPTEST_PUBLISH_ROOT"
           optest --json || echo "::warning::Optest JSON export failed"
-          output_root="$shared_dir/op_test_output"
           day="$(date '+%Y-%m-%d')"
-          output_dir="$output_root/daily-$day-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          mkdir -p -- "$output_root"
-          staging="$(mktemp -d "$shared_dir/.optest.XXXXXX")"
+          output_dir="$OPTEST_PUBLISH_ROOT/daily-$day-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          staging="$(mktemp -d "$OPTEST_PUBLISH_ROOT/.optest.XXXXXX")"
           trap 'rm -rf -- "$staging"' EXIT
           mkdir -- "$staging/daily"
           if [ -d /op_test_output ]; then
@@ -111,7 +131,7 @@ jobs:
           fi
 
           # 同一共享盘上的并发发布按顺序更新 daily 目录和入口页。
-          exec 9>"$shared_dir/.optest-publish.lock"
+          exec 9>>"$OPTEST_PUBLISH_ROOT/.optest-publish.lock"
           flock 9
           python3 ci/publish_optest.py "$staging" "$output_dir"
 
@@ -120,11 +140,8 @@ jobs:
         env:
           IMAGE_TAG: ${{ needs.validate-image.outputs.image }}
           REPORT_URL: ${{ steps.publish.outputs.report_path }}
-          OPERATOR_RESULT: ${{ steps.publish.outputs.result_path }}
-          OPERATOR_STATUS: ${{ steps.publish.outputs.test_status }}
         run: |
           report_stamp="$(TZ=Asia/Shanghai date '+%Y-%m%d-%H%M')"
           CInotificate --notificate_type op_daily_display --record \
             --ci_accelerators BW1100 \
-            --operator_result "$OPERATOR_RESULT" --operator_test_status "$OPERATOR_STATUS" \
             --report_url "$REPORT_URL" --report_name "SGLang 超节点${report_stamp}算子测试"

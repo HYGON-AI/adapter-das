@@ -344,3 +344,14 @@ When the preset XML GPU count matches the visible count, the guard also compares
 | `HCU_GLM53_FIXED_EAGLE_PROJECTIONS` | GLM EAGLE 的 EH RMSNorm、BF16 EH 投影和 LM head。 |
 | `HCU_GLM53_FIXED_DSA_MATMUL` | 零 RoPE MLA 的固定 BF16 吸收投影，以及固定 IEEE FP32 打分和 value 收缩。 |
 | `HCU_GLM53_LIGHTOP_BLOCK_FP8_MOE` | gfx938 TP8/EP1 288/289 专家的 LightOp blockwise FP8 实验档。 |
+
+### SGLang Hook 别名传播
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `HCU_HOOK_ALIAS_FAST` | `0` | 显式 `1` 使用已匹配官方函数的 CPython CPU 原生扫描；不支持平台、源码漂移或缺少构建条件保留官方扫描。缓存完整性错误显式报错。 |
+
+配置目录：`hook_alias_propagation: fast|stock`，状态为 candidate。支持条件、
+回退、缓存及测试边界见 [Hook 启动优化](sglang-startup-hook-aliases.md)。
+环境摘要延后自动探测复用上游现有 `resolve(..., evaluate_auto=False)`，
+本项不再新增另一套解析器。

@@ -59,6 +59,28 @@ class HcuConfigError(RuntimeError):
 # backends   selectable backend -> {status, note}
 
 BACKEND_CATALOG = {
+    "hook_alias_propagation": {
+        "var": None,
+        "vars": {
+            "fast": {
+                "HCU_HOOK_ALIAS_FAST": "1"
+            },
+            "stock": {
+                "HCU_HOOK_ALIAS_FAST": "0"
+            }
+        },
+        "summary": "SGLang from-import alias propagation",
+        "backends": {
+            "stock": {
+                "status": "production",
+                "note": "Official full namespace scan"
+            },
+            "fast": {
+                "status": "candidate",
+                "note": "Known source fingerprint; CPython CPU identity scan; semantic fallback"
+            }
+        }
+    },
     "cuda_graph": {
         "var": None,
         "summary": "HIP driver guard for breakable prefill graph capture",

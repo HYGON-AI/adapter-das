@@ -1857,6 +1857,9 @@ def install() -> None:
                     "HCU adapter: layer dump bridge not installed", exc_info=True
                 )
 
+        from hcu_adapter import hook_aliases
+        hook_aliases.install()
+
         # 8. deep_ep API bridge (EP validation 2026-10-11): sglang v0.5.21 calls
         # upstream deep_ep `low_latency_dispatch(x, topk_idx, nmdtpr, num_experts,
         # use_fp8=..., ...)` and passes routing weights only at combine, while the

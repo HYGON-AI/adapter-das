@@ -181,6 +181,11 @@ REGISTRY = {
         "hosts": ("vllm",),
         "about": "vLLM 0.33 V4.1 packed native decode: default native; explicit stock falls back; startup only; kill switch wins",
     },
+    "HCU_VLLM_FLASHMLA_DECODE_PLAN_REUSE": {
+        "env": "HCU_VLLM_FLASHMLA_DECODE_PLAN_REUSE", "default": "1",
+        "hosts": ("vllm",),
+        "about": "gfx938 D512/H64 dual-bank FlashMLA plan reuse with ordered effective lengths checked on device; on by default, kill switch 0; startup only",
+    },
     "HCU_VLLM_FLASHMLA_PREFILL": {
         "env": "HCU_VLLM_FLASHMLA_PREFILL", "default": "native",
         "hosts": ("vllm",),

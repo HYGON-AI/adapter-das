@@ -102,14 +102,14 @@ def try_decode(*, q, kv_cache, swa_k_cache, swa_only, topk_indices, topk_lens,
                head_dim, nope_head_dim, rope_head_dim, output,
                extra_cache_nan_free=False, adaptive_splits=False,
                inv_rope_positions=None, inv_rope_cos_sin_cache=None,
-               output_mxfp8=None, provider, metadata_factory, epilogue):
+               output_mxfp8=None, provider, metadata_factory, epilogue,
+               plan_cache=None):
     """Return rotated-row count on selection, or None before any output write.
 
     BF16 output owes the caller its inverse-RoPE (return 0). MXFP8 delegates
     inverse-RoPE/quantization to the original core epilogue (return every row).
-    A fresh plan per invocation prevents stale lengths across layers, warmup,
-    capture and forwards. Supported native descriptors are recomputed from
-    current counts; other contracts retain the native generator.
+    Within one forward, qualified H64 groups share a plan and split buffer.
+    The guard reuses the plan only for the same ordered effective lengths.
     """
     if ((head_dim, nope_head_dim, rope_head_dim) != (512, 448, 64)
             or q.ndim != 3 or not 0 < q.shape[1] <= 128 or q.shape[0] == 0
@@ -169,11 +169,19 @@ def try_decode(*, q, kv_cache, swa_k_cache, swa_only, topk_indices, topk_lens,
     native_heads = 64 if heads <= 64 else 128
     from .mla_decode_io_triton import native_query_and_sink, try_mask_copy
     queries, sink = native_query_and_sink(q, attn_sink, native_heads)
-    from .mla_native_plan_triton import prepare_native_plan
-    metadata = prepare_native_plan(main_lens, extra_lens, native_heads,
-        main_ids.shape[-1], 0 if extra_ids is None else extra_ids.shape[-1],
-        provider, metadata_factory,
-        (swa_k_cache.shape[1], 0 if swa_only else kv_cache.shape[1]))
+    from .mla_native_plan_triton import guarded_plan_admitted, prepare_native_plan
+    plan_key = None
+    lengths = (main_lens, extra_lens)
+    if (plan_cache is not None and not swa_only and main_ids.shape[-1] == 128
+            and extra_ids.shape[-1] == 512 and guarded_plan_admitted(q.device)):
+        plan_key = plan_cache.key(q, inv_rope_positions, swa_k_cache, kv_cache,
+                                  (topk_ragged_indices, topk_ragged_indptr), lengths)
+    metadata = plan_cache.lookup(plan_key, lengths) if plan_key is not None else None
+    if metadata is None:
+        metadata = prepare_native_plan(main_lens, extra_lens, native_heads,
+            main_ids.shape[-1], 0 if extra_ids is None else extra_ids.shape[-1],
+            provider, metadata_factory,
+            (swa_k_cache.shape[1], 0 if swa_only else kv_cache.shape[1]))
     result, _ = provider(q=queries, k_cache=swa_k_cache.unsqueeze(-2),
         block_table=None, cache_seqlens=None, head_dim_v=512,
         tile_scheduler_metadata=metadata, softmax_scale=scale,
@@ -181,6 +189,8 @@ def try_decode(*, q, kv_cache, swa_k_cache, swa_only, topk_indices, topk_lens,
         topk_length=main_lens, attn_sink=sink,
         extra_k_cache=None if swa_only else kv_cache.unsqueeze(-2),
         extra_indices_in_kvcache=extra_ids, extra_topk_length=extra_lens)
+    if plan_key is not None:
+        plan_cache.remember(plan_key, lengths, metadata)
     result = result[:, 0, :heads]
     if output_mxfp8 is None:
         from .mla_decode_rope_triton import try_mask_copy_rope

@@ -161,3 +161,43 @@ def test_silu_lightop_backend_parity(monkeypatch):
             assert cos >= 0.9999, f"lightop backend cos={cos:.6f} {dtype}"
     finally:
         _reset_impl_cache(ew)
+
+
+@requires_gpu
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_silu_default_backend_changed_input_graph(dtype):
+    """Public dispatch retains numerical and out= contracts through replay."""
+    x = torch.empty((5, 512), dtype=dtype, device="cuda")
+    out = torch.empty((5, 256), dtype=dtype, device="cuda")
+
+    def fill(seed):
+        generator = torch.Generator().manual_seed(seed)
+        source = (torch.randn((5, 512), generator=generator) * 2).to(dtype)
+        x.copy_(source)
+        gate, up = source[:, :256].float(), source[:, 256:].float()
+        return (gate / (1 + torch.exp(-gate))) * up
+
+    fill(72)
+    for _ in range(3):
+        assert sgl_kernel.silu_and_mul(x, out) is out
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        captured = sgl_kernel.silu_and_mul(x, out)
+    assert captured is out
+    pointers = (x.data_ptr(), out.data_ptr())
+    for seed in [72, 73, 74, 75]:
+        reference = fill(seed)
+        graph.replay()
+        torch.cuda.synchronize()
+        actual = out.cpu().float()
+        tolerance = {
+            torch.float32: (1e-5, 1e-6),
+            torch.float16: (2e-3, 1e-4),
+            torch.bfloat16: (1e-2, 1e-4),
+        }[dtype]
+        torch.testing.assert_close(actual, reference, rtol=tolerance[0], atol=tolerance[1])
+        cosine = torch.nn.functional.cosine_similarity(
+            actual.flatten(), reference.flatten(), dim=0).item()
+        assert cosine >= 0.9999
+        assert torch.equal(out, sgl_kernel.silu_and_mul(x))
+        assert pointers == (x.data_ptr(), out.data_ptr())

@@ -13,12 +13,10 @@ resident and the 58-bucket prefill table OOMs partway through capture
 (diagnosed 2026-10-14: 0.6B died at bucket 25/58 with each of the first
 buckets holding 1.7-6 GB resident).
 
-Primary route: the DTK vendor sgl_kernel wheel ships the SAME compiled
-C++ op (`_Z15weak_ref_tensorRKN2at6TensorE` in common_ops.so, built under
-HIP toolchain — device-independent host-side TensorImpl surgery). Detect
-it once at import and re-export verbatim; the pure-torch view_as fallback
-below stays only for wheels without the symbol (semantically safe, memory
-pessimistic — capture-time pinning, gap-listed).
+Prefer the vendor C++ op. Without it, use Torch's non-owning storage and
+tensor constructors, as in its cudagraph-tree implementation. Admission
+checks only the two entry points and does not initialize a device. The
+view_as fallback remains for Torch builds without those entry points.
 """
 
 import torch
@@ -98,12 +96,39 @@ def _load_vendor_impl():
 _vendor_weak_ref_tensor = _load_vendor_impl()
 
 
+def _torch_weak_ref_impl(t):
+    if not isinstance(t, torch.Tensor):
+        raise TypeError(f"weak_ref_tensor expects a Tensor, got {type(t)!r}")
+    if t.numel() == 0:
+        return t
+    if t.device.type != "cuda":
+        return t.view_as(t)
+    span = 1 + sum((size - 1) * stride for size, stride in zip(t.shape, t.stride()))
+    storage = torch._C._construct_storage_from_data_pointer(
+        t.data_ptr(), t.device, span * t.element_size()
+    )
+    metadata = {
+        "size": t.shape,
+        "stride": t.stride(),
+        "dtype": t.dtype,
+        "device": t.device,
+        "storage_offset": 0,
+    }
+    return torch._C._construct_CUDA_Tensor_From_Storage_And_Metadata(metadata, storage)
+
+
+_torch_weak_ref_tensor = (
+    _torch_weak_ref_impl
+    if hasattr(torch._C, "_construct_storage_from_data_pointer")
+    and hasattr(torch._C, "_construct_CUDA_Tensor_From_Storage_And_Metadata")
+    else None
+)
+
+
 if _vendor_weak_ref_tensor is not None:
     weak_ref_tensor = _vendor_weak_ref_tensor
-
-    def weak_ref_tensor_lazy(t):  # keep signature parity for docs
-        return weak_ref_tensor(t)
-
+elif _torch_weak_ref_tensor is not None:
+    weak_ref_tensor = _torch_weak_ref_tensor
 else:
 
     def weak_ref_tensor(t: torch.Tensor) -> torch.Tensor:
@@ -116,6 +141,10 @@ else:
         # incrementing its refcount; nothing in torch core can express that, and
         # faking it via storage surgery risks use-after-free inside capture.)
         return t.view_as(t)
+
+
+def weak_ref_tensor_lazy(t):  # keep signature parity for docs
+    return weak_ref_tensor(t)
 
 
 def weak_ref_tensors(tensors):

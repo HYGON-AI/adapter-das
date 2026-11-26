@@ -314,3 +314,17 @@ was started or stopped during these checks.
 ### 2026-11-23 PR 拆分检查
 
 本次独立分支重新通过18项拓扑/环境CPU回归、38项CPU算子测试及L0。节点门禁在 test_group_quant_u8_bridge 收集时遇到官方 fp8_kernel 缺少 per_token_group_quant；triage ops 另报告默认检查点不存在、旧 fused_add_rms_norm 调用签名不匹配和AR gate失败。原始失败记录保留，未扩大本PR范围修改量化、norm或AR；不能宣称全套提交门禁通过。仅准备Draft评审，不视为可直接合入。
+
+## HY3 FP8 Graph capture fallback (2026-11-25)
+
+The release branch retained the vendor `weak_ref_tensor` route but did not carry the newer
+Torch non-owning fallback. When the vendor shared object was unavailable, `sgl_kernel/weak_ref.py`
+used `view_as`; that view kept the captured tensor storage alive, so successive prefill Graph
+buckets accumulated memory instead of reusing the shared pool. The local fix keeps the vendor
+route first, uses Torch's two non-owning storage constructors when available, and leaves
+`view_as` only as the compatibility fallback for older Torch builds.
+
+On S7 with the HY3 FP8 TP8 NEXTN E4M3 profile, the fixed path captured all 58 prefill buckets
+at the original `mem_fraction_static=0.9`. The weak-ref route, alias, and capture-pool reuse
+tests passed without skips. This is a local working-tree change and has not been committed or
+pushed; full model accuracy and performance remain separate acceptance items.

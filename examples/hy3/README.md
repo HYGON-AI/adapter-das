@@ -12,7 +12,7 @@
 | 包内 YAML（`hcu_adapter/launch_configs/`）与本目录同名 `.sh` | 原命令 | 保留的设置 |
 |---|---|---|
 | `hy3-int8-tp8-e4m3` | S7 INT8 | 显存比例 0.80、BF16、cache report、AITER MoE=false、融合 RoPE=0、W8A8 方法=2；不启用 NEXTN |
-| `hy3-int8-tp8-e5m2` | 10.8 INT8 | 显存比例 0.80、cache report、相同四项计算开关；未指定 dtype，不启用 NEXTN |
+| `hy3-int8-tp8-e5m2` | 10.8 INT8 | 显存比例 0.80、BF16、cache report、相同四项计算开关；不启用 NEXTN |
 | `hy3-fp8-tp8-nextn-e4m3` | S7 FP8 | 显存比例 0.9、BF16、NEXTN 2/1/3、关闭 radix cache、融合 RoPE=1 |
 
 这些命令未增加 `--quantization slimquant_marlin`、DP、DeepEP、shared-expert
@@ -21,6 +21,10 @@ fusion 或 watchdog 等原脚本没有的参数。三份 TP8 YAML 明确设置
 及 HCU KV 布局组合。这是相对原始脚本补齐的两项配置，显式环境变量仍可覆盖；
 它们不修改其他配方或 Plugin 全局默认值。DeepGEMM 开关保持原脚本的选择。
 FP8 保留原脚本的 NCCL all-gather 同步 batch 开关。
+
+10.8 的 INT8 TP8 E5M2 示例补充 `--dtype bfloat16`。原命令使用 `dtype=auto` 时，
+抓图后的启动预热出现非法访存；仅显式指定 BF16 后，按原显存比例完成启动和生成。
+该 auto 配置非法访存的具体实现原因尚未确定。
 
 E5M2 配方需要配套 HY3 运行适配中的 Adapter FA3/E5M2 检查修复，才能在
 显式 vendor 模式和支持的 HCU 上保留 FA3。仅安装本配置分支不能替代运行适配。
@@ -43,14 +47,18 @@ FP8 原脚本的八卡可见性和 `kernel.numa_balancing=0` 也由部署环境�
 
 | 配置文件（位于 `hcu_adapter/launch_configs/`） | 本目录的同名 `.sh` | 对应原配方 | 融合 RoPE | FA 选择 |
 |---|---|---|---|---|
-| `hy3-fp8-tp8-dp8-e4m3.yaml` | `hy3-fp8-tp8-dp8-e4m3.sh` | S7 FP8，KV E4M3，显存比例 0.9 | 1 | 保留已有配置及默认选择 |
-| `hy3-int8-tp8-dp8-e4m3.yaml` | `hy3-int8-tp8-dp8-e4m3.sh` | S7 INT8，KV E4M3，显存比例 0.9 | 1 | vendor |
-| `hy3-int8-tp8-dp8-e5m2.yaml` | `hy3-int8-tp8-dp8-e5m2.sh` | 10.8 INT8，KV E5M2，显存比例 0.85 | 0 | 保留已有配置及默认选择 |
+| `hy3-fp8-tp8-dp8-e4m3.yaml` | `hy3-fp8-tp8-dp8-e4m3.sh` | S7 FP8，KV E4M3，显存比例 0.9 | 1 | vendor，HCU KV 布局=1 |
+| `hy3-int8-tp8-dp8-e4m3.yaml` | `hy3-int8-tp8-dp8-e4m3.sh` | S7 INT8，KV E4M3，显存比例 0.9 | 1 | vendor，HCU KV 布局=1 |
+| `hy3-int8-tp8-dp8-e5m2.yaml` | `hy3-int8-tp8-dp8-e5m2.sh` | 10.8 INT8，KV E5M2，显存比例 0.85 | 0 | vendor，HCU KV 布局=1 |
 
 文件名使用量化、并行方式和 KV 类型，不绑定主机名。显存比例、NEXTN 参数、
 page size 等仍由启动命令指定，选择器不重写这些参数。`--attention-backend fa3`
-与 Adapter 的实际 FA 实现是两个选择；表中未固定 vendor 的配方不代表厂商 FA
-已经生效。
+与 Adapter 的实际 FA 实现是两个选择；上表配方通过 `HCU_FA_IMPL=vendor`
+明确选择厂商 FA。
+
+三份 DP8 配方均显式选择 vendor FA 与 HCU KV 布局，确保 KV
+写入和注意力读取使用同一种布局。配置 UI 与包内 YAML 同步维护；显式环境变量
+仍优先于这些配方值。E5M2 配方需要配套 Adapter 的 FA3/E5M2 启动检查适配。
 
 两类配方的自动选择仅覆盖本地 `config.json` 中的 `hy_v3` / `HYV3ForCausalLM`，且量化为
 compressed-tensors Channel W8A8、激活为动态 per-token INT8 或 FP8 的模型。
@@ -97,5 +105,19 @@ PR #162 提供的包内 YAML、`hosts.sglang.env` 校验和 wheel 打包机制�
 PR 的 Adapter/Plugin 与计算库；仅复制 YAML 到旧环境不会获得自动选择能力。
 
 专项回归覆盖配方选择、外部配置和显式覆盖、未支持拓扑、启动顺序、真实进程
-重新执行以及 UI 配方与 YAML 的一致性。配置迁移后的完整模型启动、GPQA
-精度和性能仍需使用相同依赖进行复测，历史模型结果不作为本次验证结果。
+重新执行以及 UI 配方与 YAML 的一致性。
+
+2026-11-26 在 gfx938、DTK2610、SGLang `baa9bef`、Adapter `42dbfd4`、Plugin
+`1095795` 加本轮 weak-ref 和融合 KV 布局补丁的组合下，INT8 TP8 E4M3、FP8 TP8/DP8
+E4M3、INT8 TP8/DP8 E4M3 已分别按 YAML 自动选择完成抓图和正常生成。显存比例
+保持 0.8、0.9、0.9，两组 DP8 保持 NEXTN 2/1/3；配置回归 40 项通过。
+三组各返回 `42` 和 `巴黎`（INT8 带句号），两组 DP8 另通过并发重复请求，均正常 stop。
+实际参数核对包括新版框架规范化后的 `attn_dp_size=8、dp_size=1`，八个 scheduler
+仍执行 DP attention。服务均已停止。
+
+同日，10.8 的 gfx936 八卡环境使用相同源码组合和配套 DTK2610 计算库，完成两份
+INT8 E5M2 配方验证：TP8 显式指定 BF16、显存比例 0.80；TP8/DP8 保持 BF16、
+显存比例 0.85、DeepEP auto 和 NEXTN 2/1/3。DP8 YAML 补齐 vendor FA 和
+HCU KV layout=1 后，实际后端保持 FA3。两组均通过抓图、顺序及并发生成，返回
+`42`、`巴黎。`，全部正常 stop，测试服务已停止。GPQA 精度、性能和长期稳定性
+仍待验证。

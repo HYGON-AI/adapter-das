@@ -63,6 +63,8 @@ def test_three_profiles_load_and_reexec_with_original_arguments(tmp_path, monkey
     assert preset_env(filename).items() <= env.items()
     assert env["SGLANG_USE_FP8_W8A8_MOE"] == ("1" if family == "fp8" else "0")
     assert env["SGLANG_USE_FUSED_RMS_ROTARY"] == ("0" if kv == "fp8_e5m2" else "1")
+    assert env["HCU_FA_IMPL"] == "vendor"
+    assert env["SGLANG_KV_LAYOUT_HCU_FA"] == "1"
     monkeypatch.setenv("HCU_CONFIG", env["HCU_CONFIG"])
     assert hcu_config.load(force=True)["hosts"]["sglang"]["env"] == preset_env(filename)
     assert "(config)" in capsys.readouterr().err
@@ -220,7 +222,7 @@ def test_tp8_examples_select_their_own_environment_without_rewriting_cli(tmp_pat
         assert env["SGLANG_USE_FUSED_RMS_ROTARY"] == "0"
         assert env["W8A8_SUPPORT_METHODS"] == "2"
         assert "--speculative-algorithm" not in actual_command
-        assert ("--dtype" in actual_command) == (kv == "fp8_e4m3")
+        assert actual_command[actual_command.index("--dtype") + 1] == "bfloat16"
     else:
         assert env["USE_DCU_CUSTOM_ALLREDUCE"] == "1"
         assert env["SGLANG_NCCL_ALL_GATHER_IN_OVERLAP_SCHEDULER_SYNC_BATCH"] == "1"

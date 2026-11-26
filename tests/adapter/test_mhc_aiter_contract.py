@@ -62,8 +62,14 @@ def test_aiter_provider_signature_check():
 
 def test_split_k_selection():
     from hcu_adapter.kernels.mhc_aiter import select_splits
+    assert select_splits(0, 4, 5120, 'auto') == 1
     assert select_splits(64, 4, 5120, 'auto') == 32
-    assert select_splits(100, 4, 5120, 'auto') == 1
+    assert select_splits(65, 4, 5120, 'auto') == 32
+    assert select_splits(100, 4, 5120, 'auto') == 32
+    assert select_splits(120, 4, 5120, 'auto') == 32
+    assert select_splits(128, 4, 5120, 'auto') == 32
+    assert select_splits(129, 4, 5120, 'auto') == 1
+    assert select_splits(120, 4, 5120, '1') == 1
     with pytest.raises(ValueError):
         select_splits(100, 4, 5120, '999')
 

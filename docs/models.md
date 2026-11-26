@@ -367,3 +367,9 @@ SGLang 兼容包装保留原生量化分发入口，配套 Plugin 可显式传�
 ### 2026-11-23 PR 拆分检查
 
 本次独立分支重新通过18项拓扑/环境CPU回归、38项CPU算子测试及L0。节点门禁在 test_group_quant_u8_bridge 收集时遇到官方 fp8_kernel 缺少 per_token_group_quant；triage ops 另报告默认检查点不存在、旧 fused_add_rms_norm 调用签名不匹配和AR gate失败。原始失败记录保留，未扩大本PR范围修改量化、norm或AR；不能宣称全套提交门禁通过。仅准备Draft评审，不视为可直接合入。
+
+### SGLang 通用 Hook 启动优化候选
+
+可选的 CPU 原生别名扫描与 GLM5.2 FP8 组合启动验证见
+[Hook 启动优化](sglang-startup-hook-aliases.md)。不改变模型数学；历史组合的
+启动结果不能外推为全部模型精度或最新基点单项收益。

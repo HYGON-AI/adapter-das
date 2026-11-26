@@ -45,6 +45,17 @@ Plugin HCU inverse GPT-J RoPE on V41 PCP BF16 attention output
 
 路由变量：（auto）
 
+## hook_alias_propagation
+
+SGLang from-import alias propagation
+
+| 档位 | 状态 / 备注 |
+|---|---|
+| fast | candidate Known source fingerprint; CPython CP |
+| stock | production Official full namespace scan |
+
+路由变量：`1`/`0`
+
 ## cuda_graph
 
 HIP driver guard for breakable prefill graph capture

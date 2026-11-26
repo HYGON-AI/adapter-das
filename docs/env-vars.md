@@ -337,3 +337,14 @@ See `docs/frameworks/vllm033-paged-mqa.md`; no new environment variable is added
 ### Same-count foreign PCI topology guard (2026-11-20)
 
 When the preset XML GPU count matches the visible count, the guard also compares GPU PCI addresses with the host DRM render-device addresses. Known XML GPU addresses absent from the host clear NCCL_TOPO_FILE so RCCL discovers sysfs topology. Unknown addresses remain conservative; the explicit HCU_NCCL_TOPO_GUARD=0 override is preserved. This covers S9 gfx938 with an eight-GPU image preset from a different machine. Regression: tests/adapter/test_nccl_topology_pci.py; combined with existing environment guards, 18 CPU tests passed. Full-model verification is recorded separately.
+
+### SGLang Hook 别名传播
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `HCU_HOOK_ALIAS_FAST` | `0` | 显式 `1` 使用已匹配官方函数的 CPython CPU 原生扫描；不支持平台、源码漂移或缺少构建条件保留官方扫描。缓存完整性错误显式报错。 |
+
+配置目录：`hook_alias_propagation: fast|stock`，状态为 candidate。支持条件、
+回退、缓存及测试边界见 [Hook 启动优化](sglang-startup-hook-aliases.md)。
+环境摘要延后自动探测复用上游现有 `resolve(..., evaluate_auto=False)`，
+本项不再新增另一套解析器。

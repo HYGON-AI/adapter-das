@@ -216,6 +216,12 @@ REGISTRY = {
         "hosts": ("vllm",),
         "about": "V4.1 native PCP inverse and query RoPE: auto selects HCU on gfx938, hcu or stock overrides the file; operator kill switches win",
     },
+    "HCU_HOOK_ALIAS_FAST": {
+        "env": "HCU_HOOK_ALIAS_FAST",
+        "default": "0",
+        "hosts": ("sglang",),
+        "about": "Opt-in CPU-native SGLang Hook alias scan; 0 retains stock",
+    },
     "HCU_VLLM_SPARSE_INDEXER_IMPL": {
         "env": "HCU_VLLM_SPARSE_INDEXER_IMPL", "default": "stock",
         "hosts": ("vllm",),

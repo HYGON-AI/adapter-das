@@ -1160,3 +1160,14 @@ including a zero-length padded row. N=128 also covers first-call auto capture.
 An explicit low-free-memory skip is a resource condition, not device qualification;
 only executed cases count as numerical evidence.
 
+
+### SGLang Hook 别名 CPU 扫描
+
+`tests/adapter/test_hook_aliases.py` 覆盖真实 HookRegistry、已缓存的
+`_apply_target`、类替换顺序、classmethod/staticmethod、改名别名、
+新模块/新别名、自定义 getter/setter 和命名空间、异常传播、源码漂移、
+关闭回退、缺少原生构建条件及缓存哈希校验。原生用例必须确认辅助扩展已加载；
+不支持平台或缺少编译条件应显式 skip，不能以官方回退通过冒称原生路径通过。
+性能比较还须核对完整 Hook 应用集合，并记录无采样服务就绪总耗时及输出检查。
+组合优化证据与最新基点迁移后的验收分别记录，见
+`docs/sglang-startup-hook-aliases.md`。

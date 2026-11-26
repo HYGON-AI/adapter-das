@@ -99,6 +99,28 @@ BACKEND_CATALOG = {
             "hcu": {"status": "candidate", "note": "Default on eligible gfx938 native eager V4.1 PCP; 64-dimension tail"},
         },
     },
+    "hook_alias_propagation": {
+        "var": None,
+        "vars": {
+            "fast": {
+                "HCU_HOOK_ALIAS_FAST": "1"
+            },
+            "stock": {
+                "HCU_HOOK_ALIAS_FAST": "0"
+            }
+        },
+        "summary": "SGLang from-import alias propagation",
+        "backends": {
+            "stock": {
+                "status": "production",
+                "note": "Official full namespace scan"
+            },
+            "fast": {
+                "status": "candidate",
+                "note": "Known source fingerprint; CPython CPU identity scan; semantic fallback"
+            }
+        }
+    },
     "cuda_graph": {
         "var": None,
         "summary": "HIP driver guard for breakable prefill graph capture",

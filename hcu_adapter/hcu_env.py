@@ -145,6 +145,12 @@ def _auto_mqa_emu():
 
 
 REGISTRY = {
+    "HCU_HOOK_ALIAS_FAST": {
+        "env": "HCU_HOOK_ALIAS_FAST",
+        "default": "0",
+        "hosts": ("sglang",),
+        "about": "Opt-in CPU-native SGLang Hook alias scan; 0 retains stock",
+    },
     "HCU_VLLM_SPARSE_INDEXER_IMPL": {
         "env": "HCU_VLLM_SPARSE_INDEXER_IMPL", "default": "stock",
         "hosts": ("vllm",),

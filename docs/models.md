@@ -328,3 +328,8 @@ On S7 with the HY3 FP8 TP8 NEXTN E4M3 profile, the fixed path captured all 58 pr
 at the original `mem_fraction_static=0.9`. The weak-ref route, alias, and capture-pool reuse
 tests passed without skips. This is a local working-tree change and has not been committed or
 pushed; full model accuracy and performance remain separate acceptance items.
+### SGLang 通用 Hook 启动优化候选
+
+可选的 CPU 原生别名扫描与 GLM5.2 FP8 组合启动验证见
+[Hook 启动优化](sglang-startup-hook-aliases.md)。不改变模型数学；历史组合的
+启动结果不能外推为全部模型精度或最新基点单项收益。

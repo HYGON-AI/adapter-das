@@ -229,6 +229,7 @@
 /*==PURE-BEGIN*/
 // ---- BACKEND_CATALOG snapshot (hcu_config.py, 2026-10-14). default = first prod entry.
 const CATALOG = {
+  "hook_alias_propagation": {"var": null, "vars": {"fast": {"HCU_HOOK_ALIAS_FAST": "1"}, "stock": {"HCU_HOOK_ALIAS_FAST": "0"}}, "summary": "SGLang from-import alias propagation", "backends": {"stock": {"s": "production", "n": "Official full namespace scan"}, "fast": {"s": "candidate", "n": "Known source fingerprint; CPython CPU identity scan; semantic fallback"}}},
   "cuda_graph": {"var": null, "summary": "HIP stream queries for breakable prefill graphs", "backends": {"prefill-bcg-driver-truth": {"s": "candidate", "n": "Preserves graph capture; HCU_DISABLE_OPS=prefill_graph_driver keeps original binding. Model validation remains separate."}}},
   "mamba_state_scatter": {"var": null, "summary": "SGLang Mamba verify-state copy launch geometry", "backends": {"triton": {"s": "candidate", "n": "gfx936/gfx938 FP32 entries >=1024; flattened grid preserves source-row mapping; gfx938 bitwise/Graph/spawn and TP2 MTP checked. Startup fallback: HCU_DISABLE_OPS=mamba_state_scatter."}}},
   "qsa_scatter": {"var": null, "summary": "QSA state and compressed-key row stores on HCU", "backends": {"triton": {"s": "candidate", "n": "No host sync; duplicate destination zero is a reserved dump slot"}}},

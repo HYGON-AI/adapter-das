@@ -154,5 +154,6 @@ main 线的 nightly 由
 阶段执行，发布流程不重复）；`workflow_dispatch` 只构建并保留 artifact，
 不推 nightly。workflow 在 DTK 容器里先从 nightly 归档补装 python 侧唯一缺件
 `torch==2.13.0`（其余编译依赖由 build.sh 兜底补装），再跑
-`packaging/build.sh`（native 编译，架构取 `AMDGPU_TARGETS`）；release 线同理：
-workflow 在构建期写入同一个 `DAS_BUILD_STAMP` 后直接上传，不做上传后版本改写。
+`packaging/build.sh`（native 编译，架构取 `AMDGPU_TARGETS`）。打包上源统一由
+main 承担：release 线不自动上源，其 workflow 只在手动 `workflow_dispatch` 时
+按同一套 `DAS_BUILD_STAMP` 戳构建并保留 artifact，不做上传后版本改写。

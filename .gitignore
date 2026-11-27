@@ -15,3 +15,7 @@ upstream_watch/
 .tmp/
 .zcode/
 nul
+
+# setuptools strict editable install trees
+/build/
+/packaging/hcu-adapter/build/

@@ -1590,9 +1590,12 @@ def install() -> None:
             os.environ.get("HCU_SLIMQUANT", "1") != "0"
         if _sq_on:
             try:
-                from hcu_adapter import slimquant as _slimquant
+                from hcu_adapter.slimquant_provider import activate_legacy_slimquant
 
-                _slimquant.activate()
+                if not activate_legacy_slimquant():
+                    logging.getLogger("hcu.adapter").info(
+                        "HCU SlimQuant provider: enabled hcu plugin; legacy adapter provider skipped"
+                    )
             except Exception:
                 logging.getLogger("hcu.adapter").warning(
                     "HCU adapter: slimquant bridge not installed", exc_info=True
@@ -2144,7 +2147,11 @@ def install() -> None:
                             **({"x_scales": x_scales} if x_scales is not None else {}),
                         )
 
-                    _dep.Buffer.low_latency_dispatch = _ll_dispatch_v0521
+                    from hcu_adapter.deepep_dispatch import preserve_vendor_dispatch
+
+                    _dep.Buffer.low_latency_dispatch = preserve_vendor_dispatch(
+                        _ll_orig, _ll_dispatch_v0521
+                    )
                     logging.getLogger("hcu.adapter").info(
                         "HCU deep_ep bridge: v0.5.21 low_latency_dispatch call "
                         "shape -> DTK fork (quant_type) translated"

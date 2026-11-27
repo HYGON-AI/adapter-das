@@ -268,8 +268,9 @@ def native_hip_verify_face():
     if torch.version.hip is None:
         pytest.skip("AITER HIP verification requires DTK")
     device = torch.cuda.get_device_properties(torch.device("cuda", 0))
-    if device.gcnArchName.split(":")[0] != "gfx938":
-        pytest.skip("AITER HIP VERIFY candidate is limited to gfx938")
+    from hcu_adapter import gdn_aiter as bridge
+    if device.gcnArchName.split(":")[0] not in bridge._VERIFY_ARCHES:
+        pytest.skip("AITER HIP VERIFY requires gfx936 or gfx938")
     provider = pytest.importorskip("aiter")
     vendor = getattr(provider, "sglang_fused_sigmoid_gating_delta_rule_update", None)
     if vendor is None:
@@ -291,11 +292,12 @@ def native_hip_verify_face():
     (24, torch.bfloat16, torch.float32),
     (4, torch.float32, torch.float32),
 ])
-def test_native_hip_verify_tp1_output_and_fp32_snapshots(
-    native_hip_verify_face, n, gate_dtype, bias_dtype,
+@pytest.mark.parametrize(("heads", "value_heads"), [(8, 24), (16, 48)])
+def test_native_hip_verify_output_and_fp32_snapshots(
+    native_hip_verify_face, n, gate_dtype, bias_dtype, heads, value_heads,
 ):
     fn, _, calls = native_hip_verify_face
-    p, meta = make_case(n, kind="sglang_2d_strided", heads=16, value_heads=48,
+    p, meta = make_case(n, kind="sglang_2d_strided", heads=heads, value_heads=value_heads,
                         split_gate_columns=True)
     p["a"], p["b"] = p["a"].to(gate_dtype), p["b"].to(gate_dtype)
     p["dt_bias"] = p["dt_bias"].to(bias_dtype)
@@ -303,17 +305,18 @@ def test_native_hip_verify_tp1_output_and_fp32_snapshots(
     ref_out, ref_cache, written = fp32_reference(p, meta)
     result = fn(**p)
     torch.cuda.synchronize()
-    assert calls == [(1, n * 4, 16, 128)]
+    assert calls == [(1, n * 4, heads, 128)]
     check_result(p, meta, result, ref_out, ref_cache, written, before)
 
 
-def test_native_hip_verify_tp1_changing_inputs_and_state_slots(native_hip_verify_face):
+@pytest.mark.parametrize(("heads", "value_heads"), [(8, 24), (16, 48)])
+def test_native_hip_verify_changing_inputs_and_state_slots(native_hip_verify_face, heads, value_heads):
     fn, upstream, calls = native_hip_verify_face
     test_verify_graph_replay_changes_values_indices_and_tree(
         (fn, upstream), dt_bias_dtype=torch.bfloat16, n=4,
-        heads=16, value_heads=48, split_gate_columns=True,
+        heads=heads, value_heads=value_heads, split_gate_columns=True,
     )
-    assert calls == [(1, 16, 16, 128)] * 3
+    assert calls == [(1, 16, heads, 128)] * 3
 
 
 @pytest.fixture
@@ -326,7 +329,7 @@ def automatic_verify_face(routed_face):
     if not bridge._verify_auto_stack_supported():
         pytest.skip("GDN verify auto admission is limited to the qualified DTK2610 build")
     arch = torch.cuda.get_device_properties(torch.device("cuda", 0)).gcnArchName.split(":")[0]
-    if arch not in bridge._VERIFY_AUTO_ARCHES:
+    if arch not in bridge._VERIFY_ARCHES:
         pytest.skip("GDN verify auto requires a qualified gfx936/gfx938 device")
     _, upstream = routed_face
     namespace = dict(upstream.__globals__)

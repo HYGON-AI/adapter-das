@@ -419,8 +419,8 @@ REGISTRY = {
                  "gfx936/gfx938 DTK2610 stack with packed BF16 H8/HV24 draft4 "
                  "and FP32 state/snapshots. triton selects upstream rollback. "
                  "aiter selects the manual AITER Triton provider. "
-                 "aiter_hip opts into native AITER HIP for gfx938 packed TP1 "
-                 "H16/HV48 draft4. This is a startup/capture policy for VERIFY.",
+                 "aiter_hip opts into native AITER HIP on gfx936/gfx938 for packed "
+                 "H8/HV24 or H16/HV48 draft4. This is a startup/capture policy for VERIFY.",
     },
     "HCU_DSA_PRESHUFFLE": {
         "env": "HCU_DSA_PRESHUFFLE", "default": "1",

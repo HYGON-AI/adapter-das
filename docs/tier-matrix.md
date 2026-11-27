@@ -536,7 +536,7 @@ SGLang GDN MTP target verification
 |---|---|
 | triton | production explicit upstream rollback; also aut |
 | aiter | validated vendor verify bridge in gdn_aiter.py |
-| aiter_hip | candidate Opt-in gfx938 packed TP1 H16/HV48 GD |
+| aiter_hip | candidate Opt-in gfx936/gfx938 GDN VERIFY, pac |
 | auto | production default policy: qualified DTK2610 st |
 
 路由变量：`HCU_LINEAR_ATTN_GDN_VERIFY`

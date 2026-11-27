@@ -249,9 +249,10 @@ def hip_inputs(n=4):
 
 
 @pytest.mark.parametrize("n", [1, 24, 48, 512])
-def test_hip_verify_uses_native_with_packed_tp1_metadata(n):
+@pytest.mark.parametrize("arch", ["gfx936:sramecc+:xnack-", "gfx938:sramecc+:xnack-"])
+def test_hip_verify_uses_native_with_packed_tp1_metadata(n, arch):
     ns, vendor = faces()
-    torch, probes = auto_torch("gfx938:sramecc+:xnack-")
+    torch, probes = auto_torch(arch)
     fn = ns["face"]
     signature = inspect.signature(fn)
     routed = bridge._bind_target_verify_aiter(fn, vendor["vendor"], torch, policy="aiter_hip")
@@ -267,7 +268,7 @@ def test_hip_verify_uses_native_with_packed_tp1_metadata(n):
     assert forwarded["b"].is_contiguous()
 
 
-@pytest.mark.parametrize("arch", ["gfx936", "gfx9380"])
+@pytest.mark.parametrize("arch", ["gfx942", "gfx9380"])
 def test_hip_verify_other_arch_keeps_upstream(arch):
     ns, vendor = faces()
     torch, probes = auto_torch(arch)
@@ -297,11 +298,22 @@ def test_hip_verify_invalid_contract_keeps_upstream_without_gpu_probe(change):
     assert [backend for backend, _ in ns["calls"]] == ["upstream"]
 
 
-def test_hip_verify_leaves_tp2_contract_on_upstream():
+@pytest.mark.parametrize("arch", ["gfx936", "gfx938"])
+def test_hip_verify_uses_native_with_packed_tp2_metadata(arch):
+    ns, vendor = faces()
+    torch, probes = auto_torch(arch)
+    fn = bridge._bind_target_verify_aiter(ns["face"], vendor["vendor"], torch, policy="aiter_hip")
+    assert fn(**auto_inputs()) == "aiter"
+    assert probes == [0]
+
+
+def test_hip_verify_leaves_unqualified_head_pair_on_upstream():
     ns, vendor = faces()
     torch, probes = auto_torch("gfx938")
     fn = bridge._bind_target_verify_aiter(ns["face"], vendor["vendor"], torch, policy="aiter_hip")
-    assert fn(**auto_inputs()) == "upstream"
+    p = hip_inputs()
+    p["q"] = p["k"] = TensorMetadata((1, 16, 8, 128))
+    assert fn(**p) == "upstream"
     assert not probes
 
 

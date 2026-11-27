@@ -6,7 +6,7 @@ on:
         - main
         # release 线是单 whl 打包模型（只有 sgl-kernel，含 hcu_adapter/）
         - 'release/**'
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    types: [labeled]
   workflow_dispatch:
     inputs:
         pr-number:
@@ -434,6 +434,27 @@ jobs:
           path: l1-logs/
           if-no-files-found: ignore
           retention-days: 7
+
+  cleanup-label:
+    name: Cleanup CI label
+    if: ${{ always() && github.event_name == 'pull_request_target' && contains(fromJSON('["sglang", "vllm", "ci-sglang", "ci-vllm", "ci-hcu", "ci-all"]'), github.event.label.name) }}
+    needs: [image, build, l0, l1, vllm-lane]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Remove CI label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          LABEL: ${{ github.event.label.name }}
+        run: |
+          status=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${REPO}/issues/${PR_NUMBER}/labels/${LABEL}")
+          [[ "${status}" == 200 || "${status}" == 404 ]]
 
   vllm-lane:
     name: L1 vLLM host lane (bw1100-1card)

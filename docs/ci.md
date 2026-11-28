@@ -23,7 +23,7 @@
 公共检查不由宿主标签二选一：`Adapter CPU` 对普通 PR 和已识别的车道标签
 运行结构、CPU/编排契约，包含 `test_common_bridge.py`、`test_bootstrap.py`、
 `test_runtime_lifecycle.py` 和原有 CPU 选择。该进程使用 `HCU_ADAPTER_HOST=none`
-并隐藏设备。HCU workflow 的 build/L0 也随任一车道执行。
+并隐藏设备。HCU workflow 的 build/L0 随明确的车道标签或手动 dispatch 执行。
 
 | 操作 | 公共检查 | SGLang HCU 车道 | vLLM HCU 车道 |
 | --- | --- | --- | --- |
@@ -35,8 +35,9 @@
 
 标签是一次触发：分别添加两个宿主标签会启动各自车道；按标签分开的 concurrency
 组避免互相取消。后续 push 仍走普通 PR 路径，需要新 HCU 结果时重加对应标签
-或手动 dispatch。HCU dispatch 的默认 `lane=sglang` 保持兼容；独立的
-`Adapter CPU` 可手动运行，HCU dispatch 自身仍运行公共 build/L0。
+或手动 dispatch。上述车道标签会在本次 HCU workflow 结束后自动移除，便于下次
+重新添加触发。HCU dispatch 的默认 `lane=sglang` 保持兼容；独立的 `Adapter CPU`
+可手动运行，HCU dispatch 自身仍运行公共 build/L0。
 vLLM 车道保留每文件新解释器及 `VLLM_PLUGINS=none` 的桥契约测试形态，
 不能据此宣称真实 Plugin/模型已验收；nightly 的 observe 结果仍只用于分诊。
 

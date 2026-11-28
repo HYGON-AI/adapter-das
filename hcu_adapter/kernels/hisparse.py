@@ -55,6 +55,17 @@ def _states(torch):
     return states
 
 
+def validate_hisparse_residency_capacity(device_index, device_buffer_size, max_union_rows):
+    """Validate a requested geometry using the loaded HIP resolver's launch rules."""
+    ensure_hisparse_ops()
+    import torch
+
+    validate = getattr(torch.ops._C_cache_ops, 'hcu_hisparse_validate_residency', None)
+    if validate is None:
+        raise RuntimeError('The loaded HiSparse provider cannot validate HIP residency capacity')
+    validate(device_index, device_buffer_size, max_union_rows)
+
+
 def ensure_hisparse_ops(library_path=None):
     """Load the four missing Core033 native ops, or validate an existing set.
 

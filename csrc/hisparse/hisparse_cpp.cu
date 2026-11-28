@@ -331,6 +331,40 @@ constexpr int32_t kEntryMiss = 1 << 29;
 constexpr int32_t kEntryInvalid = 1 << 28;
 constexpr int32_t kEntrySlotMask = 0xFFFF;
 constexpr int kResidencyCounters = 5;
+
+struct ResidencyLaunchConfig {
+  int hash_size;
+  size_t shared_bytes;
+  bool global_hash;
+};
+
+ResidencyLaunchConfig residency_launch_config(int64_t device, int64_t hot_size,
+                                               int64_t max_union_rows) {
+  TORCH_CHECK(hot_size > 0 && hot_size <= INT16_MAX + 1,
+              "HiSparse hot size must fit int16 slot indices, got ", hot_size);
+  TORCH_CHECK(max_union_rows > 0 && max_union_rows <= hot_size,
+              "max_union_rows must be in [1, hot_size], got ", max_union_rows);
+  TORCH_CHECK(device >= 0 && device <= INT_MAX, "invalid HiSparse HIP device ", device);
+  // One spare entry above the union bound keeps every probe sequence finite.
+  const int hash_size = static_cast<int>(max_union_rows) + 1;
+  const size_t local_bytes = sizeof(int32_t) * kResidencyCounters +
+                             sizeof(int16_t) * hot_size;
+  const size_t total_bytes = local_bytes + 2 * hash_size * sizeof(int32_t);
+  int available = 0;
+  TORCH_CHECK(hipDeviceGetAttribute(&available, hipDeviceAttributeMaxSharedMemoryPerBlock,
+                                     static_cast<int>(device)) == hipSuccess && available > 0,
+              "failed to query HiSparse shared memory per block on device ", device);
+  TORCH_CHECK(local_bytes <= static_cast<size_t>(available),
+              "HiSparse LRU needs ", local_bytes,
+              " bytes per block, but the device allows ", available);
+  const bool global_hash = total_bytes > static_cast<size_t>(available);
+  return {hash_size, global_hash ? local_bytes : total_bytes, global_hash};
+}
+
+void validate_hisparse_residency_capacity(int64_t device, int64_t hot_size,
+                                          int64_t max_union_rows) {
+  (void)residency_launch_config(device, hot_size, max_union_rows);
+}
 // Per-request table entries per referenced top-k position (load <= 1/4
 // until the hash_size cap).
 constexpr int kHashLoadInverse = 4;
@@ -449,11 +483,12 @@ __device__ void pack_attention_rows(int first_row, int end_row, int top_k,
 // device_buffer_size covers; a larger union traps. Misses take eviction slots
 // in (row, top-k) order of first reference, so the plan is deterministic.
 //
-// Shared memory layout (int32 region followed by int16 region):
+// Workspace layout (int32 region followed by int16 region):
 //   s_hash_keys[hash_size]   open addressing: union of the rows' host ids
 //   s_hash_vals[hash_size]   first position, then slot | kEntry* tag
 //   s_counters[5]            union/valid counts (other entries reserved)
 //   s_lru_out[hot_size]      int16, compacted slots: [hits fwd | evict bwd]
+// The hash arrays may live in global memory. Counters and LRU stay in LDS.
 // Duplicate references reuse one union entry and emit exactly one copy.
 __global__ __launch_bounds__(256) void hisparse_resolve_residency_kernel(
     const int32_t* __restrict__ hot_block_table,  // [max_rows, hot_blocks]
@@ -484,7 +519,8 @@ __global__ __launch_bounds__(256) void hisparse_resolve_residency_kernel(
     const int64_t resident_bt_stride, const int32_t resident_num_reqs,
     const int32_t resident_num_blocks, const int32_t resident_block_size,
     const int32_t resident_null_block, const int64_t input_row_stride,
-    const int64_t attention_row_stride, const int64_t valid_count_stride) {
+    const int64_t attention_row_stride, const int64_t valid_count_stride,
+    int32_t* __restrict__ global_hash_workspace) {
 
 
   // The first row of each contiguous run of a request's rows leads it. FULL
@@ -553,9 +589,14 @@ __global__ __launch_bounds__(256) void hisparse_resolve_residency_kernel(
       min(static_cast<int64_t>(hash_size), kHashLoadInverse * positions));
 
   extern __shared__ char smem_raw[];
-  int32_t* s_hash_keys = reinterpret_cast<int32_t*>(smem_raw);
+  int32_t* local = reinterpret_cast<int32_t*>(smem_raw);
+  // Padding may form a second run for the same request. Index by the first
+  // query row to keep those blocks' workspaces disjoint.
+  int32_t* s_hash_keys = global_hash_workspace == nullptr
+      ? local
+      : global_hash_workspace + static_cast<int64_t>(first_row) * (2 * hash_size);
   int32_t* s_hash_vals = s_hash_keys + hash_size;
-  int32_t* s_counters = s_hash_vals + hash_size;
+  int32_t* s_counters = global_hash_workspace == nullptr ? s_hash_vals + hash_size : local;
   int16_t* s_lru_out = reinterpret_cast<int16_t*>(s_counters + kResidencyCounters);
 
   for (int i = tid; i < table_size; i += blockDim.x) {
@@ -815,7 +856,7 @@ __global__ void hisparse_gather_plan_kernel(
 }
 
 // Copy the compact swap rows produced by the residency resolver.
-__global__ void hisparse_gather_compact_kernel(
+__global__ __launch_bounds__(512) void hisparse_gather_compact_kernel(
     const char* __restrict__ host_cache, char* __restrict__ hot_cache,
     const int32_t* __restrict__ miss_global_indices,
     const int32_t* __restrict__ miss_hot_indices,
@@ -1241,29 +1282,17 @@ void hisparse_resolve_residency(
   }
 
   constexpr int kBlockSize = 256;
-  TORCH_CHECK(max_union_rows > 0 && max_union_rows <= hot_size,
-                  "max_union_rows must be in [1, hot_size], got ",
-                  max_union_rows);
-  // One spare entry above the union bound keeps every probe sequence finite.
-  const int hash_size = static_cast<int>(max_union_rows) + 1;
-  const size_t smem_bytes = sizeof(int32_t) * (2 * hash_size + kResidencyCounters) +
-      sizeof(int16_t) * hot_size;
-
-  const c10::DeviceGuard device_guard(
-      hot_cache.device());
-  int max_smem_bytes = 0;
-  TORCH_CHECK(hipDeviceGetAttribute(
-                      &max_smem_bytes, hipDeviceAttributeMaxSharedMemoryPerBlock,
-                      hot_cache.get_device()) == hipSuccess,
-                  "failed to query shared memory per block");
-  TORCH_CHECK(smem_bytes <= static_cast<size_t>(max_smem_bytes),
-                  "HiSparse device_buffer_size=", hot_size, " needs ",
-                  smem_bytes,
-                  " bytes of shared memory to resolve residency, "
-                  "but the device allows ",
-                  max_smem_bytes,
-                  "; lower device_buffer_size or the number of speculative "
-                  "tokens.");
+  const c10::DeviceGuard device_guard(hot_cache.device());
+  const auto layout = residency_launch_config(hot_cache.get_device(), hot_size,
+                                               max_union_rows);
+  const size_t smem_bytes = layout.shared_bytes;
+  at::Tensor global_hash;
+  if (layout.global_hash) {
+    // Uses the current stream's caching allocator, including its graph pool
+    // during capture. Each launch row has a private, write-before-read slice.
+    global_hash = at::empty({launch_rows, 2 * layout.hash_size},
+                            hot_cache.options().dtype(at::kInt));
+  }
   const hipStream_t stream = c10::hip::getCurrentHIPStream().stream();
   const int64_t attention_row_stride =
       attention_indices.has_value() ? attention_indices.value().stride(0) : 0;
@@ -1289,13 +1318,14 @@ void hisparse_resolve_residency(
       lru_slots.mutable_data_ptr<int16_t>(), stats_ptr, request_state_ptr,
       request_state_count, device_global_indices.size(0), hot_rows,
       static_cast<int32_t>(hot_block_table.size(0)), host_rows, hot_block_table.stride(0), hot_block_size,
-      top_k, hot_size, hash_size, region_stride, attention_block_stride,
+      top_k, hot_size, layout.hash_size, region_stride, attention_block_stride,
       source_bt_stride, source_num_reqs, source_num_blocks,
       static_cast<int32_t>(source_block_size), resident_bt_stride,
       resident_num_reqs, resident_num_blocks,
       static_cast<int32_t>(resident_block_size),
       static_cast<int32_t>(resident_null_block), global_indices.stride(0),
-      attention_row_stride, valid_count_stride);
+      attention_row_stride, valid_count_stride,
+      layout.global_hash ? global_hash.mutable_data_ptr<int32_t>() : nullptr);
   const hipError_t launch_error = hipGetLastError();
   TORCH_CHECK(launch_error == hipSuccess,
                   "HiSparse residency kernel launch failed: ",
@@ -1496,6 +1526,8 @@ void hisparse_gather_compact(at::Tensor const& host_cache,
 
 // Loaded explicitly as a dispatcher library, never imported as a Python module.
 TORCH_LIBRARY_FRAGMENT(_C_cache_ops, m) {
+  m.def("hcu_hisparse_validate_residency(int device_index, int device_buffer_size, "
+        "int max_union_rows) -> ()", &validate_hisparse_residency_capacity);
   m.def(
       "hisparse_resolve_residency(Tensor host_cache,"
       "                 Tensor! hot_cache,"

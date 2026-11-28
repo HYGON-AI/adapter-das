@@ -110,7 +110,7 @@ def _install_frontend_noop():
         )
         return ()
 
-    LOG.warning(
+    LOG.info(
         "HCU adapter: triton PDL frontend no-op installed (semantic.%s; "
         "HCU cannot lower grid-dependency, semantically = PDL-off)",
         ", ".join(installed),
@@ -158,7 +158,7 @@ def _install_asm_stripper():
     owner.make_amdgcn = make_amdgcn_no_pdl
     _hcu._hcu_pdl_stripped = True
 
-    LOG.warning(
+    LOG.info(
         "HCU adapter: triton hcu make_amdgcn PDL stripper installed "
         "(gfx936 griddepcontrol unsupported)"
     )

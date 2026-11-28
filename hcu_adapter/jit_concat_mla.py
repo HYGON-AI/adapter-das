@@ -232,7 +232,7 @@ def _apply(root, register):
             mechanism=_reg.MECH_TEXT,
             detail=needle,
         )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: JIT concat_mla portability patch installed (%d edits)",
         applied,
     )

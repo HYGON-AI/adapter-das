@@ -124,6 +124,6 @@ def install():
         mechanism=MECH_REBIND,
         detail="HIP CuTeDSL verify face -> upstream Triton recurrent compatibility route",
     )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: CuTeDSL GDN MTP routed to Triton recurrent compatibility path"
     )

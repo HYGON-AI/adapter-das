@@ -150,7 +150,7 @@ def _apply(root, register):
             mechanism=_reg.MECH_TEXT,
             detail=n,
         )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: JIT per-token-group-quant fp8 patch installed "
         "(%d edits)", applied,
     )

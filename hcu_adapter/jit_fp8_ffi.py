@@ -117,4 +117,4 @@ def install():
             target=module_name + "." + name, mechanism=registry.MECH_REBIND,
             detail="retain factory/cache aliases; only e4m3fn output viewed as uint8 at FFI",
         )
-    LOG.warning("HCU adapter: JIT FP8 output storage views installed (generic, v2, DSV4)")
+    LOG.info("HCU adapter: JIT FP8 output storage views installed (generic, v2, DSV4)")

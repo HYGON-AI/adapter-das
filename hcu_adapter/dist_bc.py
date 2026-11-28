@@ -83,4 +83,4 @@ def install():
         mechanism=registry.MECH_REBIND,
         detail="private numpy facade; existing function aliases retained; no source writes",
     )
-    LOG.warning("HCU adapter: broadcast_pyobj writable buffer runtime bridge installed")
+    LOG.info("HCU adapter: broadcast_pyobj writable buffer runtime bridge installed")

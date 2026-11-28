@@ -73,7 +73,7 @@ def install():
 
     _guarded._hcu_smem_guard = True
     fmc.try_get_optimal_moe_config = _guarded
-    LOG.warning(
+    LOG.info(
         "HCU adapter: fused-MoE triton config smem guard installed"
         " (clamp to BN=BK=64/stages=2 over %dB budget)",
         _SMEM_BUDGET,

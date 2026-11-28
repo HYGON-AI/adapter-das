@@ -116,7 +116,7 @@ def install():
             "back to sysfs topology; HCU_NCCL_TOPO_GUARD=0 to keep the "
             "preset",
             topo,
-            reason,
+            reason, extra={"once_per_service": True},
         )
         if not _registered:
             _registered = True

@@ -173,7 +173,7 @@ def install():
                 exc_info=True,
             )
     _installed = True
-    LOG.warning("HCU adapter: CT W4A8 MoE bridge installed (%s)", detail)
+    LOG.info("HCU adapter: CT W4A8 MoE bridge installed (%s)", detail)
 
     try:
         from hcu_adapter import registry

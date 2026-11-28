@@ -319,7 +319,7 @@ def try_moec_w4a16(
         out = out * float(rs)
     if len(_engaged_log) < 3 or (E, N1, H, K) not in _engaged_log:
         _engaged_log.add((E, N1, H, K))
-        LOG.warning(
+        LOG.info(
             "HCU moe_c w4a16: ENGAGED E=%d N1=%d H=%d K=%d topk=%d IP=%d "
             "M=%d limit=%r modes=(%d,%d) bam=%d",
             E, N1, H, K, topk, IP, M, limit, m1, m2, bam)
@@ -393,6 +393,6 @@ def install():
             pkg.fused_experts = fused_experts_moec
     except ImportError:
         pass
-    LOG.warning(
+    LOG.info(
         "HCU moe_c w4a16 bridge: installed outermost (HCU_W4A16_MOE_IMPL=%s)",
         _mode())

@@ -195,6 +195,11 @@ REGISTRY = {
         "env": "HCU_ADAPTER_DUMP", "default": "",
         "about": "启动时落 runtime dump JSON（每算子活跃实现+安装方式；1=打进日志）",
     },
+    "HCU_ADAPTER_LOG": {
+        "env": "HCU_ADAPTER_LOG", "default": "",
+        "about": "hcu.adapter logger 级别：默认 WARNING（安装链 INFO 静默）；"
+                 "=info/=debug 显式放开（排查；spawn 子进程也打启动摘要）；WARNING+ 始终传播",
+    },
     # platform semantics — governance §0.5 is_cuda 路线（platform_seam.py）
     "HCU_PLATFORM_SEMANTICS": {
         "env": "HCU_PLATFORM_SEMANTICS", "default": "cuda",
@@ -688,26 +693,47 @@ def enabled(name):
     return v not in ("", "0", "None", "refused")
 
 
-def log_summary():
-    """Report configuration without executing device-dependent auto rules."""
-    from . import hcu_config as _cfg
+def summary_forced():
+    """HCU_ADAPTER_LOG=info|debug asks for every process to print the service-level lines."""
+    level, _ = resolve("HCU_ADAPTER_LOG", evaluate_auto=False)
+    return (level or "").strip().lower() in ("info", "debug")
 
-    cfg_line = _cfg.summary_line()
-    if cfg_line:
-        LOG.warning(cfg_line)
-    parts = []
-    for name in REGISTRY:
-        v, src = resolve(name, evaluate_auto=False)
-        if v in ("", "0"):
-            continue  # keep the line short: only non-default-effective vars
-        parts.append(f"{name}={v}({src})")
-    if parts:
-        LOG.warning("HCU adapter env: " + " ".join(parts))
-    else:
-        LOG.warning("HCU adapter env: all defaults (no explicit HCU_* vars)")
+
+def summary_due():
+    """False in a spawn child: the top-level process already printed this service's summary.
+
+    A child inherits the parent's selection and repeats the same install, so the
+    environment line and the per-op table are printed once per service.
+    HCU_ADAPTER_LOG=info|debug prints them in every process (per-process troubleshooting).
+    """
+    from . import bootstrap as _boot
+
+    return not _boot.is_spawned_child() or summary_forced()
+
+
+def log_summary():
+    """Report configuration without executing device-dependent auto rules (once per service).
+
+    The per-op table is not printed here: at this point of the chain nothing is
+    installed yet. The sglang bridge prints it at the end of its install().
+    """
+    from . import hcu_config as _cfg
     from . import registry as _reg
 
-    _reg.log_summary(LOG)
+    if summary_due():
+        cfg_line = _cfg.summary_line()
+        if cfg_line:
+            LOG.warning(cfg_line)
+        parts = []
+        for name in REGISTRY:
+            v, src = resolve(name, evaluate_auto=False)
+            if v in ("", "0"):
+                continue  # keep the line short: only non-default-effective vars
+            parts.append(f"{name}={v}({src})")
+        if parts:
+            LOG.warning("HCU adapter env: " + " ".join(parts))
+        else:
+            LOG.warning("HCU adapter env: all defaults (no explicit HCU_* vars)")
     out = os.environ.get("HCU_ADAPTER_DUMP", "")
     if out:
         d = _reg.dump(out if out != "1" else None)

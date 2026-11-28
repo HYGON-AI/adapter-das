@@ -96,7 +96,7 @@ def _build_with_clean_env(helper, cache_dir):
     ]
     LOG.warning(
         "HCU adapter: tvm-ffi dlpack cache cold -> one-time build "
-        "(~20-40s; recursion-safe env, no PYTHONPATH, host=none)"
+        "(~20-40s; recursion-safe env, no PYTHONPATH, host=none)", extra={"once_per_service": True}
     )
     subprocess.run(cmd, env=env, check=False, capture_output=True, timeout=900)
 
@@ -173,7 +173,7 @@ def install():
                 acted = True
                 built = bool(_cache_so(cache_dir))
             if built:
-                LOG.warning(
+                LOG.info(
                     "HCU adapter: tvm-ffi dlpack cache warm (.so present); "
                     "HCU_TVMFFI_WARMUP=0 to opt out"
                 )

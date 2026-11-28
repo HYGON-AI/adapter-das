@@ -5,6 +5,7 @@
 
 import argparse
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -86,9 +87,13 @@ def apply_official_defaults(argv, original):
     if family == "w4a8" and env["HCU_W4A8_MOE"] != "native":
         raise SystemExit("GLM-5.3 W4A8 requires native MoE; check HCU_W4A8_MOE")
     if sources:
-        print("HCU SGLang env: " + " ".join(
-            f"{key}={env[key]}({source})" for key, source in sorted(sources.items())
-        ), file=sys.stderr, flush=True)
+        # a launch-time env decision is service-level state: printed once per
+        # service, stamped, through the adapter logger (never a bare print)
+        logging.getLogger("hcu.adapter").warning(
+            "HCU SGLang env: " + " ".join(
+                f"{key}={env[key]}({source})" for key, source in sorted(sources.items())
+            ), extra={"once_per_service": True},
+        )
     if env != os.environ:
         env[marker] = str(os.getpid())
         os.execve(sys.executable, [sys.executable, *original[1:]], env)

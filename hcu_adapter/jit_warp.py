@@ -69,7 +69,7 @@ def _apply(root, register):
 
     # -- patch 1: reduce<T> receiver type --------------------------------
     if _REPL in text:
-        LOG.warning(
+        LOG.info(
             "HCU adapter: JIT warp reduce patch already installed (%s)",
             _RELPATH,
         )
@@ -92,7 +92,7 @@ def _apply(root, register):
             mechanism=_reg.MECH_TEXT,
             detail=_NEEDLE,
         )
-        LOG.warning(
+        LOG.info(
             "HCU adapter: JIT warp reduce portability patch installed (%d edits)",
             n,
         )
@@ -107,7 +107,7 @@ def _apply(root, register):
         if broken in text:
             text = text.replace(broken, tagged)
             changed = True
-            LOG.warning(
+            LOG.info(
                 "HCU adapter: jit warp shfl tag placement repaired: %s", repl
             )
             continue
@@ -123,7 +123,7 @@ def _apply(root, register):
             mechanism=_reg.MECH_TEXT,
             detail=needle,
         )
-        LOG.warning(
+        LOG.info(
             "HCU adapter: JIT warp shfl *_sync->plain mapping installed: %s",
             repl,
         )

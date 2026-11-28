@@ -36,7 +36,8 @@ HCU_LINEAR_ATTN_GDN_VERIFY=auto chooses AITER only for the qualified stack,
 gfx936/gfx938, BF16 packed TP2 H8/HV24, FP32 state/snapshots and draft4.
 There is no fixed batch ceiling; the runtime retains its resource/shape limits.
 HCU_LINEAR_ATTN_GDN_VERIFY=aiter_hip opts into the AITER HIP provider for
-gfx938 packed TP1 H16/HV48 BF16 draft4 verification with FP32 state/snapshots.
+gfx936/gfx938 packed H8/HV24 or H16/HV48 BF16 draft4 verification with
+FP32 state/snapshots.
 Other contracts stay upstream; =triton and HCU_DISABLE_OPS=gdn_verify disable routing.
 
 Prefill/packed decode gate: HCU_LINEAR_ATTN_GDN = auto|aiter|triton (auto = triton until the
@@ -198,7 +199,7 @@ _VERIFY_VALIDATED_STACK = {
     "aiter": "0.1.8+dtk2610.torch2110.2611031115.ga1a2bc",
 }
 
-_VERIFY_AUTO_ARCHES = frozenset(("gfx936", "gfx938"))
+_VERIFY_ARCHES = frozenset(("gfx936", "gfx938"))
 
 _VERIFY_REQUIRED = frozenset((
     "A_log", "a", "dt_bias", "softplus_beta", "softplus_threshold",
@@ -251,15 +252,18 @@ def _verify_auto_contract_supported(p, torch):
 
 
 def _verify_hip_contract_supported(p, torch):
-    if not _verify_packed_contract_supported(p, torch, heads=16, value_heads=48):
+    heads, value_heads = p["q"].shape[-2], p["v"].shape[-2]
+    if (heads, value_heads) not in ((8, 24), (16, 48)):
+        return False
+    if not _verify_packed_contract_supported(p, torch, heads=heads, value_heads=value_heads):
         return False
     tokens = p["q"].shape[1]
     gate = p["a"]
     return (
         p.get("cache_replayssm_inputs", False) is False
-        and tuple(gate.shape) in ((tokens, 48), (1, tokens, 48))
+        and tuple(gate.shape) in ((tokens, value_heads), (1, tokens, value_heads))
         and gate.stride(-1) == 1
-        and gate.stride(-2) >= 48
+        and gate.stride(-2) >= value_heads
     )
 
 
@@ -396,8 +400,7 @@ def _bind_target_verify_aiter(function, vendor, torch, *, policy="aiter"):
                         device_arches[device.index] = ""
                         device_probe_errors[device.index] = type(exc).__name__
                 arch = device_arches[device.index]
-                allowed_arches = ("gfx938",) if policy == "aiter_hip" else _VERIFY_AUTO_ARCHES
-                supported = arch in allowed_arches
+                supported = arch in _VERIFY_ARCHES
         if not supported:
             if (not declined and p.get("disable_state_update") is True
                     and p.get("is_kda", False) is False):

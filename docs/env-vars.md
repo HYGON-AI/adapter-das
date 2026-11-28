@@ -348,9 +348,10 @@ When the preset XML GPU count matches the visible count, the guard also compares
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `HCU_HOOK_ALIAS_FAST` | `0` | 显式 `1` 使用已匹配官方函数的 CPython CPU 原生扫描；不支持平台、源码漂移或缺少构建条件保留官方扫描。缓存完整性错误显式报错。 |
+| `HCU_HOOK_ALIAS_FAST` | `1` | 默认使用已匹配官方函数的 CPython CPU 原生扫描；设 `0` 恢复官方全量扫描。不支持平台、源码漂移或缺少构建条件时保留官方扫描并打一条 WARNING。缓存完整性错误显式报错。 |
 
-配置目录：`hook_alias_propagation: fast|stock`，状态为 candidate。支持条件、
+配置目录：`hook_alias_propagation: fast|stock`，`fast` 为 production（默认），`stock`
+为 validated（回退路径）。支持条件、
 回退、缓存及测试边界见 [Hook 启动优化](sglang-startup-hook-aliases.md)。
 环境摘要延后自动探测复用上游现有 `resolve(..., evaluate_auto=False)`，
 本项不再新增另一套解析器。

@@ -1857,8 +1857,14 @@ def install() -> None:
                     "HCU adapter: layer dump bridge not installed", exc_info=True
                 )
 
-        from hcu_adapter import hook_aliases
-        hook_aliases.install()
+        # on by default: a failure here must not take the rest of the bridge with it (the stock scan stays in place)
+        try:
+            from hcu_adapter import hook_aliases
+            hook_aliases.install()
+        except Exception:
+            logging.getLogger("hcu.adapter").warning(
+                "HCU adapter: hook alias bridge not installed", exc_info=True
+            )
 
         # 8. deep_ep API bridge (EP validation 2026-10-11): sglang v0.5.21 calls
         # upstream deep_ep `low_latency_dispatch(x, topk_idx, nmdtpr, num_experts,

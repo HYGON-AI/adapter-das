@@ -2,14 +2,14 @@
 
 SGLang 为每个 Hook 扫描所有已加载模块的命名空间，以更新早先通过
 `from ... import ...` 保留的别名。大量 Hook 与模块组合时，这段 Python
-循环成为启动 CPU 热点。Adapter 提供同语义的可选 CPython CPU 原生扫描，
+循环成为启动 CPU 热点。Adapter 提供同语义的 CPython CPU 原生扫描（默认启用），
 不修改官方 SGLang 源码文件，也不改变模型数学或 Hook 顺序。
 
 ## 使用与回退
 
-默认保持官方扫描。显式设置 `HCU_HOOK_ALIAS_FAST=1`，或在配置文件中选择
-`ops: {hook_alias_propagation: fast}`。恢复官方路径使用值 `0` 或
-`ops: {hook_alias_propagation: stock}`。目录状态仍为 candidate。
+默认启用原生扫描（`HCU_HOOK_ALIAS_FAST=1`）。恢复官方全量扫描使用值 `0`，或在
+配置文件中选择 `ops: {hook_alias_propagation: stock}`。目录状态：`fast` 为
+production（默认），`stock` 为 validated（回退路径）。
 
 加速仅支持 Linux CPython、启用 GIL、Python 头文件和可用 C 编译器。
 先核对官方 `_propagate_patch` 签名及源码 SHA256；不支持的版本或缺少构建条件
@@ -70,3 +70,27 @@ L0 GREEN（31 项已有告警）。同一最新树分别设置快关 0/1，完�
 均为 681、跳过均为 0，三类集合一致，并确认原生辅助扫描实际启用。
 单轮 `load_plugins()` 阶段为 32.20 → 6.09 秒，不能称为总服务启动耗时。
 最新基点未重跑整模型启动和完整 L1 GPU/triage，不以历史组合结果追认通过。
+
+## 0.5.22 线改为默认开启前的隔离测量
+
+2026-11-28 在 nmz26、BW1100/gfx938，镜像
+`10.16.1.152:5000/hcu/base_env/sglang:0.5.22-ubuntu22.04-dtk2610-py3.12-sf_b075-20261127-2204`，
+adapter 为 release 线 `0c55b81`（CI 同款装法），plugin 为 `f6d5d99`，上游 sglang
+v0.5.22。同一棵树只切 `HCU_HOOK_ALIAS_FAST`，单进程 `load_plugins()` 各两次：
+
+| 组合 | 第1次/秒 | 第2次/秒 |
+|---|---:|---:|
+| 官方全量扫描（`HCU_HOOK_ALIAS_FAST=0`） | 39.48 | 39.14 |
+| 原生扫描（`HCU_HOOK_ALIAS_FAST=1`） | 9.07 | 9.16 |
+
+四次均为 714 个目标、714 个应用、0 个跳过，应用后的"目标 → 生效对象"映射在
+sglang 与 plugin 命名空间逐项一致（只有进程号与对象地址不同）；原生扫描启用时
+adapter 日志行数不变（42 行）。原生辅助扩展已预热，
+未计首次编译。原生扫描后 `apply_hooks` 仍约 8 秒，花在逐目标的导入与打补丁上
+（最慢单个目标 `tilelang_kernel.act_quant` 约 2 秒），不属于别名扫描。
+
+同一容器 Qwen2.5-0.5B-Instruct `--load-format dummy`、TP1 冷启动，从启动到
+`Load weight begin` 为 152 秒：launcher 先付一遍官方扫描（39.5 秒）再拉起
+子进程，scheduler 与 detokenizer 开机后各付一遍（40.1 / 45.0 秒）。整服务的
+修复前后对比不在本段口径内，见后续提交、MR 与 `bootstrap.md` 的
+"2026-11-28 启动耗时与日志量对照"一节。

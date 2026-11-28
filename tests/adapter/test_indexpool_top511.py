@@ -21,7 +21,15 @@ def hcu(value):
 
 
 @pytest.fixture
-def api(monkeypatch):
+def api(request, monkeypatch):
+    # The teardown contract below needs an interpreter that never touched a
+    # device; the L1 kernels segment is not one. conftest batches this file
+    # into the clean CPU interpreter, and this rerun covers a session that
+    # skipped the batch.
+    from _cpu_process import host_loaded, rerun
+    if torch.cuda.is_initialized() or host_loaded():
+        rerun(request)
+        pytest.skip('executed in a clean CPU interpreter')
     import numpy as np
     import triton.language as tl
     from triton.runtime.interpreter import InterpretedFunction, InterpreterBuilder, TensorHandle

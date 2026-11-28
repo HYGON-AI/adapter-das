@@ -184,6 +184,20 @@ def test_schemas_are_core033_target_only(provider):
     assert all(schema.endswith('-> ()') for schema in m.SCHEMAS)
 
 
+def test_residency_capacity_requires_provider_and_forwards_geometry(provider):
+    module, torch, present, implementations, *_ = provider
+    present.update(module._NAMES)
+    implementations.update(module._NAMES)
+    torch.ops._C_cache_ops = types.SimpleNamespace()
+    with pytest.raises(RuntimeError, match='cannot validate HIP residency capacity'):
+        module.validate_hisparse_residency_capacity(0, 14336, 13056)
+
+    calls = []
+    torch.ops._C_cache_ops.hcu_hisparse_validate_residency = lambda *args: calls.append(args)
+    module.validate_hisparse_residency_capacity(0, 14336, 13056)
+    assert calls == [(0, 14336, 13056)]
+
+
 def test_concurrent_explicit_load_publishes_once(provider, tmp_path):
     from concurrent.futures import ThreadPoolExecutor
     m, fake, present, implementations, schemas, calls, records = provider

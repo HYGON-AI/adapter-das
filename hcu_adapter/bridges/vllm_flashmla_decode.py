@@ -19,6 +19,7 @@ from hcu_adapter.infra.kill_switch import op_disabled
 from hcu_adapter.infra.runtime_lifecycle import ProcessLocalLifecycle
 
 MODE_VARIABLE = 'HCU_VLLM_FLASHMLA_DECODE'
+PLAN_REUSE_VARIABLE = 'HCU_VLLM_FLASHMLA_DECODE_PLAN_REUSE'
 SUPPORTED_ARCHES = ('gfx936', 'gfx938')
 OP = 'vllm_flashmla_decode'
 TARGET_MODULE = 'vllm.models.deepseek_v41.amd.rocm'
@@ -49,6 +50,7 @@ class _Publication:
     cls: object
     method: object
     epilogue: object
+    guarded_reuse: bool
 
 
 _publication = None
@@ -164,8 +166,25 @@ def qualify_after_model_load(config, device):
     from hcu_adapter.kernels.mla_decode_rope_triton import qualify_inverse_rope
     from hcu_adapter.kernels.mla_native_plan_triton import qualify_native_plan
 
-    qualify_native_plan(device)
+    qualify_native_plan(device, guarded_reuse=_publication.guarded_reuse)
     qualify_inverse_rope(device)
+
+
+def _forward_plan_cache():
+    from vllm.forward_context import get_forward_context, is_forward_context_available
+
+    if not is_forward_context_available():
+        return None
+    context = get_forward_context()
+    if (not isinstance(context.attn_metadata, dict) or context.ubatch_slices is not None
+            or context.cudagraph_runtime_mode.name != 'NONE'):
+        return None
+    cache = getattr(context, '_hcu_flashmla_plan_cache', None)
+    if cache is None:
+        from hcu_adapter.kernels.mla_native_plan_reuse import NativePlanCache
+
+        cache = context._hcu_flashmla_plan_cache = NativePlanCache()
+    return cache
 
 
 def install():
@@ -213,6 +232,10 @@ def install():
         if module.current_platform.is_fp8_fnuz():
             raise FlashMLADecodeCompatibilityError('packed FlashMLA expects OCP FP8 cache bytes, not FNUZ')
         provider, factory = _native_provider()
+        reuse_setting, _ = hcu_env.resolve(PLAN_REUSE_VARIABLE, host='vllm')
+        if reuse_setting not in ('0', '1'):
+            raise FlashMLADecodeCompatibilityError(PLAN_REUSE_VARIABLE + ' must be 0 or 1')
+        reuse = reuse_setting == '1' and detected.architecture == 'gfx938'
         from hcu_adapter.kernels.mla_sparse_decode_dtk import try_decode
 
         @functools.wraps(original)
@@ -234,17 +257,20 @@ def install():
                 extra_cache_nan_free=extra_cache_nan_free, adaptive_splits=adaptive_splits,
                 inv_rope_positions=inv_rope_positions, inv_rope_cos_sin_cache=inv_rope_cos_sin_cache,
                 output_mxfp8=output_mxfp8)
+            plan_cache = _forward_plan_cache() if reuse and not swa_only else None
             rotated = try_decode(**arguments, provider=provider,
-                                 metadata_factory=factory, epilogue=epilogue)
+                                 metadata_factory=factory, epilogue=epilogue,
+                                 plan_cache=plan_cache)
             if rotated is not None:  # Zero is a successful BF16 result, not fallback.
                 return rotated
             return original(**arguments)
 
         registry.register(op=OP, impl='native', target=TARGET,
             mechanism=registry.MECH_REBIND, source=__name__,
-            detail='candidate gfx936/gfx938 D512 packed FP8; no BF16 KV gather; fresh plan per call; GPU/Graph/perf pending')
+            detail='gfx936/gfx938 D512 packed FP8; guarded H64 plan reuse opt-in' if reuse
+                   else 'gfx936/gfx938 D512 packed FP8; fresh plan per call')
         module.rocm_sparse_attn_decode = routed
-        _publication = _Publication(os.getpid(), module, original, routed, cls, method, epilogue)
+        _publication = _Publication(os.getpid(), module, original, routed, cls, method, epilogue, reuse)
 
     def guarded_initialize():
         try:

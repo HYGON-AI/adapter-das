@@ -17,6 +17,20 @@ except ImportError:
 
 _LOG = logging.getLogger('vllm.hcu_adapter')
 _qualified_plans = set()
+_qualified_guarded_plans = set()
+
+
+def guarded_plan_admitted(device):
+    if triton is None or device.type != 'cuda':
+        return False
+    from flash_mla import flash_mla_interface as native
+
+    return _plan_key(native, device) in _qualified_guarded_plans
+
+
+def refresh_guarded_plan(main, extra, previous, plan, splits):
+    _guard_native_plan[(1,)](main, extra, *previous, plan, splits,
+                             main.numel(), num_warps=1)
 
 
 def _plan_key(native, device):
@@ -48,6 +62,25 @@ if triton is not None:
         if HAS_EXTRA:
             extra = tl.load(Extra + lane, lane < ROWS, other=0)
             blocks += tl.cdiv(extra, 64)
+        _emit_native_plan(blocks, lane, Plan, Splits, ROWS)
+
+    @triton.jit
+    def _guard_native_plan(Main, Extra, PrevMain, PrevExtra, Plan, Splits,
+                           ROWS: tl.constexpr):
+        lane = tl.arange(0, 128)
+        main = tl.load(Main + lane, lane < ROWS, other=0)
+        extra = tl.load(Extra + lane, lane < ROWS, other=0)
+        prev_main = tl.load(PrevMain + lane, lane < ROWS, other=0)
+        prev_extra = tl.load(PrevExtra + lane, lane < ROWS, other=0)
+        # Part boundaries and the split prefix are indexed by query row. A
+        # permutation can change both even when lengths have the same histogram.
+        differs = (main != prev_main) | (extra != prev_extra)
+        if tl.max(differs.to(tl.int32), 0) != 0:
+            blocks = tl.cdiv(tl.maximum(main, 1), 64) + tl.cdiv(extra, 64)
+            _emit_native_plan(blocks, lane, Plan, Splits, ROWS)
+
+    @triton.jit
+    def _emit_native_plan(blocks, lane, Plan, Splits, ROWS: tl.constexpr):
         blocks = tl.where(lane < ROWS, blocks, 0)
         total = tl.sum(tl.where(lane < ROWS, blocks + 5, 0), 0)
         payload = tl.cdiv(total, 64) + 5
@@ -122,7 +155,7 @@ if triton is not None:
 
 
 @torch.inference_mode()
-def qualify_native_plan(device):
+def qualify_native_plan(device, *, guarded_reuse=False):
     """Compare live provider plans and output before enabling external metadata."""
     if triton is None:
         return False
@@ -142,7 +175,7 @@ def qualify_native_plan(device):
             or props.multi_processor_count != 64):
         return False
     key = _plan_key(native, device)
-    if key in _qualified_plans:
+    if key in (_qualified_guarded_plans if guarded_reuse else _qualified_plans):
         return True
 
     with torch.cuda.device(device):
@@ -159,10 +192,12 @@ def qualify_native_plan(device):
                 torch.ops._C.fused_deepseek_v4_kv_rope_insert(
                     kv, cache, values, values, cos_sin, block, None, False)
                 caches[block] = cache.unsqueeze(-2)
-            for rows in (1, 8, 48, 64):
+            checked_rows = (1, 8, 48, 64, 120) if guarded_reuse else (1, 8, 48, 64)
+            for rows in checked_rows:
                 q = torch.full((rows, 1, 64, 512), 0.25, device=device, dtype=torch.bfloat16)
                 row = torch.arange(rows, device=device, dtype=torch.int32)
-                for main_block, extra_block in ((32, 0), (64, 32), (32, 64)):
+                layouts = ((32, 32), (32, 64)) if rows == 120 else ((32, 0), (64, 32), (32, 64))
+                for main_block, extra_block in layouts:
                     main_width, extra_width = 128, 512 if extra_block else 0
                     main_ids = (torch.arange(main_width, device=device, dtype=torch.int32)
                                 % 256).repeat(rows, 1, 1)
@@ -179,7 +214,12 @@ def qualify_native_plan(device):
                     expected, _ = native.flash_mla_with_kvcache(tile_scheduler_metadata=oracle, **args)
                     plan = torch.empty((64, 8), device=device, dtype=torch.int32)
                     splits = torch.empty((rows + 1,), device=device, dtype=torch.int32)
-                    _fresh_native_plan[(1,)](main, extra, plan, splits, rows, extra is not None, num_warps=1)
+                    if rows == 120:
+                        previous = (torch.full_like(main, -1), torch.full_like(extra, -1))
+                        refresh_guarded_plan(main, extra, previous, plan, splits)
+                    else:
+                        _fresh_native_plan[(1,)](main, extra, plan, splits, rows,
+                                                 extra is not None, num_warps=1)
                     op, osplits = oracle.tile_scheduler_metadata, oracle.num_splits
                     if (not isinstance(op, torch.Tensor) or not isinstance(osplits, torch.Tensor)
                             or op.shape != plan.shape or op.dtype != plan.dtype
@@ -205,6 +245,9 @@ def qualify_native_plan(device):
             return False
 
     _qualified_plans.add(key)
+    if guarded_reuse:
+        _qualified_guarded_plans.add(key)
+        _LOG.info('HCU FlashMLA 120-row guarded plan reuse admitted after native preflight')
     _LOG.info('HCU FlashMLA external scheduling plan admitted after native preflight')
     return True
 

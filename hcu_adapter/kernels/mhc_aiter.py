@@ -231,7 +231,7 @@ def _gpu_tensors(tensors):
 def select_splits(tokens, hc, hidden, mode):
     if mode not in ('auto', '1', '2', '4', '8', '16', '32'):
         raise ValueError('mHC split-K must be auto or 1/2/4/8/16/32')
-    splits = (32 if hc == 4 and hidden == 5120 and 0 < tokens <= 64 else 1) if mode == 'auto' else int(mode)
+    splits = (32 if hc == 4 and hidden == 5120 and 0 < tokens <= 128 else 1) if mode == 'auto' else int(mode)
     width = hc * hidden
     if width % (64 * splits) or width // splits < 128:
         if mode == 'auto':

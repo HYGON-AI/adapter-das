@@ -71,6 +71,7 @@ def setup(monkeypatch):
     from hcu_adapter.bridges import vllm_flashmla_decode
     bridge = importlib.reload(vllm_flashmla_decode)
     monkeypatch.delenv(bridge.MODE_VARIABLE, raising=False)
+    monkeypatch.delenv(bridge.PLAN_REUSE_VARIABLE, raising=False)
     monkeypatch.delenv('HCU_DISABLE_OPS', raising=False)
     monkeypatch.setattr(hcu_config, '_STATE', {'loaded': True, 'path': None,
                          'ops': {}, 'overrides': {}, 'hosts': {}})
@@ -141,6 +142,72 @@ def test_native_preserves_original_and_method(setup, monkeypatch):
     assert seen and seen[0]['provider'] is vendor.flash_mla_with_kvcache
     assert seen[0]['metadata_factory'] is vendor.get_mla_metadata
     assert seen[0]['epilogue'] is target.rocm_inverse_rope_mxfp8_rows
+
+
+def test_default_enables_reuse_on_gfx938(setup, monkeypatch):
+    bridge, target, _, _ = setup
+    from hcu_adapter.kernels import mla_sparse_decode_dtk
+
+    seen = []
+    monkeypatch.setattr(mla_sparse_decode_dtk, 'try_decode',
+                        lambda **kw: seen.append(kw['plan_cache']) or 0)
+    assert bridge.install()
+    assert bridge._publication.guarded_reuse is True
+    assert target.DeepseekV41ROCMAiterMLAAttention()._forward_decode(
+        None, None, None, None, None, False, None) == 0
+    # 没有 forward context 时仍然走原生路径，只是不建立跨层缓存。
+    assert seen == [None]
+
+
+def test_disabled_reuse_keeps_per_call_native_plans(setup, monkeypatch):
+    bridge, target, _, _ = setup
+    monkeypatch.setenv(bridge.PLAN_REUSE_VARIABLE, '0')
+    from hcu_adapter.kernels import mla_sparse_decode_dtk
+
+    def unexpected_cache():
+        pytest.fail('disabled reuse must not enter the forward cache')
+
+    seen = []
+    monkeypatch.setattr(bridge, '_forward_plan_cache', unexpected_cache)
+    monkeypatch.setattr(mla_sparse_decode_dtk, 'try_decode',
+                        lambda **kw: seen.append(kw['plan_cache']) or 0)
+    assert bridge.install()
+    assert bridge._publication.guarded_reuse is False
+    assert target.DeepseekV41ROCMAiterMLAAttention()._forward_decode(
+        None, None, None, None, None, False, None) == 0
+    assert seen == [None]
+
+
+def test_plan_cache_is_local_to_the_current_forward(setup, monkeypatch):
+    bridge, target, _, _ = setup
+    monkeypatch.setenv(bridge.PLAN_REUSE_VARIABLE, '1')
+    from hcu_adapter.kernels import mla_sparse_decode_dtk
+
+    seen = []
+    monkeypatch.setattr(mla_sparse_decode_dtk, 'try_decode',
+                        lambda **kw: seen.append(kw['plan_cache']) or 0)
+    context = None
+    api = types.ModuleType('vllm.forward_context')
+    api.get_forward_context = lambda: context
+    api.is_forward_context_available = lambda: context is not None
+    monkeypatch.setitem(sys.modules, 'vllm.forward_context', api)
+    assert bridge.install()
+
+    def forward():
+        return target.DeepseekV41ROCMAiterMLAAttention()._forward_decode(
+            None, None, None, None, None, False, None)
+
+    forward()
+    for _ in range(2):
+        context = types.SimpleNamespace(attn_metadata={}, ubatch_slices=None,
+                                        cudagraph_runtime_mode=types.SimpleNamespace(name='NONE'))
+        forward()
+        forward()
+    context.cudagraph_runtime_mode.name = 'PIECEWISE'
+    forward()
+    assert seen[0] is seen[-1] is None
+    assert seen[1] is seen[2] and seen[3] is seen[4]
+    assert seen[1] is not None and seen[3] is not None and seen[1] is not seen[3]
 
 
 @pytest.mark.parametrize('value', [0, 7])

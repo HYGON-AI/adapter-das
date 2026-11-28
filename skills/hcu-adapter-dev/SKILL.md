@@ -312,6 +312,7 @@ CI 宿主标签只选择额外 HCU 车道，不排除公共检查：`sglang`/`ci
 | 加/改算子档位实现文件（命名/归档） | `docs/governance.md` §3b + `python tools/gen_tier_matrix.py`（档位矩阵随 catalog 同 commit） |
 | vLLM 0.32 平台、attention/MLA backend 选型 | `docs/frameworks/vllm032.md` + `docs/governance.md`（先区分普通/MLA/Sparse MLA，保持真实架构能力） |
 | vLLM 0.33 升级、公开后端与版本准入 | `docs/frameworks/vllm033.md`（版本门通过不代表 ABI/设备通过；官方没有旧 fork 的 Flash 私有 hooks，须核对公开 provider 接口；INT8 专家准入不得扩大到其他格式） |
+| vLLM 0.33 BF16/FP16 AITER MoE | `docs/frameworks/vllm033-aiter-moe.md`（gfx936/gfx938 的 provider 准入与启动 padding 必须同步；保持 raw 权重、官方选型和 Graph，不放开全局 AITER；原生对拍在独立 vLLM host lane，组件通过与模型/退出验收分开） |
 | vLLM HCU 架构清单 | `docs/frameworks/vllm033.md`（`gfx928/gfx92a/gfx936/gfx938`；身份匹配与 Core DTK 编译清单一致，provider 能力仍按各架构证据单独准入） |
 | vLLM 扩展发布状态后失败 / 捕获错误后继续 / fork 健康 | `docs/vllm-commit-fatal.md` + `docs/governance.md` §7.2（干净 optional 失败仍可继续；显式 commit-fatal 不得恢复或伪装回滚） |
 | 需求/任务领取 | 任务跟踪不走仓内看板（board.md 已移除），归 MR 与团队现用任务系统；协作红线见 `docs/governance.md` §7 |

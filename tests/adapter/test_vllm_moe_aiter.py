@@ -1,6 +1,7 @@
 """Real v0.33 config/CPU tensor contracts for the HCU AITER MoE ABI.
 
-Run in an isolated v0.33 environment, HOST=none and GPUs hidden:
+Run in an isolated v0.33 environment, HCU_ADAPTER_HOST=vllm,
+VLLM_PLUGINS=none and GPUs hidden, in its own interpreter:
 python -m pytest -q tests/adapter/test_vllm_moe_aiter.py
 """
 
@@ -42,10 +43,11 @@ def config(**kwargs):
     return FusedMoEConfig(**values)
 
 
-def test_exact_hardware_and_requested_policy():
-    for arch in ("gfx928", "gfx92a", "gfx938", "gfx942", "gfx936:unknown"):
+@pytest.mark.parametrize("architecture", ("gfx936", "gfx938"))
+def test_exact_hardware_and_requested_policy(architecture):
+    for arch in ("gfx928", "gfx92a", "gfx942", "gfx936:unknown", "gfx938:unknown"):
         assert not HcuUnquantizedAiterCompatibility(arch).supports_config(config())[0]
-    provider = HcuUnquantizedAiterCompatibility("gfx936")
+    provider = HcuUnquantizedAiterCompatibility(architecture)
     assert provider.supports_config(config()) == (True, None)
     assert provider.supports_config(config(in_dtype=torch.float16)) == (True, None)
     assert not provider.supports_config(config(moe_backend="auto"))[0]
@@ -69,25 +71,28 @@ def test_exact_hardware_and_requested_policy():
         {"apply_router_weight_on_input": True},
     ],
 )
-def test_unsupported_semantics_refused_before_weights(change):
-    supported, reason = HcuUnquantizedAiterCompatibility("gfx936").supports_config(
+@pytest.mark.parametrize("architecture", ("gfx936", "gfx938"))
+def test_unsupported_semantics_refused_before_weights(change, architecture):
+    supported, reason = HcuUnquantizedAiterCompatibility(architecture).supports_config(
         config(**change)
     )
     assert not supported
     assert isinstance(reason, str) and reason
 
 
-def test_ep_rejected_with_real_parallel_config():
+@pytest.mark.parametrize("architecture", ("gfx936", "gfx938"))
+def test_ep_rejected_with_real_parallel_config(architecture):
     parallel = replace(
         FusedMoEParallelConfig.make_no_parallel(), use_ep=True, ep_size=2, dp_size=2
     )
-    assert not HcuUnquantizedAiterCompatibility("gfx936").supports_config(
+    assert not HcuUnquantizedAiterCompatibility(architecture).supports_config(
         config(moe_parallel_config=parallel)
     )[0]
 
 
-def test_raw_layout_contract_is_lossless_and_repeatable():
-    provider = HcuUnquantizedAiterCompatibility("gfx936")
+@pytest.mark.parametrize("architecture", ("gfx936", "gfx938"))
+def test_raw_layout_contract_is_lossless_and_repeatable(architecture):
+    provider = HcuUnquantizedAiterCompatibility(architecture)
     w1 = torch.arange(8 * 256 * 256).reshape(8, 256, 256).to(torch.bfloat16)
     w2 = torch.arange(8 * 256 * 128).reshape(8, 256, 128).to(torch.bfloat16)
     snapshots = [w.clone() for w in (w1, w2)]
@@ -109,14 +114,15 @@ def test_no_publication_on_import_or_config_query():
         torch.ops.hcu_adapter.vllm_aiter_unquantized_moe.default
 
 
-def test_padding_default_materialized_before_cache(monkeypatch):
+@pytest.mark.parametrize("architecture", ("gfx936", "gfx938"))
+def test_padding_default_materialized_before_cache(monkeypatch, architecture):
     from vllm import envs
 
     from hcu_adapter.infra import hcu_env
     from hcu_adapter.bridges.vllm_moe_aiter import configure_padding_policy
 
     # Only the external hardware probe is substituted; real env/config readers.
-    monkeypatch.setattr(hcu_env, "arch_name", lambda: "gfx936")
+    monkeypatch.setattr(hcu_env, "arch_name", lambda: architecture)
     monkeypatch.delenv("VLLM_MOE_SKIP_PADDING", raising=False)
     assert envs.VLLM_MOE_SKIP_PADDING
     configure_padding_policy("aiter")

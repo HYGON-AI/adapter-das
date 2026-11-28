@@ -19,6 +19,7 @@ _PUBLICATION = ProcessLocalLifecycle(runtime_action="vllm-aiter-moe-publication"
 _OP = None
 _OP_STATE = "empty"
 LOG = logging.getLogger("hcu.adapter.vllm.moe")
+_SUPPORTED_ARCHITECTURES = frozenset({"gfx936", "gfx938"})
 
 
 @lru_cache(maxsize=1)
@@ -43,7 +44,7 @@ def configure_padding_policy(moe_backend):
         and envs.VLLM_ROCM_USE_AITER
         and envs.VLLM_ROCM_USE_AITER_MOE
     )
-    if not requested or hcu_env.arch_name() != "gfx936":
+    if not requested or hcu_env.arch_name() not in _SUPPORTED_ARCHITECTURES:
         return
     value, _source = hcu_env.resolve("VLLM_MOE_SKIP_PADDING", host="vllm")
     os.environ["VLLM_MOE_SKIP_PADDING"] = "0"
@@ -100,7 +101,7 @@ def _publish_operator() -> None:
 
 
 class HcuUnquantizedAiterCompatibility:
-    """Narrow public platform provider; initial evidence is gfx936 only."""
+    """Narrow public platform provider for unquantized gfx936/gfx938 experts."""
 
     supports_pre_processed_weights = False
 
@@ -112,8 +113,8 @@ class HcuUnquantizedAiterCompatibility:
         from vllm.model_executor.layers.fused_moe.activation import MoEActivation
 
         m = moe_config
-        if self.architecture != "gfx936":
-            return False, "unquantized HCU AITER is only validated on gfx936"
+        if self.architecture not in _SUPPORTED_ARCHITECTURES:
+            return False, "unquantized HCU AITER requires gfx936 or gfx938"
         if m.moe_backend != "aiter" and not (
             envs.VLLM_ROCM_USE_AITER and envs.VLLM_ROCM_USE_AITER_MOE
         ):

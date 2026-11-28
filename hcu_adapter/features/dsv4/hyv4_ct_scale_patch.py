@@ -96,4 +96,4 @@ def install():
                    " model has no *_inv params; community load_weights and mixin"
                    " retained; no source writes",
         )
-    LOG.warning("HCU adapter: HYV4 CT-int8 .weight_scale naming adapted at runtime")
+    LOG.info("HCU adapter: HYV4 CT-int8 .weight_scale naming adapted at runtime")

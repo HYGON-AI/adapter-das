@@ -89,6 +89,6 @@ def install():
         mechanism=registry.MECH_REBIND,
         detail="private Torch expansion maps padded tokens to reserved request zero; aliases retained; no source writes",
     )
-    logging.getLogger("hcu.adapter").warning(
+    logging.getLogger("hcu.adapter").info(
         "HCU adapter: V4.1 padded request indices adapted at runtime"
     )

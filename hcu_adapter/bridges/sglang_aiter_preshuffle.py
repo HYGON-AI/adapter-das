@@ -37,7 +37,7 @@ def install(_he=None) -> None:
 
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: DSA aiter-preshuffle gate forced OFF (legacy"
-                " page_size=1 path)"
+                " page_size=1 path)", extra={"once_per_service": True}
             )
         else:
 
@@ -46,7 +46,7 @@ def install(_he=None) -> None:
 
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: DSA aiter-preshuffle gate forced on"
-                " (DTK wheel kernels)"
+                " (DTK wheel kernels)", extra={"once_per_service": True}
             )
         # The `import ...utils` above initializes part of the sglang.srt
         # tree, and consumers bind this predicate byname DURING that import

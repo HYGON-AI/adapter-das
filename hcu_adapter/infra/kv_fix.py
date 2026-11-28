@@ -77,4 +77,4 @@ def install():
         mechanism=_reg.MECH_TEXT,
         detail=_NEEDLE,
     )
-    LOG.warning("HCU adapter: kv-pool stride text patch installed")
+    LOG.info("HCU adapter: kv-pool stride text patch installed")

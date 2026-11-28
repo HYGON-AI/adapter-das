@@ -92,5 +92,5 @@ def install():
         if not adapt_kernel(kernel, JITFunction, register=register_binding):
             return
     logging.getLogger("hcu.adapter").warning(
-        "HCU adapter: small_copy uses standard Triton JIT for dynamic tuple arguments"
+        "HCU adapter: small_copy uses standard Triton JIT for dynamic tuple arguments", extra={"once_per_service": True}
     )

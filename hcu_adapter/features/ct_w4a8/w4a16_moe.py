@@ -404,7 +404,7 @@ def deepgemm_w4a16_fused_experts(
         out = out * float(rs)
     if len(_engaged_log) < 3:
         _engaged_log.add((M, E, I, K))
-        LOG.warning(
+        LOG.info(
             "HCU w4a16 moe: deepgemm ENGAGED M=%d E=%d I=%d K=%d "
             "topk=%d cap=%d", M, E, I, K, topk, cap)
     return out

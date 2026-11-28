@@ -115,7 +115,7 @@ def _install_gfx_probe_guard(_common):
         for _name in list(vars(target)):
             if _name.startswith("is_gfx") and _name.endswith("_supported"):
                 setattr(target, _name, _false)
-    LOG.warning(
+    LOG.info(
         "HCU adapter: gcn arch probes (is_gfx*) guarded to False"
         " (early-import safe under partitioned visibility)"
     )
@@ -313,7 +313,7 @@ def install():
         LOG.warning(
             "HCU adapter: platform semantics=%r (legacy adapter route;"
             " set HCU_PLATFORM_SEMANTICS=cuda for the §0.5 is_cuda route)",
-            sem,
+            sem, extra={"once_per_service": True},
         )
         # legacy hip 路线也要装 gcn 探针守卫：torch.version.hip 真值分支下
         # is_gfx*_supported 会裸调 get_device_properties(0)，卡分区可见性
@@ -550,7 +550,7 @@ def install():
     if _device is not None:  # v0.5.22: no utils/device module (review #98)
         _gates += _replace_version_gates(_device, _pkg_utils)
     if _gates:
-        LOG.warning(
+        LOG.info(
             "HCU adapter: %d CUDA version gates -> False (common + utils"
             " package namespaces; e.g. %s)",
             len(_gates),
@@ -621,7 +621,7 @@ def install():
     _rebind_stale_is_cuda(_hcu_is_cuda, registry)
     if torch.version.hip:
         _install_ar_hw_truth(registry)
-    LOG.warning(
+    LOG.info(
         "HCU adapter: platform semantics seam installed "
         "(sglang answers CUDA; hw layers stay HIP-truthful)"
     )

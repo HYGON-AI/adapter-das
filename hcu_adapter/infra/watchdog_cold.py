@@ -85,7 +85,7 @@ def _log_bump():
             "HCU adapter: cold JIT caches detected -> watchdog floor "
             "raised 300s -> %.0fs (compile-storm headroom; explicit "
             "--watchdog-timeout always wins; HCU_JIT_WATCHDOG=0 opts out)",
-            _FLOOR_S,
+            _FLOOR_S, extra={"once_per_service": True},
         )
 
 

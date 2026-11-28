@@ -146,4 +146,4 @@ def install():
         mechanism=_reg.MECH_REBIND,
         detail="two validated GPU sorted operands before normalization; CPU and aliases retained; no source writes",
     )
-    LOG.warning("HCU adapter: native grouped TopK order stabilized at runtime")
+    LOG.info("HCU adapter: native grouped TopK order stabilized at runtime")

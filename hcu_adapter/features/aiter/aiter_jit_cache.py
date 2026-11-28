@@ -63,9 +63,9 @@ def report():
             " under jit/build (harvest into the wheel's source of truth or"
             " pin this wheel version; name-keyed .so must not be seeded"
             " across wheel versions) AITER_JIT_DIR=%s",
-            version, prebuilt, len(runtime_built), jit_dir_env or "unset")
+            version, prebuilt, len(runtime_built), jit_dir_env or "unset", extra={"once_per_service": True})
         for rel in runtime_built[:5]:
-            logger.warning("HCU aiter jit cache: + %s", rel)
+            logger.warning("HCU aiter jit cache: + %s", rel, extra={"once_per_service": True})
     else:
         logger.info(
             "HCU aiter jit cache: wheel=%s prebuilt_so=%d runtime_built=0"

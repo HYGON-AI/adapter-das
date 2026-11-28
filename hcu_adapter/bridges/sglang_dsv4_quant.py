@@ -74,7 +74,7 @@ def install(_he=None) -> None:
 
         _dsew._is_hip = True
         _dsew._is_xpu = False
-        logging.getLogger("hcu.adapter").warning(
+        logging.getLogger("hcu.adapter").info(
             "HCU adapter: DSV4 norm_rope elementwise routed to HIP arms"
             " (triton rope + dsv4_* AOT kernels)"
         )

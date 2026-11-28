@@ -162,7 +162,7 @@ def _install_fwd_h_aiter(registry):
         detail="state recursion (fwd_h) -> aiter CK blockdim64; K=V=128 only, "
                "rest keeps upstream triton; state pool gather/scatter wrap",
     )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: GDN prefill state recursion routed to aiter CK "
         "(chunk_gated_delta_rule_fwd_h; K=V=128, gather/scatter state pool)"
     )
@@ -187,7 +187,7 @@ def _install_packed_decode_aiter(registry):
         detail="packed decode -> aiter triton fla (same contract, "
                "state-pool indices native)",
     )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: GDN packed decode routed to aiter triton fla kernel "
         "(same contract drop-in)"
     )
@@ -420,7 +420,7 @@ def _bind_target_verify_aiter(function, vendor, torch, *, policy="aiter"):
         if not forwarded["b"].is_contiguous():
             forwarded["b"] = forwarded["b"].contiguous()
         if not announced:
-            LOG.warning("HCU adapter: GDN target_verify executing AITER "
+            LOG.info("HCU adapter: GDN target_verify executing AITER "
                         "(%s; policy=%s, arch=%s)", vendor.__module__, policy,
                         device_arches.get(p["q"].device.index, "explicit"))
             announced = True
@@ -451,7 +451,7 @@ def _install_target_verify_aiter():
     from hcu_adapter.infra import hcu_env
     from hcu_adapter.infra.kill_switch import op_disabled
     if op_disabled("gdn_verify"):
-        LOG.warning("HCU adapter: GDN verify kept upstream by HCU_DISABLE_OPS=gdn_verify")
+        LOG.warning("HCU adapter: GDN verify kept upstream by HCU_DISABLE_OPS=gdn_verify", extra={"once_per_service": True})
         return
     mode, source = hcu_env.resolve("HCU_LINEAR_ATTN_GDN_VERIFY")
     if mode not in ("auto", "triton", "aiter"):
@@ -496,7 +496,7 @@ def install():
     if mode == "triton":
         LOG.warning(
             "HCU adapter: HCU_LINEAR_ATTN_GDN=triton -- GDN stays on the "
-            "upstream triton fla kernels (aiter route available via =aiter)",
+            "upstream triton fla kernels (aiter route available via =aiter)", extra={"once_per_service": True},
         )
         return
     # auto (new default) and aiter both take the validated CK route; any

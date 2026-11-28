@@ -108,4 +108,4 @@ def install():
         mechanism=registry.MECH_REBIND,
         detail="extend two str.endswith argument tuples; original loader and aliases retained; no source writes",
     )
-    LOG.warning("HCU adapter: DSV4 CT-int8 wqkv scale loading adapted at runtime")
+    LOG.info("HCU adapter: DSV4 CT-int8 wqkv scale loading adapted at runtime")

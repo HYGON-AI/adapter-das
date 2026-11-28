@@ -70,7 +70,7 @@ def install() -> None:
         _kern_mhc.hc_mix_reduce_sinkhorn_vec = hc_mix_reduce_sinkhorn_vec
         flipped = True
     if flipped:
-        LOG.warning(
+        LOG.info(
             "HCU adapter: MHC fused-stats HIP needle installed "
             "(use_fused_stats + mhc_boundary_hip import; HCU_MHC_STATS=0"
             " disables)"

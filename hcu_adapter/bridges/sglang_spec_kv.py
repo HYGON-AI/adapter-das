@@ -43,14 +43,12 @@ def install(_he=None) -> None:
     #     HCU_SPEC_LOC_SAFE=0 restores stock dispatch.
     if hcu_env.resolve("HCU_SPEC_LOC_SAFE")[0] == "1" and torch.version.hip:
         try:
-            import sys as _sys2
             from sglang.srt.mem_cache import allocation as _alloc
 
             _alloc.get_last_loc = _alloc.get_last_loc_torch
-            print(
-                "[HCU specloc] get_last_loc -> torch (EAGLE+page>1"
-                " out-of-range last_loc guard)",
-                file=_sys2.stderr, flush=True,
+            logging.getLogger("hcu.adapter").info(
+                "HCU adapter: spec-decode get_last_loc -> torch (EAGLE+page>1"
+                " out-of-range last_loc guard)"
             )
         except Exception:
             logging.getLogger("hcu.adapter").warning(
@@ -122,7 +120,7 @@ def install(_he=None) -> None:
 
             if _install_idle_verify_metadata(EagleVerifyInput):
                 logging.getLogger("hcu.adapter").warning(
-                    "HCU adapter: absent idle verify KV metadata defaults to None"
+                    "HCU adapter: absent idle verify KV metadata defaults to None", extra={"once_per_service": True}
                 )
     except Exception:
         logging.getLogger("hcu.adapter").warning(

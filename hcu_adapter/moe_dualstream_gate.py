@@ -104,5 +104,5 @@ def install():
     )
     LOG.warning(
         "HCU adapter: DSV2 capture-mode dual-stream MoE gated at runtime on HIP"
-        " (cross-stream graph replay corruption, gfx938)"
+        " (cross-stream graph replay corruption, gfx938)", extra={"once_per_service": True}
     )

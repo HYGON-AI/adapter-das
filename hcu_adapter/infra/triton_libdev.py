@@ -60,7 +60,7 @@ def install():
             _MISSING_REPORTED[name] = _absent
             LOG.warning(
                 "HCU adapter: triton libdevice.%s has no OCML mapping; "
-                "calls will raise (gap list)", name,
+                "calls will raise (gap list)", name, extra={"once_per_service": True},
             )
             return _absent
 
@@ -83,7 +83,7 @@ def install():
         mechanism=registry.MECH_REBIND,
         detail=f"hip OCML redirect; {len(missing)} cuda-only names loud-stubbed",
     )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: triton extra.cuda libdevice redirected to hip/OCML "
         "(%d names loud-stubbed: %s...)",
         len(missing), ", ".join(missing[:6]),

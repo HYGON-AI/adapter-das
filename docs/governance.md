@@ -214,9 +214,10 @@ sglang 符号面，shim 妥协不进契约。
    （失败置 None 落下一档）、"无调优配置→stock triton (log-once)"、
    桥安装失败静默走上游，均属违规。合法形态：**启动期一次性解析**到
    唯一实现档（按静态平台事实的 auto 规则属选择、非降级），解析结果
-   集中打印（P7：serve 启动一次、一行一算子 op→档→依据→安装状态；
-   安装链碎行降 INFO 默认静默，仅 WARNING+ 出声，`HCU_ADAPTER_LOG`
-   显式放开），该档运行期故障带算子名硬报错。性能问题的第一排查步
+   集中打印（P7：serve 启动一次、一行一算子 op→档→依据→安装状态，
+   仅顶层进程打印、spawn 子进程不重复，口径见 §4；安装链碎行降 INFO
+   默认静默，仅 WARNING+ 出声，`HCU_ADAPTER_LOG` 显式放开），该档运行期
+   故障带算子名硬报错。性能问题的第一排查步
    是对比 tier 解析表——静默降级让"实际跑的什么档"不可考，此为
    本条立法动机。serve 地板：native 必需（`HCU_REQUIRE_NATIVE` 硬门）
    且最低 triton；一切运行（L1 测试与推理）均在 HCU 上，无 CPU 本地面。
@@ -243,7 +244,20 @@ sglang 符号面，shim 妥协不进契约。
   发布须包含完整输入/输出哈希和变换实现，失败不得发布半成品；
   不复制社区 Python 包、不修改模块来源，也不改写 DTK include。
 - **人读**：启动日志 `HCU adapter runtime:` 每算子一行
-  （`op <- impl [role/mechanism] via target`），接在 `HCU adapter env:` 之后。
+  （`op <- impl [role/mechanism] via target`），即"谁在跑"的 tier 解析表。
+  sglang 桥在其 install() 末尾打印；链头时机尚无绑定，不在那里打。
+- **启动日志口径（2026-11-28 定）**：摘要**每服务一次**——配置行、环境行
+  `HCU adapter env:` 与每算子表只在顶层进程打印；spawn 子进程继承父进程的
+  选择、重放同一条安装链，默认只保留每进程一行 `HCU adapter bootstrap: host=…
+  source=…`。安装链的"已安装/已路由/已启用"确认行一律 INFO、默认静默，
+  `HCU_ADAPTER_LOG=info|debug` 显式放开（逐进程排查，子进程也补打摘要与状态行）。
+  WARNING+ 只留给拒绝、回退、失败、未安装、冷缓存构建，以及不在表里的
+  操作员可见状态；服务级状态行带 `extra=SERVICE_STATE`，同样只在顶层
+  进程打印——spawn 子进程默认只剩自己的 bootstrap 行和失败/拒绝报告。
+  新增 except 之外的 WARNING 须进
+  `tests/adapter/test_startup_log_levels.py` 的分类名单。宿主配置日志之前，
+  adapter 行自带 `[时间]` 前缀直写 stderr。性能问题的第一排查步仍是对比
+  tier 解析表——静默的是确认行，不是状态行。
 - **机读**：`HCU_ADAPTER_DUMP=路径` 启动时写 JSON（算子→活跃实现+机制+来源、
   未绑定的 catalog 算子清单、全部 env 生效值+来源）；`=1` 打进日志。
   CI 归因脚本与配置级二分（一次翻一个 catalog 条目重跑 e2e）消费它。

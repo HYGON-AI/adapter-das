@@ -433,10 +433,13 @@ def install() -> None:
         # (op -> impl [role/mechanism] via target) plus the catalog ops
         # still on the upstream path. Performance triage starts here:
         # diff this table between the fast day and the slow day.
+        # Once per service (2026-11-28): a spawn child inherits the host
+        # selection and prints no table; HCU_ADAPTER_LOG=info|debug forces it.
         try:
-            from hcu_adapter.infra import registry
+            from hcu_adapter.infra import hcu_env, registry
 
-            registry.log_summary()
+            if hcu_env.summary_due():
+                registry.log_summary()
         except Exception:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: tier table print failed", exc_info=True

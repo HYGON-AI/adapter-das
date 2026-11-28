@@ -153,7 +153,7 @@ def install(_he=None) -> None:
 
                 _fm.flash_mla_sparse_fwd = _sparse_fwd_compat
 
-            logging.getLogger("hcu.adapter").warning(
+            logging.getLogger("hcu.adapter").info(
                 "HCU adapter: flash_mla mega-face shim installed "
                 "(wheel predates the v0.5.23 API surface: mega import "
                 "made bindable; get_mla_decoding_metadata stubbed; "

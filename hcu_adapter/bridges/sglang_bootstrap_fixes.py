@@ -148,7 +148,7 @@ def install(_he=None) -> None:
             _dreg.ModelRegistry.models["DeepseekV41ForCausalLM"] = (
                 _dsv4.DeepseekV4ForCausalLM
             )
-            logging.getLogger("hcu.adapter").warning(
+            logging.getLogger("hcu.adapter").info(
                 "HCU adapter: DeepseekV41ForCausalLM -> DeepseekV4ForCausalLM "
                 "registry alias installed (checkpoint arch ahead of upstream)"
             )

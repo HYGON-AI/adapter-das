@@ -642,7 +642,7 @@ def _apply(root, register):
                     # keys on the natural (indent-only) needle text
                     detail=needle.removeprefix("\n"),
                 )
-            LOG.warning(
+            LOG.info(
                 "HCU adapter: JIT %s portability patch installed (%d needles)",
                 relpath,
                 len(needles),

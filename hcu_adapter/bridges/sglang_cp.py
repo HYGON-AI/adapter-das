@@ -49,14 +49,12 @@ def install(_he=None) -> None:
     #      tilelang is hip-gated off).
     if hcu_env.resolve("HCU_MHC_UNFUSE")[0] == "1" and torch.version.hip:
         os.environ["SGLANG_OPT_FUSE_MHC_POST_PRE"] = "false"
-        # stdout stays protocol-clean for pytest-xdist/execnet
-        # workers; loud notices belong on stderr.
-        import sys as _sys
-
-        print(
+        # a forced route is service-level state: printed once per service, on
+        # stderr through the adapter logger until the host configures logging
+        logging.getLogger("hcu.adapter").warning(
             "[HCU mhcunfuse] SGLANG_OPT_FUSE_MHC_POST_PRE forced false"
             " (aiter triton mhc_post_pre wrong on gfx938)",
-            file=_sys.stderr, flush=True,
+            extra={"once_per_service": True},
         )
 
     # 11b. GLM-5.3-Flash mHC boundary dump (2026-10-16): HCU_DUMP_MHC=1 wraps

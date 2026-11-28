@@ -21,25 +21,79 @@ _HOSTS = frozenset({"sglang", "vllm", "deepinfer"})
 _PUBLIC_CHOICES = _HOSTS | {"auto", "none"}
 _PROPAGATED_CHOICES = _HOSTS | {"none"}
 _installed_pid: int | None = None
+_spawned_child = False
 
 LOG = logging.getLogger("hcu.adapter")
 
+# extra=SERVICE_STATE marks a WARNING that reports service-level state (an effective
+# route, a gate, an environment fact): the top-level process prints it once, spawn
+# children do not repeat it. Failures and refusals stay unmarked: every process reports its own.
+SERVICE_STATE = {"once_per_service": True}
+
+
+class _ServiceStateOnce(logging.Filter):
+    """Drop service-level state lines in a spawn child: its parent already printed them."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno != logging.WARNING or not getattr(record, "once_per_service", False):
+            return True
+        if not _spawned_child:
+            return True
+        from hcu_adapter.infra import hcu_env
+
+        return hcu_env.summary_forced()
+
+
+class _UntilHostLogging(logging.Filter):
+    """Pass while the host has not configured logging and there is a stderr to write to."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return sys.stderr is not None and not logging.getLogger().handlers
+
+
+def _boot_handler() -> logging.StreamHandler:
+    """stderr handler in the host's ``[time] message`` shape, active until the host logs."""
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(
+        logging.Formatter("[%(asctime)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    )
+    handler.addFilter(_UntilHostLogging())
+    return handler
+
 
 def _apply_adapter_log_level() -> None:
-    """Default-quiet adapter chatter: install-path INFO lines (225+ call
-    sites) only appear with an explicit HCU_ADAPTER_LOG=info|debug; WARNING
-    and above always propagate (the host handler owns formatting/output)."""
+    """Default-quiet adapter chatter, and a timestamp on what remains.
+
+    Install-path INFO lines (225+ call sites) only appear with an explicit
+    HCU_ADAPTER_LOG=info|debug; WARNING and above always propagate. Until the
+    host configures its own logging (sglang does that long after
+    sitecustomize) the adapter's lines go straight to stderr in the host's
+    ``[time] message`` shape, not through logging's bare last-resort handler;
+    afterwards the host handler owns formatting and output.
+    """
     from . import hcu_env
 
     level, _ = hcu_env.resolve("HCU_ADAPTER_LOG")
+    level = (level or "").strip().lower()
     LOG.setLevel(
         {"debug": logging.DEBUG, "info": logging.INFO}.get(level, logging.WARNING)
     )
     if not LOG.handlers:
-        LOG.addHandler(logging.NullHandler())
+        LOG.addHandler(_boot_handler())
+    if not any(isinstance(item, _ServiceStateOnce) for item in LOG.filters):
+        LOG.addFilter(_ServiceStateOnce())
 
 
 _apply_adapter_log_level()
+
+
+def is_spawned_child() -> bool:
+    """True when a parent process already selected the host for this process.
+
+    The selection travels to spawn children through the adapter's private key;
+    it is recorded before this process writes its own copy.
+    """
+    return _spawned_child
 
 
 def _choice(raw: object, *, variable: str, allowed: frozenset[str]) -> str:
@@ -191,7 +245,7 @@ def _restore_import_env(snapshot: dict) -> None:
 
 def install() -> None:
     """Install common guards and one host bridge at most once per process."""
-    global _installed_pid
+    global _installed_pid, _spawned_child
 
     pid = os.getpid()
     if _installed_pid == pid:
@@ -234,6 +288,7 @@ def install() -> None:
         select_inherited_device()
 
     _installed_pid = pid
+    _spawned_child = ACTIVE_HOST_ENV in os.environ
     propagate_host(host, os.environ)
     LOG.warning("HCU adapter bootstrap: host=%s source=%s", host, source)
 

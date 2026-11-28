@@ -9,10 +9,13 @@ import subprocess
 import sys
 
 
-def rerun_if_host_loaded(request):
-    if not any(name == "sglang" or name.startswith(("sglang.", "hcu_adapter.bridges."))
-               for name in sys.modules):
-        return False
+def host_loaded():
+    return any(name == "sglang" or name.startswith(("sglang.", "hcu_adapter.bridges."))
+               for name in sys.modules)
+
+
+def rerun(request):
+    """Run the requesting test in a clean interpreter and assert it passes there."""
     root = Path(__file__).resolve().parents[2]
     environment = dict(
         os.environ, HCU_ADAPTER_HOST="none", VLLM_PLUGINS="none",
@@ -25,3 +28,7 @@ def rerun_if_host_loaded(request):
     )
     assert result.returncode == 0, result.stdout + result.stderr
     return True
+
+
+def rerun_if_host_loaded(request):
+    return host_loaded() and rerun(request)

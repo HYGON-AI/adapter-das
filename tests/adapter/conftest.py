@@ -38,6 +38,7 @@ _CPU_RERUN_FILES = {
     "test_checkpoint_quantization_reference.py",
     "test_ct_w4a8_native_reference.py",
     "test_ct_w4a8_reference.py",
+    "test_indexpool_top511.py",
     "test_l15_checkpoint_dtype_probe.py",
     "test_l15_checkpoint_reference.py",
 }

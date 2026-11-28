@@ -71,13 +71,13 @@ BACKEND_CATALOG = {
         },
         "summary": "SGLang from-import alias propagation",
         "backends": {
-            "stock": {
-                "status": "production",
-                "note": "Official full namespace scan"
-            },
             "fast": {
-                "status": "candidate",
-                "note": "Known source fingerprint; CPython CPU identity scan; semantic fallback"
+                "status": "production",
+                "note": "CPython CPU identity scan behind the known source fingerprint; falls back to stock when unsupported"
+            },
+            "stock": {
+                "status": "validated",
+                "note": "Official full namespace scan; rollback path"
             }
         }
     },

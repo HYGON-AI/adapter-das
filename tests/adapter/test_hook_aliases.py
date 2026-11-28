@@ -252,3 +252,38 @@ def test_vars_type_error_is_skipped_like_stock(monkeypatch, native_scan):
             raise TypeError("no namespace")
     monkeypatch.setitem(sys.modules, "_opt_no_namespace", NoDictionary("_opt_no_namespace"))
     assert fast.propagate(original, wrapped, source, stock._propagate_patch) == 2
+
+
+def test_default_is_on_and_the_catalog_default_is_fast(monkeypatch):
+    from hcu_adapter.infra import hcu_config, hcu_env
+
+    monkeypatch.delenv("HCU_HOOK_ALIAS_FAST", raising=False)
+    assert hcu_env.REGISTRY["HCU_HOOK_ALIAS_FAST"]["default"] == "1"
+    assert hcu_env.enabled("HCU_HOOK_ALIAS_FAST")
+    backends = hcu_config.BACKEND_CATALOG["hook_alias_propagation"]["backends"]
+    assert [name for name, spec in backends.items() if spec["status"] == "production"] == ["fast"]
+    assert backends["stock"]["status"] == "validated"
+
+
+def test_install_call_is_isolated_in_the_sglang_bridge():
+    """On by default: a failure of this bridge must leave the rest of the sglang bridge and the stock scan in place."""
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse((Path(fast.__file__).parent / "bridges" / "sglang.py").read_text(encoding="utf-8"))
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    found = 0
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "install"
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == "hook_aliases"):
+            continue
+        found += 1
+        current = node
+        while parents.get(current) is not None and not (
+                isinstance(parents[current], ast.Try) and current in parents[current].body):
+            current = parents[current]
+        trial = parents.get(current)
+        assert isinstance(trial, ast.Try), "hook_aliases.install() must be the body of a try block"
+        assert any(h.type is None or (isinstance(h.type, ast.Name) and h.type.id == "Exception")
+                   for h in trial.handlers)
+    assert found == 1

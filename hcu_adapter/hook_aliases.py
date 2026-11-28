@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Opt-in acceleration of the existing SGLang Hook alias propagation contract."""
+"""Acceleration of the existing SGLang Hook alias propagation contract (default on; HCU_HOOK_ALIAS_FAST=0 keeps stock)."""
 
 import functools
 import gc

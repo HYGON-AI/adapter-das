@@ -2,14 +2,14 @@
 
 SGLang 为每个 Hook 扫描所有已加载模块的命名空间，以更新早先通过
 `from ... import ...` 保留的别名。大量 Hook 与模块组合时，这段 Python
-循环成为启动 CPU 热点。Adapter 提供同语义的可选 CPython CPU 原生扫描，
+循环成为启动 CPU 热点。Adapter 提供同语义的 CPython CPU 原生扫描（默认启用），
 不修改官方 SGLang 源码文件，也不改变模型数学或 Hook 顺序。
 
 ## 使用与回退
 
-默认保持官方扫描。显式设置 `HCU_HOOK_ALIAS_FAST=1`，或在配置文件中选择
-`ops: {hook_alias_propagation: fast}`。恢复官方路径使用值 `0` 或
-`ops: {hook_alias_propagation: stock}`。目录状态仍为 candidate。
+默认启用原生扫描（`HCU_HOOK_ALIAS_FAST=1`）。恢复官方全量扫描使用值 `0`，或在
+配置文件中选择 `ops: {hook_alias_propagation: stock}`。目录状态：`fast` 为
+production（默认），`stock` 为 validated（回退路径）。
 
 加速仅支持 Linux CPython、启用 GIL、Python 头文件和可用 C 编译器。
 先核对官方 `_propagate_patch` 签名及源码 SHA256；不支持的版本或缺少构建条件
@@ -70,3 +70,17 @@ L0 GREEN（31 项已有告警）。同一最新树分别设置快关 0/1，完�
 均为 681、跳过均为 0，三类集合一致，并确认原生辅助扫描实际启用。
 单轮 `load_plugins()` 阶段为 32.20 → 6.09 秒，不能称为总服务启动耗时。
 最新基点未重跑整模型启动和完整 L1 GPU/triage，不以历史组合结果追认通过。
+
+## 改为默认开启（2026-11-28）
+
+默认值由 `0` 改为 `1`，目录默认档位由 stock 改为 fast。依据是上文两段记录：
+两处基点各自固定组合的目标、应用、跳过集合在快开与快关下逐项一致，
+`load_plugins()` 阶段单进程 36.74 → 10.25 秒、32.20 → 6.09 秒。同日 0.5.22 release 线（adapter `0c55b81`、
+plugin `f6d5d99`、上游 v0.5.22）在 nmz26、BW1100/gfx938 同样只切该开关复测：
+单进程 `load_plugins()` 各两次 39.48/39.14 → 9.07/9.16 秒，714 个目标、714 个
+应用、0 个跳过，应用后的"目标 → 生效对象"映射在 sglang 与 plugin 命名空间
+逐项一致（只有进程号与对象地址不同）。该数字来自 release 线，不是 main 基点的
+测量；main 基点本次未重跑整模型启动。
+
+不支持平台、源码漂移或缺少构建条件时保留官方扫描并打一条 WARNING；
+`HCU_HOOK_ALIAS_FAST=0` 或配置 `stock` 档位随时回到官方全量扫描。

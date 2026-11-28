@@ -11,8 +11,12 @@ This does not enable global AITER, alter CDNA identity, or admit quantized AITER
 experts. The official selector, method, loading, modular kernel, routing,
 prepare/finalize and TP reduction remain Core owners.
 
-Supported architectures are gfx936 and gfx938, with BF16/FP16, gated SiLU/GELU,
-ordinary TP partitions with
+Platform identity follows the shared `SUPPORTED_HCU_ARCHES` set (currently
+gfx928/gfx92a/gfx936/gfx938). There is no separate MoE architecture allowlist.
+Admission additionally requires the installed vendor's
+`aiter.fused_moe_router.feasible_layouts(FusedMoeProblem(...))` to include `raw`
+for the actual architecture, dtype, activation and local expert geometry.
+The Adapter retains BF16/FP16, gated SiLU/GELU, ordinary TP partitions with
 supported dimensions, no extra padding, expert bias, LoRA, EP/EPLB/DP/PCP,
 router-weight-on-input or fused shared experts. Unsupported explicit selection
 fails before conversion; automatic selection retains official fallback. Separate
@@ -41,11 +45,36 @@ acceptance. The candidate remains under integration validation.
 
 ## gfx938 admission and validation
 
-The architecture admission and startup padding policy must use the same set.
-Adding gfx938 only to `supports_config` leaves the default
+Architecture admission and startup padding policy share the platform's HCU
+identity set. Adding an architecture only to `supports_config` leaves the default
 `VLLM_MOE_SKIP_PADDING=1` in place, so explicit AITER still fails or produces
-invalid padded routes. Keep the exact architecture checks local to this
-provider; do not change global AITER or platform-generation predicates.
+invalid padded routes. Do not change global AITER or platform-generation
+predicates. The previous gfx936/gfx938-only revision (`deb72e3`) and its validation are
+recorded below; they are not hardware validation of the other platforms.
+
+The worker queries vendor layout feasibility only after semantic checks, before
+weight conversion. It passes `M=1` because the vendor query explicitly normalizes
+away token count. Results are cached by PID, architecture, dtype, activation,
+local expert count, hidden/intermediate dimensions and top-k. Neither this query
+nor startup padding publishes the Adapter execution operator or executes a
+vendor kernel. AITER import may register its own operators. Startup padding does
+not import AITER. The vendor still chooses the actual per-token execution plan.
+No synthetic device identity, weight preparation or on-the-fly repacking is used.
+
+A missing query API, a vendor `NotImplementedError`, or absence of a raw route
+refuses admission with a reason: explicit `--moe-backend aiter` fails, while
+official automatic selection may try other backends. Unexpected query failures
+and native execution errors propagate. The query interface is required; package
+presence, FP8 hardware flags and tuned tables alone are not proof of raw MoE
+support. Refresh package/configuration in a fresh interpreter. Capability
+admission does not certify native numerical or performance support on a device.
+
+The capability-query revision passes 120 CPU contracts (with a substitute only
+at the device-dependent vendor query boundary), 160 fresh-process CPU/bridge
+regressions, and eight real gfx938 numerical/changed-input Graph cases using the
+requested vendor wheel. Its installed baseline reproduces four CPU failures for
+gfx928/gfx92a admission and startup padding. The other platform identities have
+CPU contract coverage; there is no gfx928/gfx92a native or model result here.
 
 The gfx938 validation uses Torch 2.13, Core 0.33 with the public compatibility
 interface, and `aiter==0.1.8+dtk2610.torch2130.2611271727.g273794` from
@@ -68,7 +97,11 @@ HCU_ADAPTER_HOST=vllm VLLM_PLUGINS=none \
   python -m pytest -q tests/adapter/cases/vllm_unquantized_aiter_device.py
 ```
 
-The test belongs to the vLLM host lane, not common/SGLang collection. Component
+The test belongs to the vLLM host lane, not common/SGLang collection. CPU boundary
+coverage uses a vendor-query substitute for all four platform identities; it
+does not execute another architecture on the local GPU. Real native regressions
+use the actual device and installed vendor query, with no capability substitute.
+Component
 results do not qualify EP/DP/PCP, quantized experts, other architectures, model
 accuracy or performance. Preserve checkpoint/model and shutdown results
 separately from these contracts.
@@ -92,3 +125,12 @@ within the original 15s gate, with exit code 0, no cleanup signals and no owned
 survivors. No performance, distributed or multimodal acceptance was performed.
 The reproducible validation scope and vendor version above must accompany these
 results; replacing the provider build requires repeating its native/model gates.
+
+The capability-query revision was also rerun on the same Qwen3.6-35B-A3B
+checkpoint and deployment settings above, on physical gfx938 GPU6 in a new
+private environment. It again selected AiterUnquantizedExperts and completed
+FULL_AND_PIECEWISE capture, output probes 13/13 and prefix probes 3/3 (4224 hit
+tokens). HumanEval0–31 remained raw0/32, code-normalized32/32 with no truncation.
+Normal SIGINT exit took 12.83s within the unchanged 15s gate, exit0, with no
+cleanup signals or owned survivors. This is gfx938 revalidation only; the other
+platform identities still need their own real-device runs.

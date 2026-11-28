@@ -29,10 +29,11 @@ def test_raw_experts_eager_and_changed_input_graph(
     )
 
     from hcu_adapter.bridges.vllm_moe_aiter import get_compatibility
+    from hcu_adapter.bridges.vllm import SUPPORTED_HCU_ARCHES
 
     arch = torch.cuda.get_device_properties(0).gcnArchName.split(":")[0]
-    if arch not in ("gfx936", "gfx938"):
-        pytest.skip("unquantized HCU AITER targets gfx936/gfx938")
+    if arch not in SUPPORTED_HCU_ARCHES:
+        pytest.skip("requires a supported HCU platform")
     monkeypatch.setenv("VLLM_MOE_SKIP_PADDING", "0")
     experts, hidden, intermediate, topk = geometry
     activation = getattr(MoEActivation, activation_name)

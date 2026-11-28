@@ -7,22 +7,16 @@ name: Nightly Wheel
 # + hcu-adapter 两张 wheel，版本在构建期打成
 # +dtk<DTK>.torch<TORCH>.<时间>.g<commit6>，adapter 元数据精确互锁同戳内核，
 # 产物即最终包（不走 CIUpload REPAIR / 上传后改写）。
-# push release/sglang_v0.5.22 直接上传 nightly 归档；workflow_dispatch 只构建并
-# 保留 artifact。
+# 打包上源只走 main 线（main 分支自己的 nightly-wheel.yml 在 push main 时构建并
+# CIUpload NIGHTLY）：release/sglang_v0.5.22 不再自动打包，也不往 nightly 归档推包，
+# 只保留 workflow_dispatch 手动构建当前分支、保留 artifact。
 
-# 夜间打包只在 release 线触发：main 上的合并不再往 nightly 归档推包
 on:
-  push:
-    branches:
-      - release/sglang_v0.5.22
+  # 手动触发构建当前所选分支，不提供 ref 输入（无法手动指定）
   workflow_dispatch:
 
 permissions:
   contents: read
-  # CIUpload --record 上传前需查询关联 PR (只读)
-  pull-requests: read
-  # CIUpload --record 上报需读取 check-run 统计 (只读)
-  checks: read
 
 concurrency:
   group: nightly-wheel-${{ github.ref }}
@@ -74,20 +68,8 @@ jobs:
           echo "=== wheels ==="
           ls -lh dist/*.whl
 
-      - name: Upload nightly
-        env:
-          CIUPLOAD_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
-            pip install --no-cache-dir ciupload -i https://pypi.sourcefind.cn/release/dtk/
-            CIUpload NIGHTLY \
-              --devpi_url "${PYPI_URL}" \
-              --password "${CIUPLOAD_PASSWORD}" \
-              --dtk_version "${DTK_VER}" \
-              --record \
-              -f dist/*.whl
-          fi
+      # 上源（CIUpload NIGHTLY / --record）只留在 main 线的 workflow 里，
+      # release 上既不自动跑、也没有 dispatch 之外的入口，故这里不再有上传步骤。
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4

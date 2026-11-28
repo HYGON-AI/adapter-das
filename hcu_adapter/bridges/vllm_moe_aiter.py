@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from functools import lru_cache
+from importlib import import_module
 
 import torch
 
@@ -19,6 +20,50 @@ _PUBLICATION = ProcessLocalLifecycle(runtime_action="vllm-aiter-moe-publication"
 _OP = None
 _OP_STATE = "empty"
 LOG = logging.getLogger("hcu.adapter.vllm.moe")
+
+
+def _is_hcu_architecture(architecture):
+    # Share platform identity; individual operators must not invent a narrower
+    # device list when their vendor already owns capability selection.
+    from hcu_adapter.bridges.vllm import SUPPORTED_HCU_ARCHES
+
+    return architecture in SUPPORTED_HCU_ARCHES
+
+
+@lru_cache(maxsize=1024)
+def _raw_layout_support(
+    pid, architecture, dtype, experts, hidden, intermediate, topk, activation
+):
+    """Query vendor layout feasibility once per process/config, never execute.
+
+    Called after semantic admission in the model worker. Startup padding does
+    not import AITER or initialize a device. Runtime routing remains vendor-owned.
+    """
+    try:
+        router = import_module("aiter.fused_moe_router")
+    except ImportError as error:
+        return False, f"HCU AITER raw-layout capability API unavailable: {error}"
+    if not callable(getattr(router, "FusedMoeProblem", None)) or not callable(
+        getattr(router, "feasible_layouts", None)
+    ):
+        return False, "HCU AITER raw-layout capability API unavailable"
+    problem = router.FusedMoeProblem(
+        arch=architecture, M=1, topk=topk, E=experts,
+        model_dim=hidden, inter_dim=intermediate, dtype=dtype,
+        q_dtype_a="none", q_dtype_w="none", quant_kind="none",
+        quant_type="no", g1u1=True, activation=activation,
+        weight_layout="raw", local_E=experts,
+    )
+    try:
+        layouts = router.feasible_layouts(problem)
+    except NotImplementedError as error:
+        return False, f"HCU AITER raw-layout capability refused: {error}"
+    if "raw" not in layouts:
+        return False, (
+            f"HCU AITER has no raw-weight route for {architecture}, {dtype}, "
+            f"E={experts}, H={hidden}, N={intermediate}, topk={topk}, {activation}"
+        )
+    return True, None
 
 
 @lru_cache(maxsize=1)
@@ -43,7 +88,7 @@ def configure_padding_policy(moe_backend):
         and envs.VLLM_ROCM_USE_AITER
         and envs.VLLM_ROCM_USE_AITER_MOE
     )
-    if not requested or hcu_env.arch_name() != "gfx936":
+    if not requested or not _is_hcu_architecture(hcu_env.arch_name()):
         return
     value, _source = hcu_env.resolve("VLLM_MOE_SKIP_PADDING", host="vllm")
     os.environ["VLLM_MOE_SKIP_PADDING"] = "0"
@@ -100,7 +145,7 @@ def _publish_operator() -> None:
 
 
 class HcuUnquantizedAiterCompatibility:
-    """Narrow public platform provider; initial evidence is gfx936 only."""
+    """Public platform provider with vendor-owned unquantized capabilities."""
 
     supports_pre_processed_weights = False
 
@@ -112,8 +157,8 @@ class HcuUnquantizedAiterCompatibility:
         from vllm.model_executor.layers.fused_moe.activation import MoEActivation
 
         m = moe_config
-        if self.architecture != "gfx936":
-            return False, "unquantized HCU AITER is only validated on gfx936"
+        if not _is_hcu_architecture(self.architecture):
+            return False, "unquantized HCU AITER requires a supported HCU platform"
         if m.moe_backend != "aiter" and not (
             envs.VLLM_ROCM_USE_AITER and envs.VLLM_ROCM_USE_AITER_MOE
         ):
@@ -155,7 +200,12 @@ class HcuUnquantizedAiterCompatibility:
             )
         ):
             return False, "HCU AITER activation parameters are unsupported"
-        return True, None
+        return _raw_layout_support(
+            os.getpid(), self.architecture,
+            "bf16" if m.in_dtype == torch.bfloat16 else "fp16",
+            m.num_local_experts, m.hidden_dim, n, m.experts_per_token,
+            "silu" if m.activation == MoEActivation.SILU else "gelu",
+        )
 
     @staticmethod
     def _validate_raw_weights(w1, w2):

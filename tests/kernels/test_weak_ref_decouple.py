@@ -8,10 +8,9 @@ sglang.srt.compilation.weak_ref_tensor. Semantic contract (what the
 upstream C++ TensorImpl guarantees and what the OOM diagnosis of
 2026-10-14 depends on):
 
-1. ROUTE      — when a vendor sgl_kernel wheel with the compiled op is
-               present (DTK ships one), our module re-exports IT (not
-               the view_as fallback): storage must NOT be pinned by the
-               returned tensor.
+1. ROUTE      — prefer the vendor compiled op when available; otherwise
+               use Torch's non-owning constructors. The selected route
+               must not pin storage on the tested GPU stack.
 2. DECOUPLE   — inside a graph capture pool, a weak-ref'd tensor whose
                python original is dropped must leave its block reusable
                by the NEXT capture in the same pool (same data_ptr).
@@ -36,11 +35,12 @@ requires_gpu = pytest.mark.skipif(
 
 @requires_gpu
 def test_vendor_route_preferred():
-    """On a DTK-style node the compiled op must be picked up; the
-    view_as fallback is allowed only on wheels without the symbol."""
-    assert WR._vendor_weak_ref_tensor is not None or (
-        WR.weak_ref_tensor.__module__ == "sgl_kernel.weak_ref"
-    )
+    """Prefer the compiled op; otherwise require Torch's non-owning route."""
+    if WR._vendor_weak_ref_tensor is not None:
+        assert WR.weak_ref_tensor is WR._vendor_weak_ref_tensor
+    else:
+        assert WR._torch_weak_ref_tensor is not None
+        assert WR.weak_ref_tensor is WR._torch_weak_ref_tensor
 
 
 @requires_gpu
@@ -54,8 +54,6 @@ def test_alias_semantics():
 
 
 @requires_gpu
-@pytest.mark.skipif(WR._vendor_weak_ref_tensor is None,
-                    reason="decoupling requires the compiled C++ op")
 def test_capture_pool_block_reuse():
     """THE OOM contract: seg2 in the same capture pool must reuse seg1's
     block once python dropped the weak-ref'd original."""
@@ -74,8 +72,7 @@ def test_capture_pool_block_reuse():
         y = torch.zeros(BK, device="cuda")
         y.fill_(2.0)
 
-    if WR._vendor_weak_ref_tensor is not None:
-        assert y.data_ptr() == ptr_x, (
-            "pool block not reused — weak_ref is pinning; the 58-bucket "
-            "prefill capture will OOM partway (see 2026-10-14 diagnosis)"
-        )
+    assert y.data_ptr() == ptr_x, (
+        "pool block not reused — weak_ref is pinning; the 58-bucket "
+        "prefill capture will OOM partway (see 2026-10-14 diagnosis)"
+    )

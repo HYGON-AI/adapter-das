@@ -71,7 +71,7 @@ class _GridDispatcher:
                 self.stock_calls += 1
                 return stock(*args, **kwargs)
             if self.fast_calls == 0:
-                LOG.warning("HCU adapter: Mamba state scatter executing flattened "
+                LOG.info("HCU adapter: Mamba state scatter executing flattened "
                             "grid on %s: %s -> %s; source-row mapping retained",
                             self.device_arches[args[0].device],
                             tuple(grid), (grid[0] * grid[2], grid[1], 1))
@@ -117,7 +117,7 @@ def install():
 
     if kill_switch.op_disabled("mamba_state_scatter"):
         LOG.warning("HCU adapter: Mamba state scatter kept upstream "
-                    "(HCU_DISABLE_OPS=mamba_state_scatter; startup only)")
+                    "(HCU_DISABLE_OPS=mamba_state_scatter; startup only)", extra={"once_per_service": True})
         return False
     import torch
     module = importlib.import_module(_MODULE)

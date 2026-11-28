@@ -361,7 +361,11 @@ python3 -m sglang.launch_server \
 
 **启动正确的signature**（日志里按序出现才算起活）：
 
-1. `HCU adapter config: …`（sitecustomize 挂载成功，逐项后端来源行）；
+1. 每个进程一行 `[时间] HCU adapter bootstrap: host=sglang source=…`（sitecustomize
+   挂载成功）；顶层进程另有 `HCU adapter config: …`（逐项后端来源）、`HCU adapter env: …`
+   （逐项生效值及来源）、安装链末尾的 `HCU adapter runtime: <op> <- <impl> …` 每算子表和
+   服务级状态行——每服务只打一次，spawn 子进程默认只剩各自的 bootstrap 行（失败/拒绝
+   报告除外）。"已安装/已路由"类确认行默认静默，`HCU_ADAPTER_LOG=info` 才打；
 2. `Loading weights …`→`Capture …`（graph 桶逐个捕完，无 OOM）；
 3. `The server is fired up and ready to roll!`（监听就绪）。
 

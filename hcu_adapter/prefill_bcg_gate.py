@@ -45,4 +45,4 @@ def install():
 
     setattr(_hardware_is_hip, _MARK, True)
     bcg.is_hip = _hardware_is_hip
-    LOG.warning("HCU adapter: breakable graph stream queries use HIP runtime")
+    LOG.info("HCU adapter: breakable graph stream queries use HIP runtime")

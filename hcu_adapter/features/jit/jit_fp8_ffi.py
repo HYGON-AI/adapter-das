@@ -145,7 +145,7 @@ def install():
     if not hcu_env.enabled("HCU_JIT_FP8_FFI") or torch.version.hip is None:
         return
     installed = _install_targets(_TARGETS, registry)
-    LOG.warning(
+    LOG.info(
         "HCU adapter: JIT FP8 output storage views installed (%d/%d targets;"
         " per-token, generic, v2, DSV4)", installed, len(_TARGETS),
     )

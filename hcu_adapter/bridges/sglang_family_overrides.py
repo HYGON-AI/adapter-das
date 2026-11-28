@@ -49,7 +49,7 @@ def install(_he=None) -> None:
                         "HCU adapter: page_size %d not a multiple of index_kpool"
                         " %d, keeping upstream default 1",
                         wanted,
-                        kpool,
+                        kpool, extra={"once_per_service": True},
                     )
                     return overrides
                 overrides["page_size"] = wanted
@@ -57,7 +57,7 @@ def install(_he=None) -> None:
                     "HCU adapter: keeping page_size=%d for DSA (upstream legacy"
                     " HIP default is 1, index_kpool=%s)",
                     wanted,
-                    kpool,
+                    kpool, extra={"once_per_service": True},
                 )
                 return overrides
 

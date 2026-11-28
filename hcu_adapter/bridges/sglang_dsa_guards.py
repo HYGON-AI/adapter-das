@@ -65,7 +65,7 @@ def install(_he=None) -> None:
                 == "sglang.srt.arg_groups.overrides"
             ):
                 _d["_check_dsa_backend_constraints"] = _fn
-        logging.getLogger("hcu.adapter").warning(
+        logging.getLogger("hcu.adapter").info(
             "HCU adapter: DSA backend validator seam installed "
             "(hip=hardware truth inside cuda semantics)"
         )

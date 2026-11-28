@@ -262,7 +262,7 @@ def _hcu_silu_fused_quant(x, limit, use_fp8_w8a8, block_shape, hooks):
         out = silu_and_mul_clamp_quant(x, lim, 128)
         if not _route_state["hit_logged"]:
             _route_state["hit_logged"] = True
-            LOG.warning(
+            LOG.info(
                 "HCU silu fused-quant ENGAGED (limit=%r shape=%s)",
                 limit, tuple(x.shape),
             )
@@ -311,7 +311,7 @@ def install() -> None:
     code = getattr(_fm._fused_moe_kernel_sequence, "__code__", None)
     if code is None or "_hcu_silu_fused_quant" not in code.co_names:
         raise RuntimeError("fused-quant swap did not land in compiled sequence")
-    LOG.warning(
+    LOG.info(
         "HCU adapter: DSV4 swiglu-clamp x ptgq fused into one triton kernel "
         "(silu_and_mul_clamp_quant; HCU_SILU_FUSED_QUANT=0 disables)"
     )

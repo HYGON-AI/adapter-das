@@ -75,7 +75,7 @@ def install(_he=None) -> None:
                     "upstream fused_moe swiglu-clamp assert not found in"
                     " any candidate helper (source drift?)"
                 )
-            logging.getLogger("hcu.adapter").warning(
+            logging.getLogger("hcu.adapter").info(
                 "HCU adapter: DSV4 swiglu-clamp MoE activation routed to"
                 " adapter triton (silu_and_mul_clamp)"
             )

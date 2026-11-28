@@ -239,7 +239,7 @@ def _apply(root, register):
     )
     applied += _apply_minimax(csrc, register)
     applied += _apply_diffusion(csrc, register)
-    LOG.warning(
+    LOG.info(
         "HCU adapter: JIT rope portability patch installed (%d edits + shim)",
         applied,
     )

@@ -132,8 +132,10 @@ kv cache io 的 triton·torch 实现，API 逐字对齐官方 sgl-kernel）见
 
 **推荐形态 = 零环境变量起服**（"正确部署零环境变量"是本项目的回归治理
 原则）：平台语义、JIT 预热关闭、模型感知默认（DSA 融合逃生门等）均由
-adapter 自动落位，启动日志前 20 行可见每个生效值及来源
-（`HCU adapter env:` 摘要行）。手敲 env 只用于调试/隔离。
+adapter 自动落位，启动日志开头可见每个生效值及来源（顶层进程的
+`HCU adapter env:` 摘要行，以及安装链末尾的 `HCU adapter runtime:` 每算子表；
+两者每服务只打一次，spawn 子进程不重复）。"已安装/已路由"类确认行默认静默，
+`HCU_ADAPTER_LOG=info` 才显示。手敲 env 只用于调试/隔离。
 
 ```bash
 export PYTHONPATH=/path/to/hcu-sglang-adapter:/path/to/sglang/python

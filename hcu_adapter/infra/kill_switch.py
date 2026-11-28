@@ -137,8 +137,8 @@ def log_state():
         if unknown:
             LOG.warning(
                 "HCU adapter: HCU_DISABLE_OPS has unknown names %s"
-                " (registered: %s)", unknown, sorted(SWITCHES)
+                " (registered: %s)", unknown, sorted(SWITCHES), extra={"once_per_service": True}
             )
         LOG.warning(
-            "HCU adapter: kill switches ACTIVE: %s", ", ".join(off)
+            "HCU adapter: kill switches ACTIVE: %s", ", ".join(off), extra={"once_per_service": True}
         )

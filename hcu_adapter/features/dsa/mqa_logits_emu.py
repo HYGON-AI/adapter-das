@@ -230,7 +230,7 @@ def install():
 
         _dsa_pkg.aiter_paged_mqa_logits = _wrap_paged
 
-    logger.warning(
+    logging.getLogger("hcu.adapter").info(
         "[hcu] MQA-logits installed (impl=%s; paged/ragged triton arms with"
         " torch-emu fallback; exact decode paths stay the numeric contract)", _impl_label
     )

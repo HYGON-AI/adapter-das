@@ -92,7 +92,7 @@ def _is_fp16_gdn(model_config, hf) -> bool:
 
 def _log_applied(lines, source):
     for line in lines:
-        logger.warning(
+        logging.getLogger("hcu.adapter").info(
             "HCU adapter: model-env default %s (model-derived, %s)", line, source
         )
 

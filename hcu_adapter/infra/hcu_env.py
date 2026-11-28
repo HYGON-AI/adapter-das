@@ -281,7 +281,7 @@ REGISTRY = {
     "HCU_ADAPTER_LOG": {
         "env": "HCU_ADAPTER_LOG", "default": "",
         "about": "hcu.adapter logger 级别：默认 WARNING（安装链 INFO 静默）；"
-                 "=info/=debug 显式放开（排查）；WARNING+ 始终传播",
+                 "=info/=debug 显式放开（排查；spawn 子进程也打启动摘要）；WARNING+ 始终传播",
     },
     # R-12 strict bridges (bridges/sglang.py, governance 3b-8)
     "HCU_STRICT_BRIDGES": {
@@ -901,28 +901,46 @@ def enabled(name):
     return v not in ("", "0", "None", "refused")
 
 
+def summary_forced():
+    """True when the operator asked for the full startup log (HCU_ADAPTER_LOG=info|debug)."""
+    level, _ = resolve("HCU_ADAPTER_LOG", evaluate_auto=False)
+    return (level or "").strip().lower() in ("info", "debug")
+
+
+def summary_due():
+    """The startup summary prints once per service: in the top-level process only.
+
+    A spawn child inherits the host selection and repeats nothing, unless the
+    operator forces it with HCU_ADAPTER_LOG=info|debug. The per-op table itself
+    is printed by the sglang bridge (bridges/sglang.py), after the ops are bound.
+    """
+    from . import bootstrap as _boot
+
+    return not _boot.is_spawned_child() or summary_forced()
+
+
 def log_summary():
     """Report configuration without executing device-dependent auto rules."""
     from . import hcu_config as _cfg
 
-    cfg_line = _cfg.summary_line()
-    if cfg_line:
-        LOG.warning(cfg_line)
-    parts = []
-    for name in REGISTRY:
-        v, src = resolve(name, evaluate_auto=False)
-        if v in ("", "0"):
-            continue  # keep the line short: only non-default-effective vars
-        parts.append(f"{name}={v}({src})")
-    if parts:
-        LOG.warning("HCU adapter env: " + " ".join(parts))
-    else:
-        LOG.warning("HCU adapter env: all defaults (no explicit HCU_* vars)")
-    from . import registry as _reg
-
-    _reg.log_summary(LOG)
+    if summary_due():
+        cfg_line = _cfg.summary_line()
+        if cfg_line:
+            LOG.warning(cfg_line)
+        parts = []
+        for name in REGISTRY:
+            v, src = resolve(name, evaluate_auto=False)
+            if v in ("", "0"):
+                continue  # keep the line short: only non-default-effective vars
+            parts.append(f"{name}={v}({src})")
+        if parts:
+            LOG.warning("HCU adapter env: " + " ".join(parts))
+        else:
+            LOG.warning("HCU adapter env: all defaults (no explicit HCU_* vars)")
     out = os.environ.get("HCU_ADAPTER_DUMP", "")
     if out:
+        from . import registry as _reg
+
         d = _reg.dump(out if out != "1" else None)
         if out == "1":
             LOG.warning("HCU adapter dump: %s", d)

@@ -70,7 +70,7 @@ def install():
         detail="strip griddepcontrol.* asm lines (gfx936 has no PDL; "
                "semantically = PDL-off)",
     )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: triton hcu make_amdgcn PDL stripper installed "
         "(gfx936 griddepcontrol unsupported)"
     )

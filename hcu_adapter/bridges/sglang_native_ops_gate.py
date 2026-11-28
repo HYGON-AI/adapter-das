@@ -49,7 +49,7 @@ def install(_he=None) -> None:
 
         if native_available():
             LOG.warning(
-                "HCU adapter: native sgl_kernel ops present (AOT tier armed)"
+                "HCU adapter: native sgl_kernel ops present (AOT tier armed)", extra={"once_per_service": True}
             )
             return
         message = (
@@ -84,7 +84,7 @@ def install(_he=None) -> None:
                 runner_cls.__init__ = _init
                 LOG.warning(
                     "HCU adapter: native-ops serve gate armed (%s)",
-                    "required" if required else "warn-only",
+                    "required" if required else "warn-only", extra={"once_per_service": True},
                 )
         return mod
 

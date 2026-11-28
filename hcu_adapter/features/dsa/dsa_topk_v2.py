@@ -135,7 +135,7 @@ def install() -> None:
         LOG.warning("HCU dsa topk v2: v41 arm not installed", exc_info=True)
 
     if installed:
-        LOG.warning(
+        LOG.info(
             "HCU dsa topk v2 fusion installed (%s); HCU_TOPK_V2=0 / "
             "HCU_V41_TOPK_V2=0 disable; C4 flip needs explicit "
             "SGLANG_OPT_USE_TOPK_V2=1",

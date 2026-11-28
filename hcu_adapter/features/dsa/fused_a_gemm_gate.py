@@ -106,5 +106,5 @@ def install():
         "HCU adapter: fused QKV-A GEMM min-latency path off on HIP"
         " (CUDA-only kernel; rebound in %s%s)",
         ", ".join(rebound),
-        "; late import hook for " + ", ".join(late) if late else "",
+        "; late import hook for " + ", ".join(late) if late else "", extra={"once_per_service": True},
     )

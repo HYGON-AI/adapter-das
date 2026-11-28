@@ -50,5 +50,5 @@ def install():
     fpu.bmm_fp8 = _hcu_bmm_fp8
     LOG.warning(
         "HCU adapter: fp8_utils.bmm_fp8 bridged to torch-native dequant bmm"
-        " (flashinfer cuBLAS fp8 bmm unavailable)"
+        " (flashinfer cuBLAS fp8 bmm unavailable)", extra={"once_per_service": True}
     )

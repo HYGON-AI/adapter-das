@@ -86,5 +86,5 @@ def install():
     LOG.warning(
         "HCU adapter: CUDA-only attention backends gated off at the "
         "registry seam: %s",
-        ", ".join(installed),
+        ", ".join(installed), extra={"once_per_service": True},
     )

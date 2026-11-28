@@ -7,6 +7,7 @@ python3 -m sglang.launch_server \
   --model-path /models/Hy3-Channel-INT8-w8a8 \
   --tp-size 8 \
   --trust-remote-code \
+  --dtype bfloat16 \
   --enable-cache-report \
   --mem-fraction-static 0.80 \
   --attention-backend fa3 \

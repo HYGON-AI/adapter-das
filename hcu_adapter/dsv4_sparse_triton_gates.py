@@ -54,7 +54,7 @@ def install() -> None:
 
     _sparse._fused_dsv41_kernels = lambda x: bool(x.is_cuda)
     _sparse._hcu_sparse_triton_gate = True
-    LOG.warning(
+    LOG.info(
         "HCU adapter: DSV4.1 sparse rope/norm triton gates enabled "
         "(rope_tail_fake_quant_fp4 + rmsnorm_fp32; HCU_DSV41_SPARSE_TRITON=0"
         " restores the torch fallbacks)"

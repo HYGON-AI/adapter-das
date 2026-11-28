@@ -140,7 +140,7 @@ def _install_dispatch():
     impl = hcu_env.resolve("HCU_AR_NORM_IMPL")[0]
     if impl == "stock":
         LOG.warning("[HCU ar+norm] HCU_AR_NORM_IMPL=stock"
-                    " -- upstream path stays")
+                    " -- upstream path stays", extra={"once_per_service": True})
         return
 
     try:
@@ -206,7 +206,7 @@ def _install_dispatch():
     else:
         LOG.warning(
             "[HCU ar+norm] upstream candidate gate absent (v0.5.22 "
-            "plan/norm rework): ARM retired, dispatch-only install"
+            "plan/norm rework): ARM retired, dispatch-only install", extra={"once_per_service": True}
         )
 
     # ---- DISPATCH: the flashinfer entry the armed candidate calls -------
@@ -222,7 +222,7 @@ def _install_dispatch():
                 + ("legacy candidate arm retained" if arm_fn else "v0.5.22 dispatch-only seam")
             ),
         )
-        LOG.warning("[HCU ar+norm] aiter fused AR+RMSNorm tier installed "
+        LOG.info("[HCU ar+norm] aiter fused AR+RMSNorm tier installed "
                     "(HCU_AR_NORM_IMPL=%s)", impl)
         return
 
@@ -246,7 +246,7 @@ def _install_dispatch():
                     if out is not None:
                         if not _ONCE["served"]:
                             _ONCE["served"] = True
-                            LOG.warning(
+                            LOG.info(
                                 "[HCU ar+norm] fused AR+RMSNorm serving"
                                 " (aiter GraphSafe, R-09(1))")
                         return out
@@ -279,5 +279,5 @@ def _install_dispatch():
                "GraphSafe fused kernels; full-TP-group-only gate, "
                "per-call decline to stock (R-09(1))" % impl,
     )
-    LOG.warning("[HCU ar+norm] aiter fused AR+RMSNorm tier installed "
+    LOG.info("[HCU ar+norm] aiter fused AR+RMSNorm tier installed "
                 "(HCU_AR_NORM_IMPL=%s)", impl)

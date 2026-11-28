@@ -69,7 +69,7 @@ def _apply(root, register):
             mechanism=_reg.MECH_TEXT,
             detail=needle,
         )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: JIT dot_product portability patch installed (%d edits)",
         len(registered),
     )

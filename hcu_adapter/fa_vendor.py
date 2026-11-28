@@ -185,7 +185,7 @@ def _log_emu_sig(face, p, reasons=None):
     )
     if sig not in _EMU_SIGS:
         _EMU_SIGS.add(sig)
-        LOG.warning("HCU adapter: FA emu sig %r", (sig,))
+        LOG.info("HCU adapter: FA emu sig %r", (sig,))
 
 # param list the emu (sgl_kernel.flash_attn.flash_attn_varlen_func) accepts,
 # in positional order — the reroute gate reads out of this map.
@@ -372,7 +372,7 @@ def _install_triton_decode(_sk_fa, registry):
             global _DECODE_HITS
             _DECODE_HITS += 1
             if _DECODE_HITS == 1 or _DECODE_HITS % 20000 == 0:
-                LOG.warning(
+                LOG.info(
                     "HCU adapter: triton decode face hit #%d (B=%d)",
                     _DECODE_HITS, q.shape[0],
                 )
@@ -399,7 +399,7 @@ def _install_triton_decode(_sk_fa, registry):
             global _WIDE_HITS
             _WIDE_HITS += 1
             if _WIDE_HITS == 1 or _WIDE_HITS % 20000 == 0:
-                LOG.warning(
+                LOG.info(
                     "HCU adapter: triton wide-window face hit #%d "
                     "(B=%d L=%d)",
                     _WIDE_HITS, q.shape[0], q.shape[1],
@@ -513,7 +513,7 @@ def _install_triton_decode(_sk_fa, registry):
         if _varlen_triton_ok(p):
             _VARLEN_HITS += 1
             if _VARLEN_HITS == 1 or _VARLEN_HITS % 20000 == 0:
-                LOG.warning(
+                LOG.info(
                     "HCU adapter: triton varlen prefill face hit #%d "
                     "(M=%d B=%d)",
                     _VARLEN_HITS, p["q"].shape[0],
@@ -628,7 +628,7 @@ def _install_triton_decode(_sk_fa, registry):
             "(upstream layout changed); facade stays at sgl_kernel level",
             exc_info=True,
         )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: fa3 triton faces -- paged decode/wide windows + "
         "ragged varlen prefill routed to the triton kernels; contract-exceed "
         "faces keep the emu (HCU_FA_IMPL=triton)"
@@ -736,7 +736,7 @@ def install():
             pass
         LOG.warning(
             "HCU adapter: HCU_FA_IMPL=%s -- fa3 attention stays on the "
-            "torch emulation (triton decode route available via =triton)", mode
+            "torch emulation (triton decode route available via =triton)", mode, extra={"once_per_service": True}
         )
         return
 
@@ -1013,7 +1013,7 @@ def install():
             "changed); bridge stays at sgl_kernel level",
             exc_info=True,
         )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: fa3 attention routed to DTK flash_attn vendor wheel "
         "(kvcache uniform-window + varlen; rest stays emu)"
     )

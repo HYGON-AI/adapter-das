@@ -140,7 +140,7 @@ def _apply(root, register):
         mechanism=_reg.MECH_TEXT,
         detail="  __syncwarp();  // to avoid warp divergence",
     )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: JIT rope portability patch installed (%d edits + shim)",
         applied,
     )

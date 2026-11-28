@@ -68,7 +68,7 @@ def _apply(root, register):
         mechanism=_reg.MECH_TEXT,
         detail=_NEEDLE,
     )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: JIT per_token_group_quant portability patch installed"
         " (__all_sync(kFullMask, skip) -> __all(skip))"
     )

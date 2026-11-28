@@ -160,4 +160,4 @@ def install():
         mechanism=registry.MECH_REBIND,
         detail="private cast and per-method block config; explicit DeepEP BF16; no source writes",
     )
-    LOG.warning("HCU adapter: FP4 expert runtime loading installed (SGLANG_HCU_EP_BF16=1 selects BF16)")
+    LOG.info("HCU adapter: FP4 expert runtime loading installed (SGLANG_HCU_EP_BF16=1 selects BF16)")

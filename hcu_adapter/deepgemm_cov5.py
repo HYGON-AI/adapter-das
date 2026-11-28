@@ -91,5 +91,5 @@ def install():
     # This module-local default does not mutate the shared vendor config dict.
     namespace["DEFAULT_W4A8_CONTIG_CONFIG"] = {"MODE": 1002}
     namespace["op"] = facade
-    LOG.warning("HCU DeepGEMM HIPC1002 COV5: %s", extension.__file__)
+    LOG.info("HCU DeepGEMM HIPC1002 COV5: %s", extension.__file__)
     return True

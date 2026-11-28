@@ -75,7 +75,7 @@ def validate_prefill_cp_platform_hcu(server_args):
         LOG.warning(
             "HCU prefill-CP bridge: platform gate opened (%s=%s, %s) -- "
             "upstream marks HIP CP deprecated; treat as experimental",
-            "HCU_PREFILL_CP", knob, src,
+            "HCU_PREFILL_CP", knob, src, extra={"once_per_service": True},
         )
         return None
 
@@ -164,7 +164,7 @@ def _patch_rotary_module(mod):
         patched.append(name)
     mod._HCU_CP_ROPE_PATCHED = True
     if patched:
-        LOG.warning(
+        LOG.info(
             "HCU prefill-CP bridge: rope guard wrapped forward_cuda on %s",
             patched,
         )
@@ -274,7 +274,7 @@ def _patch_models_utils(mod):
 
     mod.enable_fused_set_kv_buffer = enable_fused_set_kv_buffer_hcu
     mod._HCU_CP_FUSEKV_PATCHED = True
-    LOG.warning(
+    LOG.info(
         "HCU prefill-CP bridge: enable_fused_set_kv_buffer CP guard patched"
     )
 
@@ -310,7 +310,7 @@ def install():
                 },
             )
         )
-        LOG.warning("HCU prefill-CP bridge: platform gate patch registered")
+        LOG.info("HCU prefill-CP bridge: platform gate patch registered")
 
     # piece 2: rope guard (behavioral change -- knob-gated)
     knob, src = hcu_env.resolve("HCU_PREFILL_CP")
@@ -326,7 +326,7 @@ def install():
                 post_hooks={_ROPE_MOD: _patch_rotary_module},
             )
         )
-        LOG.warning(
+        LOG.info(
             "HCU prefill-CP bridge: rope guard registered (%s=%s, %s)",
             "HCU_PREFILL_CP", knob, src,
         )

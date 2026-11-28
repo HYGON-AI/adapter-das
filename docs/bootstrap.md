@@ -356,7 +356,11 @@ python3 -m sglang.launch_server \
 
 **启动正确的signature**（日志里按序出现才算起活）：
 
-1. `HCU adapter config: …`（sitecustomize 挂载成功，逐项后端来源行）；
+1. 每个进程一行 `[时间] HCU adapter bootstrap: host=sglang source=…`（sitecustomize
+   挂载成功）；顶层进程另有 `HCU adapter env: …`（逐项生效值及来源）、安装链末尾的
+   `HCU adapter runtime: <op> <- <impl> …` 每算子表和服务级状态行——每服务只打一次，
+   spawn 子进程默认只剩各自的 bootstrap 行（失败/拒绝报告除外）。"已安装/已路由"类
+   确认行默认静默，`HCU_ADAPTER_LOG=info` 才打；
 2. `Loading weights …`→`Capture …`（graph 桶逐个捕完，无 OOM）；
 3. `The server is fired up and ready to roll!`（监听就绪）。
 
@@ -408,3 +412,59 @@ curl -s http://127.0.0.1:30000/v1/chat/completions \
 配套 plugin 分支 feat/qwen38-pd-prefill-opt-v0522 基于 81315b299ff4620205372e1b9997b226e3fb650b，官方 SGLang 保持 release/v0.5.22 的 baa9befa381511cd4d56f83980951e5a45fffc6d。此前 2026-11-16 服务 smoke/质量及三长度短测使用旧 plugin 28861d1、adapter 2e723cc；属于旧证据，不外推到本次上游同步后的新组合。新分支未重启服务、未执行 GPU/Graph/模型性能验收；本次离线检查结果另列。
 
 本次离线检查：bootstrap、multimem、上游AITER MoE bridge和JIT sources共79项通过、16项跳过；显式指定官方SGLang树运行multimem消费者契约，未执行GPU编译或真实collective。L0为GREEN（31条提示，未宣称strict通过），源码/空白检查通过。完整日志在外部实验目录pd-disag/codex-work/upstream-pr-20261116/logs，服务和模型验证仍pending。
+
+## 2026-11-28 启动耗时与日志量对照（服务启动慢、adapter 日志多）
+
+0.5.22 线起服务时启动阶段慢、adapter 日志多。本节记录同一节点、同一镜像上
+release tip `0c55b81`（基线）与本次改动（修复）的对照。数字只用于归因与相对
+收益；小模型 TP1 的绝对耗时不外推到具体业务模型。行数口径：带 `HCU `、`[HCU`、
+`[hcu]`、`hcu: ` 标记的日志行算 adapter 行，`HCU JIT:` 编译进度行不计。
+
+**根因（实测）**
+
+1. 每个 Python 进程开机都走一遍 adapter 启动链：`python -c pass` 暖机约 42 s、
+   容器内首次约 68 s，`HCU_ADAPTER_HOST=none` 约 4 s。一个 TP1 服务里 launcher
+   与两个子进程各付一遍；冷启动时的 `ninja` 编译进程（pip 安装的 Python 脚本）
+   也各付约 36 s。
+2. `load_plugins()` 的 Hook 别名传播：官方全量扫描约 39–43 s，原生扫描约 8–9 s，
+   launcher 与每个子进程串行各付一遍（`HCU_HOOK_ALIAS_FAST` 此前默认关）。
+3. 日志：每个进程各打一遍环境行与安装确认——基线单个进程暖机打 42 行 adapter 日志、
+   首次 77 行，其中 11 行、46 行没有时间戳，约六成是"已安装/已路由"确认；链头
+   另打一张 `no ops installed (pure upstream)` 表。
+
+**条件**：nmz26（BW1100/gfx938，与 CI 同卡型），CI 镜像
+`sglang:0.5.22-ubuntu22.04-dtk2610-py3.12-sf_b075-20261127-2204`，adapter 按 CI
+同款装法从源码树安装，plugin `f6d5d99`，上游 v0.5.22 `baa9befa`；Qwen2.5-0.5B-Instruct、
+`--load-format dummy`、TP1 单卡。每轮容器内连续启动服务三次：首次为冷启动（容器内
+无 JIT 缓存），后两次为暖启动；其中三轮在服务之前另测单进程开机与单进程
+`load_plugins()`（快扫关、开各两次）。下表基线、修复各两轮，交替进行；修复的更早
+一版另跑过一轮（同节点当时有他人任务，冷启动 287.4 s、暖启动 114.9、115.9 s），
+未列入。同节点另有他人的端到端任务间歇占卡，看护脚本在本容器所用卡上出现
+他人进程时即停本容器，基线第二轮的第二次暖启动因此未完成。
+
+**对照**（每格依次为两轮的值；修复列的单进程三项只有前一轮测过，前一轮的代码
+与本提交只差 launcher 环境行当时还是裸 `print`）
+
+| 项 | 基线 `0c55b81` | 修复 |
+|---|---|---|
+| 单进程开机耗时，首次 / 暖 | 67.5 / 42.2 s；68.0 / 42.0 s | 67.8 / 42.9 s；未重测 |
+| 单进程开机日志行数，首次 / 暖 | 80 行（adapter 77，无时间戳 46） / 45 行（adapter 42，无时间戳 11）；两轮相同 | 48 行（adapter 45，无时间戳 0） / 47 行（adapter 44，无时间戳 0）；未重测 |
+| 单进程 `load_plugins()`，官方扫描 / 原生扫描（各两次） | 39.48、39.14 s / 9.07、9.16 s；42.55、38.90 s / 8.40、7.64 s | 42.74、43.11 s / 8.48、7.69 s；未重测 |
+| 冷启动到 `/health` 就绪 | 345.5 s；342.8 s | 277.2 s；307.5 s |
+| 暖启动到就绪（两次） | 181.4 s、181.3 s；184.5 s（第二次未完成） | 115.9 s、115.8 s；116.9 s、115.9 s |
+| TP2 首次启动到就绪（各一轮） | 256.0 s | 171.3 s |
+| 服务启动日志里的 adapter 行数，冷 / 暖 | 136、136 / 136、136、136 | 50、51 / 50、50、50、50 |
+
+- 四轮的 `load_plugins()` 都是 714 个目标、714 个应用、0 个跳过；应用后的
+  "目标 → 生效对象"映射在 sglang 与 plugin 命名空间逐项一致，只有进程号与对象
+  地址不同（详见 `sglang-startup-hook-aliases.md`）。
+- 修复后环境行与算子表每服务只打一次，子进程只留各自的 bootstrap 行，服务启动
+  日志里的 adapter 行都带时间戳；`HCU_ADAPTER_LOG=info` 可看全量安装确认（单进程
+  暖机 95 行，其中 adapter 92 行）。
+- 修复第二轮的冷启动（307.5 s）比前一轮多约 25 s：该轮没有先跑单进程测量，launcher
+  在服务启动期间才首次构建 tvm-ffi dlpack 缓存（其余三轮的这一步发生在计时之前），
+  冷启动里多出的那一行 adapter 日志就是这条冷缓存 WARNING。
+- 只测了 Qwen2.5-0.5B 的 TP1/TP2 dummy 启动，未测大模型、TP8 与长稳。
+- 每进程约 36 s 的开机本身没有裁剪（惰性装桥、`jit_sources` 重哈希、设备探针），
+  `ninja` 编译进程各付的约 36 s 与冷启动的 JIT 编译风暴也未处理，均另行立项。
+

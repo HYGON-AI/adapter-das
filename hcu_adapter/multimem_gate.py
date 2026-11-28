@@ -63,6 +63,6 @@ def install():
         detail='real HIP: preserve native all-gather fallback without unsupported symmetric-memory rendezvous',
     )
     logging.getLogger('hcu.adapter').warning(
-        'HCU adapter: multimem all-gather probe disabled on real HIP; native all-gather fallback retained'
+        'HCU adapter: multimem all-gather probe disabled on real HIP; native all-gather fallback retained', extra={"once_per_service": True}
     )
     return True

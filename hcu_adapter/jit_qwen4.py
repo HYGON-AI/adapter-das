@@ -263,13 +263,13 @@ def _apply(root, register):
                 "jit_elementwise: %s absent (tree predates the module)", relpath
             )
         elif applied:
-            LOG.warning(
+            LOG.info(
                 "HCU adapter: JIT %s portability patch installed (%d sites)",
                 relpath.rsplit("/", 1)[-1], applied,
             )
         total += applied
     if total:
-        LOG.warning(
+        LOG.info(
             "HCU adapter: JIT elementwise HIP portability total %d sites", total
         )
 

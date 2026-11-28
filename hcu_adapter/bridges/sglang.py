@@ -246,7 +246,7 @@ def install() -> None:
                 _dreg.ModelRegistry.models["DeepseekV41ForCausalLM"] = (
                     _dsv4.DeepseekV4ForCausalLM
                 )
-                logging.getLogger("hcu.adapter").warning(
+                logging.getLogger("hcu.adapter").info(
                     "HCU adapter: DeepseekV41ForCausalLM -> DeepseekV4ForCausalLM "
                     "registry alias installed (checkpoint arch ahead of upstream)"
                 )
@@ -1099,7 +1099,7 @@ def install() -> None:
                             "HCU adapter: page_size %d not a multiple of index_kpool"
                             " %d, keeping upstream default 1",
                             wanted,
-                            kpool,
+                            kpool, extra={"once_per_service": True},
                         )
                         return overrides
                     overrides["page_size"] = wanted
@@ -1107,7 +1107,7 @@ def install() -> None:
                         "HCU adapter: keeping page_size=%d for DSA (upstream legacy"
                         " HIP default is 1, index_kpool=%s)",
                         wanted,
-                        kpool,
+                        kpool, extra={"once_per_service": True},
                     )
                     return overrides
 
@@ -1148,7 +1148,7 @@ def install() -> None:
 
                 logging.getLogger("hcu.adapter").warning(
                     "HCU adapter: DSA aiter-preshuffle gate forced OFF (legacy"
-                    " page_size=1 path)"
+                    " page_size=1 path)", extra={"once_per_service": True}
                 )
             else:
 
@@ -1157,7 +1157,7 @@ def install() -> None:
 
                 logging.getLogger("hcu.adapter").warning(
                     "HCU adapter: DSA aiter-preshuffle gate forced on"
-                    " (DTK wheel kernels)"
+                    " (DTK wheel kernels)", extra={"once_per_service": True}
                 )
             # The `import ...utils` above initializes part of the sglang.srt
             # tree, and consumers bind this predicate byname DURING that import
@@ -1242,7 +1242,7 @@ def install() -> None:
                         "upstream fused_moe swiglu-clamp assert not found in"
                         " any candidate helper (source drift?)"
                     )
-                logging.getLogger("hcu.adapter").warning(
+                logging.getLogger("hcu.adapter").info(
                     "HCU adapter: DSV4 swiglu-clamp MoE activation routed to"
                     " adapter triton (silu_and_mul_clamp)"
                 )
@@ -1313,7 +1313,7 @@ def install() -> None:
 
             _dsew._is_hip = True
             _dsew._is_xpu = False
-            logging.getLogger("hcu.adapter").warning(
+            logging.getLogger("hcu.adapter").info(
                 "HCU adapter: DSV4 norm_rope elementwise routed to HIP arms"
                 " (triton rope + dsv4_* AOT kernels)"
             )
@@ -1584,7 +1584,7 @@ def install() -> None:
                     == "sglang.srt.arg_groups.overrides"
                 ):
                     _d["_check_dsa_backend_constraints"] = _fn
-            logging.getLogger("hcu.adapter").warning(
+            logging.getLogger("hcu.adapter").info(
                 "HCU adapter: DSA backend validator seam installed "
                 "(hip=hardware truth inside cuda semantics)"
             )
@@ -2159,7 +2159,6 @@ def install() -> None:
                 from hcu_adapter import kpool_write_emu as _kwe
 
                 _kwe.install_read_patch()
-                print("[HCU kprd] read-emu installed", flush=True)
                 logging.getLogger("hcu.adapter").info(
                     "HCU adapter: index-K cache gather (GetKAndS.aiter) routed to "
                     "torch emu (aiter kernel dead on gfx938)"
@@ -2719,10 +2718,9 @@ def install() -> None:
         #      tilelang is hip-gated off).
         if os.environ.get("HCU_MHC_UNFUSE", "1") == "1" and torch.version.hip:
             os.environ["SGLANG_OPT_FUSE_MHC_POST_PRE"] = "false"
-            print(
+            logging.getLogger("hcu.adapter").warning(
                 "[HCU mhcunfuse] SGLANG_OPT_FUSE_MHC_POST_PRE forced false"
-                " (aiter triton mhc_post_pre wrong on gfx938)",
-                flush=True,
+                " (aiter triton mhc_post_pre wrong on gfx938)", extra={"once_per_service": True}
             )
 
         # 11b. GLM-5.3-Flash mHC boundary dump (2026-10-16): HCU_DUMP_MHC=1 wraps
@@ -3065,10 +3063,9 @@ def install() -> None:
                 from sglang.srt.mem_cache import allocation as _alloc
 
                 _alloc.get_last_loc = _alloc.get_last_loc_torch
-                print(
-                    "[HCU specloc] get_last_loc -> torch (EAGLE+page>1"
-                    " out-of-range last_loc guard)",
-                    flush=True,
+                logging.getLogger("hcu.adapter").info(
+                    "HCU adapter: spec-decode get_last_loc -> torch (EAGLE+page>1"
+                    " out-of-range last_loc guard)"
                 )
             except Exception:
                 logging.getLogger("hcu.adapter").warning(
@@ -3114,7 +3111,7 @@ def install() -> None:
 
                 if _install_idle_verify_metadata(EagleVerifyInput):
                     logging.getLogger("hcu.adapter").warning(
-                        "HCU adapter: absent idle verify KV metadata defaults to None"
+                        "HCU adapter: absent idle verify KV metadata defaults to None", extra={"once_per_service": True}
                     )
         except Exception:
             logging.getLogger("hcu.adapter").warning(
@@ -3171,3 +3168,17 @@ def install() -> None:
             logging.getLogger("hcu.adapter").warning(
                 "HCU adapter: QSA pool not installed", exc_info=True
             )
+
+    # The per-op table closes the install: one line per installed binding plus
+    # the catalog ops still on the upstream path. It is printed here, not at the
+    # chain head, so it reflects what this service actually runs; spawn children
+    # skip it (hcu_env.summary_due): the top-level process already printed it.
+    try:
+        from hcu_adapter import hcu_env, registry
+
+        if hcu_env.summary_due():
+            registry.log_summary()
+    except Exception:
+        logging.getLogger("hcu.adapter").warning(
+            "HCU adapter: tier table print failed", exc_info=True
+        )

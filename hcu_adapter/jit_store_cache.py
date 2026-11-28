@@ -106,7 +106,7 @@ def _apply(root, register):
             mechanism=_reg.MECH_TEXT,
             detail=needle,
         )
-    LOG.warning(
+    LOG.info(
         "HCU adapter: JIT dsa store-cache portability patch installed (%d edits)",
         applied,
     )
